@@ -20,11 +20,13 @@ import sys
 # Ensure project root is in path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from medagentboard.utils.llm_configs import LLM_MODELS_SETTINGS
+from utils.config import get_config, setup_logging
+from utils.llm_provider import create_llm_provider
+from utils.dual_logger import DualLogger
 from medagentboard.utils.encode_image import encode_image
 from medagentboard.utils.json_utils import load_json, save_json, preprocess_response_string
 from medagentboard.utils.keu import KEU
 from medagentboard.utils.analysishelper import AnalysisHelperLLM
-
 
 class MedicalSpecialty(Enum):
     """Medical specialty enumeration."""
@@ -45,6 +47,7 @@ class BaseAgent:
     def __init__(self,
                  agent_id: str,
                  agent_type: AgentType,
+                 config_path,
                  model_key: str = "qwen-vl-max"):
         """
         Initialize the base agent.
@@ -59,16 +62,15 @@ class BaseAgent:
         self.model_key = model_key
         self.memory = []
 
-        if model_key not in LLM_MODELS_SETTINGS:
-            raise ValueError(f"Model key '{model_key}' not found in LLM_MODELS_SETTINGS")
+        self.config = get_config(config_path, active_llm=model_key)
+        self.llm = create_llm_provider(self.config.llm)
 
-        model_settings = LLM_MODELS_SETTINGS[model_key]
         self.client = OpenAI(
-            api_key=model_settings["api_key"],
-            base_url=model_settings["base_url"],
+            api_key=self.config.llm.api_key,
+            base_url=self.config.llm.base_url,
+            timeout = self.config.llm.timeout # if time out then atonomously report error
         )
-        self.model_name = model_settings["model_name"]
-
+        self.model_name = self.config.llm.model_name
     # MODIFICATION START: Adjusted return type to include prompts for logging.
     def call_llm(self,
                  system_message: Dict[str, str],
@@ -99,6 +101,7 @@ class BaseAgent:
                     response_format={"type": "json_object"},
                     extra_body={"enable_thinking": False},
                     stream=True,
+                    timeout=self.config.llm.timeout # just in case timeout error!
                 )
                 response_chunks = []
                 for chunk in completion:
@@ -106,6 +109,9 @@ class BaseAgent:
                         response_chunks.append(chunk.choices[0].delta.content)
 
                 response = "".join(response_chunks)
+                # check if the response is empty
+                if not response:
+                    raise ValueError("Empty response received from LLM")
                 print(f"Agent {self.agent_id} received response: {response[:50]}...")
                 # MODIFICATION START: Return prompts along with the response.
                 return response, system_message, user_message
@@ -114,10 +120,8 @@ class BaseAgent:
                 retries += 1
                 print(f"LLM API call error (attempt {retries}/{max_retries}): {e}")
                 if retries >= max_retries:
-                    # MODIFICATION START: Return error information for logging.
-                    error_message = f"LLM API call failed after {max_retries} attempts: {e}"
-                    return error_message, system_message, user_message
-                    # MODIFICATION END
+                    # don't return error message ,just raise exception
+                    raise RuntimeError(f"CRITICAL: Agent {self.agent_id} failed after {max_retries} attempts. Reason: {str(e)}")
                 time.sleep(1)
 
 
@@ -127,11 +131,12 @@ class DoctorAgent(BaseAgent):
     def __init__(self,
                  agent_id: str,
                  specialty: MedicalSpecialty,
+                 config_path: str,
                  model_key: str = "qwen-vl-max"):
         """
         Initialize a doctor agent.
         """
-        super().__init__(agent_id, AgentType.DOCTOR, model_key)
+        super().__init__(agent_id, AgentType.DOCTOR, config_path, model_key)
         self.specialty = specialty
         print(f"Initializing {specialty.value} doctor agent, ID: {agent_id}, Model: {model_key}")
 
@@ -367,11 +372,11 @@ class DoctorAgent(BaseAgent):
 class MetaAgent(BaseAgent):
     """Meta agent that synthesizes multiple doctors' opinions."""
 
-    def __init__(self, agent_id: str, model_key: str = "qwen-max-latest"):
+    def __init__(self, agent_id: str, config_path: str, model_key: str = "qwen-max-latest"):
         """
         Initialize a meta agent.
         """
-        super().__init__(agent_id, AgentType.META, model_key)
+        super().__init__(agent_id, AgentType.META, config_path, model_key)
         print(f"Initializing meta agent, ID: {agent_id}, Model: {model_key}")
 
     # MODIFICATION START: Changed return type to a dictionary for comprehensive logging.
@@ -585,8 +590,8 @@ class MetaAgent(BaseAgent):
         return decision_log # logging，返回了完整的系统和用户消息。
 
 class AuditorAgent(BaseAgent):
-    def __init__(self, agent_id: str = "auditor", model_key: str = "gemini-2.5-pro"):
-        super().__init__(agent_id, AgentType.AUDITOR, model_key) # Can reuse AUDITOR type
+    def __init__(self, agent_id: str = "auditor", config_path: str = None, model_key: str = "gemini-2.5-pro"):
+        super().__init__(agent_id, AgentType.AUDITOR, config_path, model_key) # Can reuse AUDITOR type
     def audit_domain_agent_contribution(self, question: str, agent_id: str, specialty: MedicalSpecialty, explanation: str) -> Dict[str, Any]:
         """
         在领域智能体发言后，评估其角色知识一致性和专家相关性。
@@ -864,7 +869,8 @@ class MDTConsultation:
                  doctor_configs: List[Dict] = None,
                  meta_model_key: str = "qwen-max-latest",
                  auditor_model_key: str = "gemini-2.5-pro",
-                 conflict_analysis_model_key: str = "gemini-2.5-pro"):
+                 conflict_analysis_model_key: str = "gemini-2.5-pro",
+                 config_path: str = "utils/config.toml"):
         """
         Initialize MDT consultation.
         """
@@ -881,11 +887,11 @@ class MDTConsultation:
             agent_id = f"doctor_{idx}"
             specialty = config["specialty"]
             model_key = config.get("model_key", "qwen-vl-max")
-            doctor_agent = DoctorAgent(agent_id, specialty, model_key)
+            doctor_agent = DoctorAgent(agent_id, specialty, config_path, model_key)
             self.doctor_agents.append(doctor_agent)
 
-        self.meta_agent = MetaAgent("meta", meta_model_key)
-        self.auditor_agent = AuditorAgent("auditor", auditor_model_key)
+        self.meta_agent = MetaAgent("meta", config_path, meta_model_key)
+        self.auditor_agent = AuditorAgent("auditor", config_path, auditor_model_key)
 
         # 初始化 AnalysisHelperLLM，使其在整个咨询流程中可用
         self.analysis_llm = AnalysisHelperLLM(model_key=conflict_analysis_model_key) 
@@ -1288,7 +1294,7 @@ def parse_structured_output(response_text: str) -> Dict[str, str]:
         return result
 
 
-def process_input(item, doctor_configs=None, meta_model_key="qwen-max-latest",auditor_model_key="gemini-2.5-pro",conflict_analysis_model_key="deepseek-reasoner"):
+def process_input(item, doctor_configs=None, config_path=None, meta_model_key="qwen-max-latest",auditor_model_key="gemini-2.5-pro",conflict_analysis_model_key="deepseek-reasoner"):
     """
     Process a single input data item.
     """
@@ -1302,7 +1308,8 @@ def process_input(item, doctor_configs=None, meta_model_key="qwen-max-latest",au
         doctor_configs=doctor_configs,
         meta_model_key=meta_model_key,
         auditor_model_key=auditor_model_key,
-        conflict_analysis_model_key = conflict_analysis_model_key
+        conflict_analysis_model_key = conflict_analysis_model_key,
+        config_path=config_path
     )
 
     result_history = mdt.run_consultation(
@@ -1318,23 +1325,25 @@ def main():
     parser = argparse.ArgumentParser(description="Run MDT consultation on medical datasets")
     parser.add_argument("--dataset", type=str, required=True, help="Specify dataset name,like PathVQA,VQA-RAD")
     parser.add_argument("--qa_type", type=str, choices=["mc", "ff"], default="mc", help="QA type: multiple-choice (mc) or free-form (ff)")
-    parser.add_argument("--meta_model", type=str, required=True, help="deepseek-v3-official")
-    parser.add_argument("--doctor_models", nargs='+', required=True, help="deepseek-v3-official if not processing image, or gemini-2.5-flash")
-    parser.add_argument("--start", type=int, required=True, help="Start index for processing")
-    parser.add_argument("--end", type=int, required=True, help="End index for processing")
-    parser.add_argument("--auditor_model", type=str, required=True, help="gemini-2.5-pro")
-    parser.add_argument("--conflict_model", type=str, required=True,default="deepseek-reasoner", help="Model for conflict analysis (AnalysisHelperLLM).")
+    parser.add_argument("--meta_model", type=str, required=True, help="gpt-5.1/gemini-2.5-flash")
+    parser.add_argument("--doctor_models", nargs='+', required=True, help="for qa, use deepseek-reasoner,for vqa,use qwen3-vl")
+    parser.add_argument("--config_path", type=str, required=True,help="Path to the config.toml file,default = utils/config.toml")
+    parser.add_argument("--auditor_model", type=str, required=True, help="gemini-3-pro-preview") # auditor model is the conflict model
     args = parser.parse_args()
 
-    # Using a timestamped method name for unique log directories
-    method = f"ColaCare_full_log_{time.strftime('%Y%m%d_%H%M%S')}"
+    timestamp = time.strftime("%Y%m%d_%H%M%S")
+    terminal_log_dir = os.path.join("logs", "observation", "terminal_log", "ColaCare")
+    os.makedirs(terminal_log_dir, exist_ok=True)
+    terminal_log_file = os.path.join(terminal_log_dir, f"{args.dataset}_{timestamp}_full_terminal.log")
+    print(f"!!! Terminal output is being captured to: {terminal_log_file} !!!")
+    sys.stdout = DualLogger(terminal_log_file, sys.stdout)
+    sys.stderr = DualLogger(terminal_log_file, sys.stderr) # 捕获报错和tqdm进度条
 
     dataset_name = args.dataset
     print(f"Dataset: {dataset_name}")
     qa_type = args.qa_type
     print(f"QA Format: {qa_type}")
 
-    qa_type_folder = "multiple_choice" if qa_type == "mc" else "free-form"
     logs_dir = os.path.join("logs", "observation",'ColaCare', dataset_name)
     os.makedirs(logs_dir, exist_ok=True)
     print(f"Logs will be saved to: {logs_dir}")
@@ -1363,7 +1372,7 @@ def main():
     doctor_model_names = [config["model_key"] for config in doctor_configs]
     print(f"Configuring {len(doctor_configs)} doctors with models: {doctor_model_names}")
 
-    for item in tqdm(data[args.start:args.end], desc=f"Running MDT consultation on {dataset_name}"):
+    for item in tqdm(data[:100], desc=f"Running MDT consultation on {dataset_name}"):
         qid = item["qid"]
         log_file_path = os.path.join(logs_dir, f"{qid}-result.json")
 
@@ -1375,9 +1384,10 @@ def main():
             full_case_history = process_input(
                 item,
                 doctor_configs=doctor_configs,
+                config_path=args.config_path,
                 meta_model_key=args.meta_model,
                 auditor_model_key=args.auditor_model,
-                conflict_analysis_model_key=args.conflict_model
+                conflict_analysis_model_key=args.auditor_model
             )
 
             # MODIFICATION START: The final decision is now nested inside the log.

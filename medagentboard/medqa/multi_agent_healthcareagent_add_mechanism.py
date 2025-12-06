@@ -6,8 +6,7 @@ It is inspired by the paper "Healthcare agent: eliciting the power of large lang
 The framework processes a single medical query through a multi-step pipeline involving planning,
 preliminary analysis, internal safety review ("discuss"), and final response modification.
 
-This version has been modified to embed the four quantitative observation mechanisms
-from the WWW2026 research proposal, adapting the logging and auditing logic from the ColaCare implementation.
+This version has been modified to embed the four quantitative observation mechanisms.
 """
 
 import os
@@ -20,6 +19,7 @@ from enum import Enum
 from openai import OpenAI
 from tqdm import tqdm
 
+
 # --- START: Added imports from ColaCare for observation mechanisms ---
 # Ensure project root is in path to import shared utilities
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
@@ -28,6 +28,7 @@ from medagentboard.utils.encode_image import encode_image
 from medagentboard.utils.json_utils import load_json, save_json, preprocess_response_string
 from medagentboard.utils.keu import KEU # Mechanism 1: KEU Class
 from medagentboard.utils.analysishelper import AnalysisHelperLLM # Mechanism 4: Conflict Resolution Helper
+from utils.dual_logger import DualLogger
 # --- END: Added imports ---
 
 

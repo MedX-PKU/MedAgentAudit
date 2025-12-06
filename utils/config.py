@@ -14,8 +14,6 @@ class LLMProviderConfig(BaseModel):
 class SystemConfig(BaseModel):
     max_retries: int = Field(2, description="Maximum number of retries for a failing task.")
 
-
-
 class MedagentAudit(BaseModel):
     """The main configuration object, assembled dynamically from the config file."""
     active_llm_name: str
@@ -29,7 +27,7 @@ def get_config(config_path: Path, active_llm: str) -> MedagentAudit:
     settings, and returns a unified HealthFlowConfig object.
     """
     if not config_path.exists():
-        example_path = Path("config.toml")
+        example_path = Path("utils/config.toml")
         if example_path.exists():
              raise FileNotFoundError(f"Configuration file not found at '{config_path}'. Please copy '{example_path}' to '{config_path}' and fill in your API key.")
         raise FileNotFoundError(f"Configuration file not found at '{config_path}'.")
