@@ -20,16 +20,14 @@ from openai import OpenAI
 from tqdm import tqdm
 
 
-# --- START: Added imports from ColaCare for observation mechanisms ---
 # Ensure project root is in path to import shared utilities
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-from medagentboard.utils.llm_configs import LLM_MODELS_SETTINGS
+from utils.config import get_config
 from medagentboard.utils.encode_image import encode_image
 from medagentboard.utils.json_utils import load_json, save_json, preprocess_response_string
 from medagentboard.utils.keu import KEU # Mechanism 1: KEU Class
 from medagentboard.utils.analysishelper import AnalysisHelperLLM # Mechanism 4: Conflict Resolution Helper
 from utils.dual_logger import DualLogger
-# --- END: Added imports ---
 
 
 # --- START: Copied and adapted from ColaCare for observation mechanisms ---
@@ -54,21 +52,22 @@ class BaseAgent:
     def __init__(self,
                  agent_id: str,
                  agent_type: AgentType,
+                 config_path: str,
                  model_key: str):
         self.agent_id = agent_id
         self.agent_type = agent_type
         self.model_key = model_key
         self.memory = []
 
-        if model_key not in LLM_MODELS_SETTINGS:
-            raise ValueError(f"Model key '{model_key}' not found in LLM_MODELS_SETTINGS")
+        self.llm = get_config(config_path, active_llm=model_key).llm
 
-        model_settings = LLM_MODELS_SETTINGS[model_key]
         self.client = OpenAI(
-            api_key=model_settings["api_key"],
-            base_url=model_settings["base_url"],
+            api_key=self.llm.api_key,
+            base_url=self.llm.base_url,
+            stream = True,
+            timeout=self.llm.timeout
         )
-        self.model_name = model_settings["model_name"]
+        self.model_name = self.config.llm.model_name
 
     def call_llm(self,
                  system_message: Dict[str, str],
@@ -83,25 +82,31 @@ class BaseAgent:
                     model=self.model_name,
                     messages=[system_message, user_message],
                     response_format={"type": "json_object"},
-                    extra_body={"enable_thinking": False}
+                    extra_body={"enable_thinking": False},
+                    timeout=self.llm.timeout
                 )
-                response = completion.choices[0].message.content
+                # streaming response handling
+                response_chunks = []
+                for chunk in completion:
+                    if chunk.choices[0].delta.content is not None:
+                        response_chunks.append(chunk.choices[0].delta.content)
+                response = "".join(response_chunks)
+                if not response:
+                    raise ValueError("Empty response from LLM")
                 print(f"Agent {self.agent_id} received response snippet: {response[:80]}...")
                 return response, system_message, user_message
             except Exception as e:
                 retries += 1
                 print(f"LLM API call error (attempt {retries}/{max_retries}): {e}")
                 if retries >= max_retries:
-                    error_message = f"LLM API call failed after {max_retries} attempts: {e}"
-                    return error_message, system_message, user_message
+                    raise RuntimeError(f"CRITICAL: Agent {self.agent_id} failed after {max_retries} attempts. Reason: {str(e)}")
                 time.sleep(1)
-        return "", system_message, user_message
 
 
 class AuditorAgent(BaseAgent):
     """Auditor agent copied from ColaCare to implement observation mechanisms."""
-    def __init__(self, agent_id: str = "auditor", model_key: str = "gemini-2.5-pro"):
-        super().__init__(agent_id, AgentType.AUDITOR, model_key)
+    def __init__(self, agent_id: str = "auditor", config_path: str = "utils/config.toml", model_key: str = "gemini-3-pro-preview"):
+        super().__init__(agent_id, AgentType.AUDITOR, config_path, model_key)
 
     def audit_domain_agent_contribution(self, question: str, agent_id: str, specialty: MedicalSpecialty, explanation: str) -> Dict[str, Any]:
         print(f"Auditor Agent: Auditing Domain Agent Contribution for {agent_id}...")
@@ -424,23 +429,20 @@ class HealthcareAgentFramework:
     now enhanced with quantitative observation mechanisms.
     """
 
-    def __init__(self, model_key: str, auditor_model_key: str, conflict_model_key: str):
+    def __init__(self, model_key: str, auditor_model_key: str, conflict_model_key: str,config_path: str):
         self.model_key = model_key
 
-        if model_key not in LLM_MODELS_SETTINGS:
-            raise ValueError(f"Model key '{model_key}' not found in LLM_MODELS_SETTINGS")
 
-        model_settings = LLM_MODELS_SETTINGS[model_key]
+        self.llm = get_config(config_path, active_llm=model_key).llm
+        self.llm = self.config.llm
         self.client = OpenAI(
-            api_key=model_settings["api_key"],
-            base_url=model_settings["base_url"],
+            api_key=self.llm.api_key,
+            base_url=self.llm.base_url,
         )
-        self.model_name = model_settings["model_name"]
+        self.model_name = self.llm.model_name
         
-        # --- START: Initialize observer agents ---
         self.auditor_agent = AuditorAgent(model_key=auditor_model_key)
-        self.analysis_llm = AnalysisHelperLLM(model_key=conflict_model_key)
-        # --- END: Initialize observer agents ---
+        self.analysis_llm = AnalysisHelperLLM(config_path=config_path, model_key=conflict_model_key)
 
         print(f"Initialized HealthcareAgentFramework with model: {self.model_name}")
 
@@ -708,17 +710,18 @@ def main():
     parser = argparse.ArgumentParser(description="Run HealthcareAgent Framework on medical datasets")
     parser.add_argument("--dataset", type=str, required=True, help="Specify dataset name")
     parser.add_argument("--qa_type", type=str, choices=["mc", "ff"], required=True, help="QA type: multiple-choice (mc) or free-form (ff)")
-    parser.add_argument("--start", type=int, required=True, help="Number of initial samples to start from")
-    parser.add_argument("--end", type=int, required=True, help="Number of initial samples to end at")
-
-    parser.add_argument("--model", type=str, default="qwen-vl-max", help="Model key to use for all agent steps")
-    # --- START: Added arguments for observer models ---
-    parser.add_argument("--auditor_model", type=str, required=True, help="Model for AuditorAgent (e.g., gemini-2.5-pro).")
-    parser.add_argument("--conflict_model", type=str, required=True, help="Model for conflict analysis (e.g., deepseek-reasoner).")
-    # --- END: Added arguments ---
+    parser.add_argument("--config_path", type=str, required=True, help="default = utils/config.toml")
+    parser.add_argument("--model", type=str,required=True, help="qa= deepseek-reasoner/gpt-5.1/gemini-2.5-flash,vqa = qwen-3-vl/gpt-5.1/gemini-2.5-flash")
+    parser.add_argument("--auditor_model", type=str, required=True, help="gemini-3-pro-preview")
     args = parser.parse_args()
 
-    method_name = f"HealthcareAgent_full_log_{time.strftime('%Y%m%d_%H%M%S')}"
+    timestamp = time.strftime("%Y%m%d_%H%M%S")
+    terminal_log_dir = os.path.join("logs", "observation", "terminal_log", "HealthcareAgent")
+    os.makedirs(terminal_log_dir, exist_ok=True)
+    terminal_log_file = os.path.join(terminal_log_dir, f"{args.dataset}_{timestamp}_full_terminal.log")
+    print(f"!!! Terminal output is being captured to: {terminal_log_file} !!!")
+    sys.stdout = DualLogger(terminal_log_file, sys.stdout)
+    sys.stderr = DualLogger(terminal_log_file, sys.stderr) # 捕获报错和tqdm进度条
 
     logs_dir = os.path.join("logs", "observation", "HealthcareAgent", args.dataset)
     os.makedirs(logs_dir, exist_ok=True)
@@ -733,10 +736,11 @@ def main():
     framework = HealthcareAgentFramework(
         model_key=args.model,
         auditor_model_key=args.auditor_model,
-        conflict_model_key=args.conflict_model
+        conflict_model_key=args.auditor_model,
+        config_path=args.config_path
     )
 
-    for item in tqdm(data[args.start:args.end], desc=f"Running HealthcareAgent on {args.dataset}"):
+    for item in tqdm(data[:100], desc=f"Running HealthcareAgent on {args.dataset}"):
         qid = item["qid"]
         result_path = os.path.join(logs_dir, f"{qid}-result.json")
 

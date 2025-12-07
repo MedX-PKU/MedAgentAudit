@@ -1,5 +1,4 @@
 # multi_agent_colacare_full_log.py
-# logging以及NOTIFICIATION为修改的部分
 """
 medagentboard/medqa/multi_agent_colacare.py
 
@@ -19,14 +18,12 @@ import sys
 
 # Ensure project root is in path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-from medagentboard.utils.llm_configs import LLM_MODELS_SETTINGS
-from utils.config import get_config, setup_logging
-from utils.llm_provider import create_llm_provider
+from utils.config import get_config
 from utils.dual_logger import DualLogger
-from medagentboard.utils.encode_image import encode_image
-from medagentboard.utils.json_utils import load_json, save_json, preprocess_response_string
-from medagentboard.utils.keu import KEU
-from medagentboard.utils.analysishelper import AnalysisHelperLLM
+from medagentaudit.utils.encode_image import encode_image
+from medagentaudit.utils.json_utils import load_json, save_json, preprocess_response_string
+from medagentaudit.utils.keu import KEU
+from medagentaudit.utils.analysishelper import AnalysisHelperLLM
 
 class MedicalSpecialty(Enum):
     """Medical specialty enumeration."""
@@ -62,15 +59,14 @@ class BaseAgent:
         self.model_key = model_key
         self.memory = []
 
-        self.config = get_config(config_path, active_llm=model_key)
-        self.llm = create_llm_provider(self.config.llm)
+        self.llm = get_config(config_path, active_llm=model_key).llm
 
         self.client = OpenAI(
-            api_key=self.config.llm.api_key,
-            base_url=self.config.llm.base_url,
-            timeout = self.config.llm.timeout # if time out then atonomously report error
+            api_key=self.llm.api_key,
+            base_url=self.llm.base_url,
+            timeout = self.llm.timeout # if time out then atonomously report error
         )
-        self.model_name = self.config.llm.model_name
+        self.model_name = self.llm.model_name
     # MODIFICATION START: Adjusted return type to include prompts for logging.
     def call_llm(self,
                  system_message: Dict[str, str],
@@ -101,7 +97,7 @@ class BaseAgent:
                     response_format={"type": "json_object"},
                     extra_body={"enable_thinking": False},
                     stream=True,
-                    timeout=self.config.llm.timeout # just in case timeout error!
+                    timeout=self.llm.timeout # just in case timeout error!
                 )
                 response_chunks = []
                 for chunk in completion:
@@ -113,9 +109,7 @@ class BaseAgent:
                 if not response:
                     raise ValueError("Empty response received from LLM")
                 print(f"Agent {self.agent_id} received response: {response[:50]}...")
-                # MODIFICATION START: Return prompts along with the response.
                 return response, system_message, user_message
-                # MODIFICATION END
             except Exception as e:
                 retries += 1
                 print(f"LLM API call error (attempt {retries}/{max_retries}): {e}")
@@ -894,7 +888,7 @@ class MDTConsultation:
         self.auditor_agent = AuditorAgent("auditor", config_path, auditor_model_key)
 
         # 初始化 AnalysisHelperLLM，使其在整个咨询流程中可用
-        self.analysis_llm = AnalysisHelperLLM(model_key=conflict_analysis_model_key) 
+        self.analysis_llm = AnalysisHelperLLM(config_path=config_path, model_key=conflict_analysis_model_key) 
 
         self.doctor_specialties = [doctor.specialty for doctor in self.doctor_agents]
 
@@ -1325,10 +1319,11 @@ def main():
     parser = argparse.ArgumentParser(description="Run MDT consultation on medical datasets")
     parser.add_argument("--dataset", type=str, required=True, help="Specify dataset name,like PathVQA,VQA-RAD")
     parser.add_argument("--qa_type", type=str, choices=["mc", "ff"], default="mc", help="QA type: multiple-choice (mc) or free-form (ff)")
-    parser.add_argument("--meta_model", type=str, required=True, help="gpt-5.1/gemini-2.5-flash")
     parser.add_argument("--doctor_models", nargs='+', required=True, help="for qa, use deepseek-reasoner,for vqa,use qwen3-vl")
-    parser.add_argument("--config_path", type=str, required=True,help="Path to the config.toml file,default = utils/config.toml")
+    parser.add_argument("--meta_model", type=str, required=True, help="gpt-5.1/gemini-2.5-flash")
     parser.add_argument("--auditor_model", type=str, required=True, help="gemini-3-pro-preview") # auditor model is the conflict model
+    parser.add_argument("--config_path", type=str, required=True,help="Path to the config.toml file,default = utils/config.toml")
+    parser.add_argument("--num_samples", type=int, required=True,help="Number of samples to process from the dataset")
     args = parser.parse_args()
 
     timestamp = time.strftime("%Y%m%d_%H%M%S")
@@ -1370,9 +1365,9 @@ def main():
         })
 
     doctor_model_names = [config["model_key"] for config in doctor_configs]
-    print(f"Configuring {len(doctor_configs)} doctors with models: {doctor_model_names}")
+    print(f"Configuring {len(doctor_configs)} doctors with models: {doctor_model_names}") 
 
-    for item in tqdm(data[:100], desc=f"Running MDT consultation on {dataset_name}"):
+    for item in tqdm(data[:args.num_samples], desc=f"Running MDT consultation on {dataset_name}"): 
         qid = item["qid"]
         log_file_path = os.path.join(logs_dir, f"{qid}-result.json")
 

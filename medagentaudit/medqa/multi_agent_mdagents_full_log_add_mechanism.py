@@ -17,12 +17,13 @@ import sys
 
 # Utilities from the ColaCare framework
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-from medagentboard.utils.llm_configs import LLM_MODELS_SETTINGS
+from utils.config import get_config
+from utils.dual_logger import DualLogger
 from medagentboard.utils.encode_image import encode_image
 from medagentboard.utils.json_utils import load_json, save_json, preprocess_response_string
+from medagentboard.utils.analysishelper import AnalysisHelperLLM
 
 
-# --- [新增] 从 ColaCare 迁移过来的核心数据结构和辅助类 ---
 class KEU:
     """关键证据单元 (Key Evidential Unit) 的数据结构。"""
     def __init__(self, keu_id: str, content: str, source_agent: str, round_introduced: int, group_id: Optional[str] = None):
@@ -40,51 +41,6 @@ class KEU:
     def to_dict(self):
         return self.__dict__
 
-class AnalysisHelperLLM:
-    """用于复杂分析任务（如判断冲突是否解决）的辅助 LLM。"""
-    def __init__(self, model_key: str):
-        if model_key not in LLM_MODELS_SETTINGS:
-            raise ValueError(f"Model key '{model_key}' not found in LLM_MODELS_SETTINGS")
-        model_settings = LLM_MODELS_SETTINGS[model_key]
-        self.client = OpenAI(
-            api_key=model_settings["api_key"],
-            base_url=model_settings["base_url"],
-        )
-        self.model_name = model_settings["model_name"]
-
-    def check_if_conflict_was_addressed(self, ccp_to_check: Dict, discussion_text: str) -> Tuple[bool, str]:
-        system_message = {
-            "role": "system",
-            "content": """You are a highly attentive and impartial debate moderator. Your task is to determine if a specific 'Point of Conflict' was substantively addressed in the provided 'Discussion Text'.
-Definition of 'Substantively Addressed':
-- The discussion must do more than simply repeat one of the conflicting viewpoints.
-- It should acknowledge the disagreement, weigh the evidence from both sides, provide new information to resolve the conflict, or make a reasoned choice between the alternatives.
-- Simply mentioning the CCP's ID is NOT enough. Ignoring the conflict entirely means it was NOT addressed.
-
-You MUST respond with a single JSON object with two keys: `was_addressed` (boolean) and `resolution_reasoning` (a brief explanation of HOW it was addressed, or why it wasn't).
-"""
-        }
-        user_message = {
-            "role": "user",
-            "content": f"Point of Conflict to track:\n"
-                       f"Conflict Summary: \"{ccp_to_check['conflict_summary']}\"\n"
-                       f"Involved: {ccp_to_check['conflicting_agents']}\n\n"
-                       f"Discussion Text:\n"
-                       f"--- START ---\n{discussion_text}\n--- END ---\n\n"
-                       f"Was this conflict substantively addressed in the text? Provide your judgment as a JSON object."
-        }
-        try:
-            completion = self.client.chat.completions.create(
-                model=self.model_name,
-                messages=[system_message, user_message],
-                response_format={"type": "json_object"},
-            )
-            response_text = completion.choices[0].message.content
-            parsed_response = json.loads(preprocess_response_string(response_text))
-            return parsed_response.get("was_addressed", False), parsed_response.get("resolution_reasoning", "No reasoning provided.")
-        except Exception as e:
-            print(f"LLM call for conflict address check failed: {e}")
-            return False, "LLM call failed."
 
 # --- Constants and Enums ---
 
@@ -1506,13 +1462,10 @@ def main():
     parser = argparse.ArgumentParser(description="Run MDAgents Framework on medical datasets")
     parser.add_argument("--dataset", type=str, required=True)
     parser.add_argument("--qa_type", type=str, choices=["mc", "ff"], default="mc")
-    parser.add_argument("--moderator_model", type=str, required=True)
-    parser.add_argument("--recruiter_model", type=str, required=True)
-    parser.add_argument("--agent_model", type=str, required=True)
-    parser.add_argument("--start", type=int, required=True)
-    parser.add_argument("--end", type=int, required=True)
-    parser.add_argument("--auditor_model", type=str, required=True, help="Model for AuditorAgent.")
-    parser.add_argument("--conflict_model", type=str, required=True, help="Model for conflict analysis (AnalysisHelperLLM).")
+    parser.add_argument("--moderator_model", type=str, required=True,help = "deepseek-reasoner/gpt-5.1/gemini-2.5-flash")
+    parser.add_argument("--recruiter_model", type=str, required=True, help = "deepseek-reasoner/gpt-5.1/gemini-2.5-flash")
+    parser.add_argument("--agent_model", type=str, required=True, help = "qa = deepseek-reasoner/gpt-5.1/gemini-2.5-flash ,vqa = qwen-3-vl/gpt-5.1/gemini-2.5-flash") # this agent need to read the figure if we execute the vqa task
+    parser.add_argument("--auditor_model", type=str, required=True, help="gemini-3-pro-preview")
     parser.add_argument("--num_experts", type=int, default=DEFAULT_NUM_EXPERTS_INTERMEDIATE)
     parser.add_argument("--num_teams", type=int, default=DEFAULT_NUM_TEAMS_ADVANCED)
     
@@ -1532,11 +1485,11 @@ def main():
 
     framework = MDAgentsFramework(
         log_dir=logs_dir, dataset_name=args.dataset, model_config=model_config,
-        auditor_model_key=args.auditor_model, conflict_model_key=args.conflict_model,
+        auditor_model_key=args.auditor_model, conflict_model_key=args.auditor_model,
         num_experts_intermediate=args.num_experts, num_teams_advanced=args.num_teams
     )
 
-    framework.run_dataset(data[args.start:args.end])
+    framework.run_dataset(data[:100])
 
 if __name__ == "__main__":
     main()
