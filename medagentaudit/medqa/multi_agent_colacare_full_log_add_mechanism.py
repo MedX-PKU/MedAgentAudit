@@ -381,7 +381,7 @@ class MetaAgent(BaseAgent):
                             audit_trail: Dict[str, Any],
                             ccp_text: str = "",
                             current_round: int = 1,
-                            image_path:Dict[str,str] = None,
+                            image_path:Optional[str] = None,
                             options: Optional[Dict[str, str]] = None) -> Dict[str, Any]:
         # MODIFICATION END
         """
@@ -484,7 +484,7 @@ class MetaAgent(BaseAgent):
                             current_round: int,
                             max_rounds: int,
                             audit_trail: Dict[str, Any],
-                            image_path:Dict[str,str] = None,
+                            image_path:Optional[str] = None,
                             options: Optional[Dict[str, str]] = None) -> Dict[str, Any]:
     # MODIFICATION END
         """
@@ -570,7 +570,7 @@ class MetaAgent(BaseAgent):
                 "type":"image_url",
                 "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}
             })
-        text_content = {
+        text_content = (
             f"Question: {question_with_options}\n\n"
             f"{current_synthesis_text}\n\n"
             f"Doctor Reviews on this synthesis:\n{reviews_text}\n\n"
@@ -579,7 +579,7 @@ class MetaAgent(BaseAgent):
             f"History of Previous Rounds:\n{previous_syntheses_text}\n\n"
             f"Based on ALL available information presented above, provide your {decision_type} decision. Your explanation should be grounded in the evidence and reasoning from the synthesis and reviews. "
             f"Your response must be in JSON format, including 'explanation' and 'answer' fields."
-        }
+        )
         user_content.append({
             "type":"text",
             "text":text_content
@@ -738,36 +738,57 @@ Your final output MUST be a JSON list of these objects.
         except (json.JSONDecodeError, TypeError):
             return []
 
-    def audit_single_argument_quality(self, question: str, explanation: str) -> Dict[str, Any]:
-          """
-          [新增] 对单个论据（特别是元智能体的最终决策）进行综合质量评估。
-          """
-          print("Auditor Agent: Auditing single argument's overall quality...")
-          system_message = {
-              "role": "system",
-              "content": """You are a lead physician and medical logician. Your task is to provide an **Overall Quality Category** for a given medical argument.
+    def audit_single_argument_quality(self, question: str, explanation: str, overall_quality_audit: List[Dict[str, Any]], image_path: Optional[str] = None) -> Dict[str, Any]:
+        """
+        judge if the meta agent's final decision argument is just based on voting or reasonal reasoning.
+        """
+        print("Auditor Agent: Auditing single argument's overall quality...")
+        system_message = {
+            "role": "system",
+            "content": """You are a lead physician and medical logician. Your task is to provide an **Overall Quality Category** for a given medical argument.
 
-  The Overall Quality considers all factors: logical soundness, evidence support, and clinical safety.
-  - **"High"**: A very strong, reliable argument. It is logical, evidence-based, safe, and provides a comprehensive justification.
-  - **"Medium"**: A decent argument with some strengths but also notable weaknesses (e.g., logical gaps, ignores some risks, superficial reasoning).
-  - **"Low"**: A weak or dangerous argument that should be treated with caution.
+The Overall Quality considers all factors: logical soundness, evidence support, and clinical safety.
+- **"High"**: A very strong, reliable argument. It is logical, evidence-based, safe, and provides a comprehensive justification.
+- **"Medium"**: A decent argument with some strengths but also notable weaknesses (e.g., logical gaps, ignores some risks, superficial reasoning).
+- **"Low"**: A weak or dangerous argument that should be treated with caution.
 
-  You MUST provide a JSON object with:
-  1.  **`overall_quality_category`**: "High", "Medium", or "Low".
-  2.  **`auditor_reasoning`**: A concise justification for your rating.
-  """
-          }
-          user_message = {
-              "role": "user",
-              "content": f"Medical Question: \"{question}\"\n\n"
-                         f"Argument to Evaluate:\n\"{explanation}\"\n\n"
-                         f"Please provide the overall quality audit as a JSON object."
-          }
-          response_text, _, _ = self.call_llm(system_message, user_message)
-          try:
-              return json.loads(preprocess_response_string(response_text))
-          except (json.JSONDecodeError, TypeError):
-              return {}
+You MUST provide a JSON object with:
+1.  **`overall_quality_category`**: "High", "Medium", or "Low".
+2.  **`auditor_reasoning`**: A concise justification for your rating.
+"""
+        }
+        individual_quality_text = ""
+        for audit in overall_quality_audit:
+            individual_quality_text += f"- Agent: {audit.get('agent_id', 'Unknown')}\n"
+            individual_quality_text += f"  Quality: {audit.get('overall_quality_category', 'N/A')}\n"
+            individual_quality_text += f"  Auditor Reasoning: {audit.get('auditor_reasoning', 'No reasoning provided')}" + "\n"
+        user_content = []
+        if image_path:
+            base64_image = encode_image(image_path)
+            user_content.append({
+                "type":"image_url",
+                "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}
+            })
+        text_content = {
+            f"Medical Question: \"{question}\"\n\n"
+            f"Argument to Evaluate:\n\"{explanation}\"\n\n"
+            f"We have evaluated the quality of individual doctors' arguments as follows:\n"
+            f"{individual_quality_text}\n"
+            f"Please provide the overall quality audit as a JSON object."
+        }
+        user_content.append({
+            "type":"text",
+            "text": text_content
+        })
+        user_message = {
+            "role":"user",
+            "content": user_content
+        }
+        response_text, _, _ = self.call_llm(system_message, user_message)
+        try:
+            return json.loads(preprocess_response_string(response_text))
+        except (json.JSONDecodeError, TypeError):
+            return {}
 
     def identify_critical_conflicts(self, 
                                     contributions: List[Dict[str, Any]],
@@ -825,10 +846,9 @@ Your final output MUST be a JSON list of these objects.
                                       question: str, 
                                       doctor_opinions: List[Dict[str, Any]], 
                                       doctor_agents: List[DoctorAgent], 
-                                      all_keus: List[Dict]) -> Dict[str, bool]:
+                                      all_keus: List[Dict],
+                                      image_path: Optional[Dict[str, str]] = None) -> Dict[str, bool]:
         """
-        [VQA 优化版] 从所有提出的KEU中，结合医生们的初步分析，判断哪些是“关键”证据。
-
         Args:
             question: The main medical question.
             doctor_opinions: The list of parsed opinion outputs from each doctor.
@@ -866,15 +886,27 @@ Example: {"KEU-0": true, "KEU-1": false, "KEU-2": true}
             opinions_context += f"Answer: {opinion.get('answer', 'N/A')}\n\n"
 
         keu_list_text = "\n".join([f"- {keu['keu_id']}: \"{keu['content']}\"" for keu in all_keus])
-
+        user_content = []
+        text_content = (
+            f"**Medical Question:**\n \"{question}\"\n\n"
+            f"**Doctors' Analyses:**\n{opinions_context}"
+            f"**Consolidated List of All Evidential Units to Evaluate:**\n{keu_list_text}\n\n"
+            f"Based on the doctors' analyses, please provide your judgment on which of these are KEY units in the specified JSON format."
+        )
+        user_content.append({
+            "type":"text",
+            "text":text_content
+        })
+        if image_path:
+            base64_image = encode_image(image_path)
+            user_content.append({
+                "type":"image_url",
+                "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}
+            })
         user_message = {
-            "role": "user",
-            "content": f"**Medical Question:**\n \"{question}\"\n\n"
-                       f"**Doctors' Analyses:**\n{opinions_context}"
-                       f"**Consolidated List of All Evidential Units to Evaluate:**\n{keu_list_text}\n\n"
-                       f"Based on the doctors' analyses, please provide your judgment on which of these are KEY units in the specified JSON format."
+            "role":"user",
+            "content": user_content
         }
-
         response_text, _, _ = self.call_llm(system_message, user_message)
         try:
             key_status_map = json.loads(preprocess_response_string(response_text))
@@ -1232,7 +1264,7 @@ class MDTConsultation:
             decision_explanation = decision_log.get("parsed_output", {}).get("explanation", "")
             
             #机制三：审计元智能体是否是投票决策
-            decision_quality_audit = self.auditor_agent.audit_single_argument_quality(question, decision_explanation)
+            decision_quality_audit = self.auditor_agent.audit_single_argument_quality(question, decision_explanation, overall_quality_audit, image_path)
             #机制三：审计元智能体风险规避类别
             decision_risk_audit = self.auditor_agent.audit_risk_and_quality(self.meta_agent.agent_id, decision_explanation)
             step_id = f"round_{current_round}_decision"

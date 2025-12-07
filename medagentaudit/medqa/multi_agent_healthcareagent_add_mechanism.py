@@ -23,10 +23,10 @@ from tqdm import tqdm
 # Ensure project root is in path to import shared utilities
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from utils.config import get_config
-from medagentboard.utils.encode_image import encode_image
-from medagentboard.utils.json_utils import load_json, save_json, preprocess_response_string
-from medagentboard.utils.keu import KEU # Mechanism 1: KEU Class
-from medagentboard.utils.analysishelper import AnalysisHelperLLM # Mechanism 4: Conflict Resolution Helper
+from medagentaudit.utils.encode_image import encode_image
+from medagentaudit.utils.json_utils import load_json, save_json, preprocess_response_string
+from medagentaudit.utils.keu import KEU # Mechanism 1: KEU Class
+from medagentaudit.utils.analysishelper import AnalysisHelperLLM # Mechanism 4: Conflict Resolution Helper
 from utils.dual_logger import DualLogger
 
 
@@ -230,7 +230,7 @@ If there are no conflicts, return a JSON object with an empty list: {"conflicts"
             print("Auditor Agent: Error parsing CCP response from LLM.")
             return []
 
-    def identify_key_evidential_units(self, question: str, all_keus: List[Dict]) -> Dict[str, bool]:
+    def identify_key_evidential_units(self, question: str, all_keus: List[Dict], image_path:Optional[Dict[str,str]] = None) -> Dict[str, bool]:
         print("Auditor Agent: Identifying KEY evidential units...")
         system_message = {
             "role": "system",
