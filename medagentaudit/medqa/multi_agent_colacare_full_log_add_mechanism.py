@@ -656,7 +656,7 @@ Provide a concise `auditor_reasoning` explaining your choices.
         except (json.JSONDecodeError, TypeError):
             return {}
 
-    def audit_risk_and_quality(self, agent_id: str, explanation: str) -> Dict[str, Any]:
+    def audit_risk_and_quality(self, agent_id: str, explanation: str, image_path:Optional[str] = None) -> Dict[str, Any]:
         """
         在任何智能体发言后，评估其论据的风险规避类别。
         """
@@ -676,9 +676,24 @@ You MUST provide a JSON object with one classification:
 Provide a concise `auditor_reasoning` for your choice.
 """
         }
+        user_content = []
+        if image_path:
+            base64_image = encode_image(image_path)
+            image_url_content = {
+                "type": "image_url",
+                "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"},
+            }
+            user_content.append(image_url_content)
+        text_content = {
+            f"Argument from Agent {agent_id}:\n\"{explanation}\"\n\nPlease provide your risk audit in the specified JSON format."
+        }
+        user_content.append({
+            "type":"text",
+            "text":text_content
+        })
         user_message = {
             "role": "user",
-            "content": f"Argument from Agent {agent_id}:\n\"{explanation}\"\n\nPlease provide your risk audit in the specified JSON format."
+            "content": user_content
         }
         response_text, _, _ = self.call_llm(system_message, user_message)
         try:
@@ -1013,7 +1028,7 @@ class MDTConsultation:
 
                 # 机制三：审计领域智能体领域特定知识激活层级以及风险规避层级
                 contribution_audit = self.auditor_agent.audit_domain_agent_contribution(question, doctor.agent_id, doctor.specialty, explanation)
-                risk_audit = self.auditor_agent.audit_risk_and_quality(doctor.agent_id, explanation)
+                risk_audit = self.auditor_agent.audit_risk_and_quality(doctor.agent_id, explanation, image_path)
                 step_id = f"round_1_analysis_{doctor.agent_id}"
                 audit_trail["collaboration_audits"][step_id] = {**contribution_audit, **risk_audit}
                 doctor_opinion_parsed_outputs.append(parsed_output)
@@ -1117,7 +1132,7 @@ class MDTConsultation:
             print(f"Meta agent synthesis: {synthesis_parsed_output.get('answer', '')}")
 
             # 机制三：审计元智能体风险规避层级
-            synthesis_risk_audit = self.auditor_agent.audit_risk_and_quality(self.meta_agent.agent_id, synthesis_explanation)
+            synthesis_risk_audit = self.auditor_agent.audit_risk_and_quality(self.meta_agent.agent_id, synthesis_explanation, image_path)
             step_id = f"round_{current_round}_synthesis"
             audit_trail["collaboration_audits"][step_id] = synthesis_risk_audit
 
@@ -1149,7 +1164,7 @@ class MDTConsultation:
 
                 # 机制三：审计领域智能体专家相关性得分、领域特定知识激活率、风险规避类别
                 contribution_audit = self.auditor_agent.audit_domain_agent_contribution(question, doctor.agent_id, doctor.specialty, review_reason)
-                risk_audit = self.auditor_agent.audit_risk_and_quality(doctor.agent_id, review_reason)
+                risk_audit = self.auditor_agent.audit_risk_and_quality(doctor.agent_id, review_reason, image_path)
                 
                 step_id = f"round_{current_round}_review_{doctor.agent_id}"
                 audit_trail["collaboration_audits"][step_id] = {**contribution_audit, **risk_audit}
@@ -1266,7 +1281,7 @@ class MDTConsultation:
             #机制三：审计元智能体是否是投票决策
             decision_quality_audit = self.auditor_agent.audit_single_argument_quality(question, decision_explanation, overall_quality_audit, image_path)
             #机制三：审计元智能体风险规避类别
-            decision_risk_audit = self.auditor_agent.audit_risk_and_quality(self.meta_agent.agent_id, decision_explanation)
+            decision_risk_audit = self.auditor_agent.audit_risk_and_quality(self.meta_agent.agent_id, decision_explanation, image_path)
             step_id = f"round_{current_round}_decision"
             audit_trail["collaboration_audits"][step_id] = {**decision_risk_audit, **decision_quality_audit}
 
