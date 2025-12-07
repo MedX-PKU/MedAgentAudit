@@ -381,6 +381,7 @@ class MetaAgent(BaseAgent):
                             audit_trail: Dict[str, Any],
                             ccp_text: str = "",
                             current_round: int = 1,
+                            image_path:Dict[str,str] = None,
                             options: Optional[Dict[str, str]] = None) -> Dict[str, Any]:
         # MODIFICATION END
         """
@@ -425,17 +426,32 @@ class MetaAgent(BaseAgent):
         for keu_id, keu_obj in audit_trail["keus"].items():
             keu_list_text += f"- {keu_id}: '{keu_obj.content}' (from {keu_obj.source_agent})\n"
 
-        user_message = {
-            "role": "user",
-            "content": f"Question: {question_with_options}\n\n"
-                       f"Round {current_round} Doctors' Opinions:\n{opinions_text}\n\n"
-                       f"Available KEUs (Key Evidential Units):\n{keu_list_text}\n"
-                       f"Available CCPs (Critical Consensus Points):\n{ccp_text}\n\n"
-                       f"Note that potential conflicts (CCPs) have been identified; a robust synthesis must acknowledge or resolve these points.\n\n"
-                       f"**CRITICAL INSTRUCTION:** Your task is to synthesize these diverse opinions into a single, coherent analysis. In your 'explanation', you **MUST selectively cite only the most important KEU-IDs** that support your synthesized view. **DO NOT simply list all available KEUs.** Your goal is to demonstrate a deep understanding by building a new, consolidated argument from the strongest evidence (e.g., 'Synthesizing the specialists' views, the consensus leans towards X, primarily supported by the crucial findings in KEU-2 and KEU-5...').\n\n"
-                       f"Provide your synthesis in JSON format, including 'explanation' (comprehensive reasoning) and 'answer' (clear conclusion) fields."
-        }
+        user_content = []
+        if image_path:
+            base64_image = encode_image(image_path)
+            image_url_content = {
+                "type": "image_url",
+                "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"},
+            }
+            user_content.append(image_url_content)
+        text_content = (
+            f"Question: {question_with_options}\n\n"
+            f"Round {current_round} Doctors' Opinions:\n{opinions_text}\n\n"
+            f"Available KEUs (Key Evidential Units):\n{keu_list_text}\n"
+            f"Available CCPs (Critical Consensus Points):\n{ccp_text}\n\n"
+            f"Note that potential conflicts (CCPs) have been identified; a robust synthesis must acknowledge or resolve these points.\n\n"
+            f"**CRITICAL INSTRUCTION:** Your task is to synthesize these diverse opinions into a single, coherent analysis. In your 'explanation', you **MUST selectively cite only the most important KEU-IDs** that support your synthesized view. **DO NOT simply list all available KEUs.** Your goal is to demonstrate a deep understanding by building a new, consolidated argument from the strongest evidence (e.g., 'Synthesizing the specialists' views, the consensus leans towards X, primarily supported by the crucial findings in KEU-2 and KEU-5...').\n\n"
+            f"Provide your synthesis in JSON format, including 'explanation' (comprehensive reasoning) and 'answer' (clear conclusion) fields."
+        )
+        user_content.append({
+            "type":"text",
+            "text":text_content
+        })
 
+        user_message = {
+            "role":"user",
+            "content": user_content
+        }
         response_text, system_msg, user_msg = self.call_llm(system_message, user_message)
 
         try:
@@ -468,6 +484,7 @@ class MetaAgent(BaseAgent):
                             current_round: int,
                             max_rounds: int,
                             audit_trail: Dict[str, Any],
+                            image_path:Dict[str,str] = None,
                             options: Optional[Dict[str, str]] = None) -> Dict[str, Any]:
     # MODIFICATION END
         """
@@ -546,16 +563,30 @@ class MetaAgent(BaseAgent):
         for keu_id, keu_obj in audit_trail["keus"].items():
             keu_list_text += f"- {keu_id}: '{keu_obj.content}' (from {keu_obj.source_agent})\n"
             
+        user_content =[]
+        if image_path:
+            base64_image = encode_image(image_path)
+            user_content.append({
+                "type":"image_url",
+                "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}
+            })
+        text_content = {
+            f"Question: {question_with_options}\n\n"
+            f"{current_synthesis_text}\n\n"
+            f"Doctor Reviews on this synthesis:\n{reviews_text}\n\n"
+            f"{keu_list_text}\n\n"
+            f"**CRITICAL INSTRUCTION:** Your reasoning in the 'explanation' field must demonstrate synthesis, not just summarization. To do this, you **MUST selectively cite only the most pivotal KEU-IDs** that form the core basis of your conclusion. **DO NOT list or repeat all available KEUs.** Your task is to build an argument using the strongest evidence. (e.g., 'Based on the critical findings in KEU-1 and KEU-3, I conclude...').\n\n"
+            f"History of Previous Rounds:\n{previous_syntheses_text}\n\n"
+            f"Based on ALL available information presented above, provide your {decision_type} decision. Your explanation should be grounded in the evidence and reasoning from the synthesis and reviews. "
+            f"Your response must be in JSON format, including 'explanation' and 'answer' fields."
+        }
+        user_content.append({
+            "type":"text",
+            "text":text_content
+        })
         user_message = {
-            "role": "user",
-            "content": f"Question: {question_with_options}\n\n"
-                       f"{current_synthesis_text}\n\n"
-                       f"Doctor Reviews on this synthesis:\n{reviews_text}\n\n"
-                       f"{keu_list_text}\n\n"
-                       f"**CRITICAL INSTRUCTION:** Your reasoning in the 'explanation' field must demonstrate synthesis, not just summarization. To do this, you **MUST selectively cite only the most pivotal KEU-IDs** that form the core basis of your conclusion. **DO NOT list or repeat all available KEUs.** Your task is to build an argument using the strongest evidence. (e.g., 'Based on the critical findings in KEU-1 and KEU-3, I conclude...').\n\n"
-                       f"History of Previous Rounds:\n{previous_syntheses_text}\n\n"
-                       f"Based on ALL available information presented above, provide your {decision_type} decision. Your explanation should be grounded in the evidence and reasoning from the synthesis and reviews. "
-                       f"Your response must be in JSON format, including 'explanation' and 'answer' fields."
+            "role":"user",
+            "content": user_content
         }
 
         response_text, system_msg, user_msg = self.call_llm(system_message, user_message)
@@ -1046,7 +1077,7 @@ class MDTConsultation:
             print("Meta agent synthesizing opinions")
             synthesis_log = self.meta_agent.synthesize_opinions(
                 question, doctor_opinion_parsed_outputs, self.doctor_specialties,
-                audit_trail=audit_trail, ccp_text=ccp_text_for_prompt, current_round=current_round, options=options
+                audit_trail=audit_trail, ccp_text=ccp_text_for_prompt, current_round=current_round, image_path=image_path,options=options
             )
             round_data["synthesis"] = synthesis_log # Store the entire log
             synthesis_parsed_output = synthesis_log["parsed_output"]
@@ -1193,7 +1224,7 @@ class MDTConsultation:
             # MODIFICATION START: Capture the full log from the agent.
             decision_log = self.meta_agent.make_final_decision(
                 question, doctor_review_parsed_outputs, self.doctor_specialties,
-                synthesis_parsed_output, current_round, self.max_rounds, audit_trail, options=options
+                synthesis_parsed_output, current_round, self.max_rounds, audit_trail, image_path = image_path, options=options
             )
             
             round_data["decision"] = decision_log # Store the decision log for this round
