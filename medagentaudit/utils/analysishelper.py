@@ -6,8 +6,8 @@ import time
 from tqdm import tqdm
 from openai import OpenAI # 确保导入
 # 假设您的LLM配置和预处理函数在一个可以导入的utils文件中
-from medagentboard.utils.llm_configs import LLM_MODELS_SETTINGS
-from medagentboard.utils.json_utils import preprocess_response_string
+from medagentaudit.utils.llm_configs import LLM_MODELS_SETTINGS
+from medagentaudit.utils.json_utils import preprocess_response_string
 from utils.config import get_config
 
 class AnalysisHelperLLM:

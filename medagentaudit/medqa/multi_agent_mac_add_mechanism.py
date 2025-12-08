@@ -1,9 +1,8 @@
 """
-medagentboard/medqa/multi_agent_mac.py
+medagentaudit/medqa/multi_agent_mac.py
 
 This version has been modified to include extensive logging for detailed analysis
-of the multi-agent collaboration process, as requested for the WWW2026 research proposal.
-The four quantitative observation mechanisms from the ColaCare framework have been integrated.
+of the multi-agent collaboration process.
 """
 
 import os
@@ -18,11 +17,13 @@ import sys
 
 # Ensure project root is in path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-from medagentboard.utils.llm_configs import LLM_MODELS_SETTINGS
-from medagentboard.utils.encode_image import encode_image
-from medagentboard.utils.json_utils import load_json, save_json, preprocess_response_string
-from medagentboard.utils.keu import KEU
-from medagentboard.utils.analysishelper import AnalysisHelperLLM
+from medagentaudit.utils.encode_image import encode_image
+from medagentaudit.utils.json_utils import load_json, save_json, preprocess_response_string
+from medagentaudit.utils.keu import KEU
+from medagentaudit.utils.analysishelper import AnalysisHelperLLM
+from medagentaudit.utils.config import get_config
+from medagentaudit.utils.dual_logger import DualLogger
+
 
 # --- Constants and Enums ---
 
@@ -41,7 +42,7 @@ DEFAULT_MAX_ROUNDS = 3   # Using 3 rounds for consistency with ColaCare example
 # --- Integrated AuditorAgent and other utilities from ColaCare ---
 class AuditorAgent:
     """Auditor agent for quantitative analysis, adapted from ColaCare."""
-    def __init__(self, agent_id: str = "auditor", model_key: str = "gemini-2.5-pro", client: OpenAI = None, model_name: str = None):
+    def __init__(self, agent_id: str = "auditor", model_key: str = "gemini-3-pro-preview", client: OpenAI = None, model_name: str = None, config_path: str = "config.toml"):
         self.agent_id = agent_id
         self.role = AgentRole.AUDITOR
         self.model_key = model_key
@@ -50,11 +51,13 @@ class AuditorAgent:
             self.llm_client = client
             self.model_name = model_name
         else:
-            if model_key not in LLM_MODELS_SETTINGS:
-                raise ValueError(f"Model key '{model_key}' not found in LLM_MODELS_SETTINGS")
-            model_settings = LLM_MODELS_SETTINGS[model_key]
-            self.llm_client = OpenAI(api_key=model_settings["api_key"], base_url=model_settings["base_url"])
-            self.model_name = model_settings["model_name"]
+            self.llm = get_config(config_path, active_llm=model_key).llm
+            self.llm_client = OpenAI(
+                api_key=self.llm.api_key, 
+                base_url=self.llm.base_url,
+                timeout=self.llm.timeout
+                )
+            self.model_name = self.llm.model_name
         print(f"Initialized Auditor Agent: ID={self.agent_id}, Model={self.model_key}")
 
     def call_llm(self, system_message: Dict[str, str], user_message: Dict[str, Any], max_retries: int = 3) -> Tuple[str, Dict, Dict]:
@@ -70,16 +73,16 @@ class AuditorAgent:
                     response_format={"type": "json_object"}
                 )
                 response = completion.choices[0].message.content
+                if not response:
+                    raise ValueError("Received empty response from LLM.")
                 print(f"Agent {self.agent_id} received response.")
                 return response, system_message, user_message
             except Exception as e:
                 retries += 1
                 print(f"Auditor LLM call error (attempt {retries}/{max_retries}): {e}")
                 if retries >= max_retries:
-                    error_msg = f"LLM API call failed after {max_retries} attempts: {e}"
-                    return error_msg, system_message, user_message
+                    raise RuntimeError(f"LLM API call failed after {max_retries} attempts: {e}")
                 time.sleep(1)
-        return "{}", system_message, user_message # Fallback empty JSON
 
     def audit_domain_agent_contribution(self, question: str, agent_id: str, explanation: str) -> Dict[str, Any]:
         """Assess role-specific knowledge activation."""
@@ -112,7 +115,7 @@ Provide a concise `auditor_reasoning` explaining your choice.
         except (json.JSONDecodeError, TypeError):
             return {}
 
-    def audit_risk_and_quality(self, agent_id: str, explanation: str) -> Dict[str, Any]:
+    def audit_risk_and_quality(self, agent_id: str, explanation: str, image_path:Optional[str]=None) -> Dict[str, Any]:
         """Assess the diagnostic urgency level."""
         print(f"Auditor: Auditing Risk and Quality for {agent_id}'s argument...")
         system_message = {
@@ -131,9 +134,23 @@ You MUST provide a JSON object with one classification:
 Provide a concise `auditor_reasoning` for your choice.
 """
         }
+        user_content = []
+        if image_path:
+            base64_image = encode_image(image_path)
+            image_url_content = {
+                "type": "image_url",
+                "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"},
+            }
+            user_content.append(image_url_content)
+        
+        text_content = (
+            f"Argument from Agent {agent_id}:\n\"{explanation}\"\n\nPlease provide your risk audit in the specified JSON format."
+        )
+
+        user_content.append({"type": "text", "text": text_content})
         user_message = {
             "role": "user",
-            "content": f"Argument from Agent {agent_id}:\n\"{explanation}\"\n\nPlease provide your risk audit in the specified JSON format."
+            "content": user_content
         }
         response_text, _, _ = self.call_llm(system_message, user_message)
         try:
@@ -179,7 +196,7 @@ Your final output MUST be a JSON list of these objects.
         except (json.JSONDecodeError, TypeError):
             return []
 
-    def audit_single_argument_quality(self, question: str, explanation: str) -> Dict[str, Any]:
+    def audit_single_argument_quality(self, question: str, explanation: str, domain_agent_quality:Optional[List[Dict[str, Any]]] = None, image_path: Optional[str] = None) -> Dict[str, Any]:
         """Assess the overall quality of a single argument (e.g., the Supervisor's final decision)."""
         print("Auditor: Auditing single argument's overall quality...")
         system_message = {
@@ -197,7 +214,32 @@ You MUST provide a JSON object with:
 2.  `auditor_reasoning`: A concise justification for your rating.
 """
         }
-        user_message = {"role": "user", "content": f"Medical Question: \"{question}\"\n\nArgument to Evaluate:\n\"{explanation}\"\n\nPlease provide the overall quality audit as a JSON object."}
+        user_content = []
+        if image_path:
+            base64_image = encode_image(image_path)
+            user_content.append({
+                "type":"image_url",
+                "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}
+            })
+        if domain_agent_quality:
+            individual_quality_text = ""
+            for audit in domain_agent_quality:
+                individual_quality_text += f"- Agent: {audit.get('agent_id', 'Unknown')}\n"
+                individual_quality_text += f"  Quality: {audit.get('overall_quality_category', 'N/A')}\n"
+                individual_quality_text += f"  Auditor Reasoning: {audit.get('auditor_reasoning', 'No reasoning provided')}" + "\n"
+            text_content = (
+                            f"Medical Question: \"{question}\"\n\nArgument to Evaluate:\n\"{explanation}\"\n\n"
+                            f"We have evaluated the quality of individual doctors' arguments as follows:\n"
+                            f"{individual_quality_text}\n"
+                            f"Please provide the overall quality audit as a JSON object."
+                            )
+        else:
+            text_content = (
+                            f"Medical Question: \"{question}\"\n\nArgument to Evaluate:\n\"{explanation}\"\n\n"
+                            f"Please provide the overall quality audit as a JSON object."
+                            )
+        user_content.append({"type":"text", "text": text_content})
+        user_message = {"role": "user", "content": user_content}
         response_text, _, _ = self.call_llm(system_message, user_message)
         try:
             return json.loads(preprocess_response_string(response_text))
@@ -242,7 +284,7 @@ If there are no conflicts, return a JSON object with an empty list: {"conflicts"
             print("Auditor: Error parsing CCP response from LLM.")
             return []
 
-    def identify_key_evidential_units(self, question: str, doctor_opinions: List[Dict], all_keus: List[Dict]) -> Dict[str, bool]:
+    def identify_key_evidential_units(self, question: str, doctor_opinions: List[Dict], all_keus: List[Dict], image_path: Optional[str] = None) -> Dict[str, bool]:
         """Determine which of all proposed KEUs are truly KEY to solving the case."""
         print("Auditor: Identifying KEY evidential units with full context...")
         system_message = {
@@ -262,6 +304,13 @@ Your output MUST be a single JSON object where keys are the `keu_id`s from the i
 Example: {"KEU-0": true, "KEU-1": false, "KEU-2": true}
 """
         }
+        user_content = []
+        if image_path:
+            base64_image = encode_image(image_path)
+            user_content.append({
+                "type":"image_url",
+                "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}
+            })
         opinions_context = "Here are the initial analyses from the specialists:\n\n"
         for i, opinion in enumerate(doctor_opinions):
             opinions_context += f"--- Analysis from doctor_{i+1} ---\n"
@@ -270,13 +319,14 @@ Example: {"KEU-0": true, "KEU-1": false, "KEU-2": true}
 
         keu_list_text = "\n".join([f"- {keu['keu_id']}: \"{keu['content']}\"" for keu in all_keus])
 
-        user_message = {
-            "role": "user",
-            "content": f"**Medical Question:**\n \"{question}\"\n\n"
-                       f"**Doctors' Analyses:**\n{opinions_context}"
-                       f"**Consolidated List of All Evidential Units to Evaluate:**\n{keu_list_text}\n\n"
-                       f"Based on the doctors' analyses, please provide your judgment on which of these are KEY units in the specified JSON format."
-        }
+        text_content = (
+            f"**Medical Question:**\n \"{question}\"\n\n"
+            f"**Doctors' Analyses:**\n{opinions_context}"
+            f"**Consolidated List of All Evidential Units to Evaluate:**\n{keu_list_text}\n\n"
+            f"Based on the doctors' analyses, please provide your judgment on which of these are KEY units in the specified JSON format."
+        )
+        user_content.append({"type":"text", "text": text_content})
+        user_message = {"role": "user", "content": user_content}
         response_text, _, _ = self.call_llm(system_message, user_message)
         try:
             key_status_map = json.loads(preprocess_response_string(response_text))
@@ -292,19 +342,20 @@ Example: {"KEU-0": true, "KEU-1": false, "KEU-2": true}
 class BaseAgent:
     """Base class for Doctor and Supervisor agents."""
 
-    def __init__(self, agent_id: str, role: AgentRole, model_key: str):
+    def __init__(self, agent_id: str, role: AgentRole, model_key: str, config_path: str):
         self.agent_id = agent_id
         self.role = role
         self.model_key = model_key
-
-        if model_key not in LLM_MODELS_SETTINGS:
-            raise ValueError(f"Model key '{model_key}' not found in LLM_MODELS_SETTINGS")
-        model_settings = LLM_MODELS_SETTINGS[model_key]
-        self.llm_client = OpenAI(api_key=model_settings["api_key"], base_url=model_settings["base_url"])
-        self.model_name = model_settings["model_name"]
+        self.llm = get_config(config_path, active_llm=model_key).llm
+        self.llm_client = OpenAI(
+            api_key=self.llm.api_key, 
+            base_url=self.llm.base_url,
+            timeout=self.llm.timeout
+            )
+        self.model_name = self.llm.model_name
         print(f"Initialized Agent: ID={self.agent_id}, Role={self.role.value}, Model={self.model_key} ({self.model_name})")
 
-    def call_llm(self, messages: List[Dict[str, Any]], max_retries: int = 3) -> Tuple[str, List[Dict[str, Any]]]:
+    def call_llm(self, messages: List[Dict[str, Any]], max_retries: int = 3, image_path: Optional[str] = None) -> Tuple[str, List[Dict[str, Any]]]:
         """Call LLM, handle retries, and return response + full prompt for logging."""
         retries = 0
         while retries < max_retries:
@@ -316,16 +367,16 @@ class BaseAgent:
                     response_format={"type": "json_object"}
                 )
                 response = completion.choices[0].message.content
+                if not response:
+                    raise ValueError("Received empty response from LLM.")
                 print(f"Agent {self.agent_id} received response successfully.")
                 return response, messages
             except Exception as e:
                 retries += 1
                 print(f"LLM API call error for agent {self.agent_id} (attempt {retries}/{max_retries}): {e}")
                 if retries >= max_retries:
-                    error_msg = f"LLM API call failed after {max_retries} attempts: {e}"
-                    return json.dumps({"error": error_msg}), messages
-                time.sleep(2)
-        return json.dumps({"error": "LLM call failed unexpectedly"}), messages
+                    raise RuntimeError(f"LLM API call failed after {max_retries} attempts: {e}")
+                time.sleep(1)
 
 class MACFramework:
     """Orchestrates the Multi-Agent Conversation (MAC) workflow with integrated quantitative observation."""
@@ -338,17 +389,18 @@ class MACFramework:
                  auditor_model_key: str = "gemini-2.5-pro",
                  conflict_model_key: str = "deepseek-reasoner",
                  num_doctors: int = DEFAULT_NUM_DOCTORS,
-                 max_rounds: int = DEFAULT_MAX_ROUNDS):
+                 max_rounds: int = DEFAULT_MAX_ROUNDS, 
+                 config_path: str = "config.toml"):
         self.log_dir = log_dir
         self.dataset_name = dataset_name
         self.num_doctors = num_doctors
         self.max_rounds = max_rounds
         os.makedirs(self.log_dir, exist_ok=True)
 
-        self.doctor_agents = [BaseAgent(f"doctor_{i+1}", AgentRole.DOCTOR, doctor_model_key) for i in range(num_doctors)]
-        self.supervisor_agent = BaseAgent("supervisor", AgentRole.SUPERVISOR, supervisor_model_key)
-        self.auditor_agent = AuditorAgent("auditor", auditor_model_key)
-        self.analysis_llm = AnalysisHelperLLM(model_key=conflict_model_key)
+        self.doctor_agents = [BaseAgent(agent_id=f"doctor_{i+1}", role=AgentRole.DOCTOR, model_key=doctor_model_key, config_path=config_path) for i in range(num_doctors)]
+        self.supervisor_agent = BaseAgent(agent_id="supervisor", role=AgentRole.SUPERVISOR, model_key=supervisor_model_key, config_path=config_path)
+        self.auditor_agent = AuditorAgent(agent_id="auditor", model_key=auditor_model_key, config_path=config_path)
+        self.analysis_llm = AnalysisHelperLLM(model_key=conflict_model_key, config_path=config_path)
 
         print("MACFramework Initialized with Quantitative Observation Mechanisms.")
 
@@ -450,7 +502,7 @@ class MACFramework:
                         # Mechanism 3: Audit initial contribution
                         explanation = parsed_output.get("explanation", "")
                         contribution_audit = self.auditor_agent.audit_domain_agent_contribution(data_item["question"], doctor.agent_id, explanation)
-                        risk_audit = self.auditor_agent.audit_risk_and_quality(doctor.agent_id, explanation)
+                        risk_audit = self.auditor_agent.audit_risk_and_quality(agent_id=doctor.agent_id, explanation=explanation, image_path =data_item.get("image_path"))
                         audit_trail["collaboration_audits"][f"round_1_analysis_{doctor.agent_id}"] = {**contribution_audit, **risk_audit}
                         
                         # Mechanism 2: Log initial viewpoint
@@ -512,7 +564,7 @@ class MACFramework:
                         # Mechanisms 1, 2, 3 for review round
                         reason = parsed_output.get("reason", "")
                         contribution_audit = self.auditor_agent.audit_domain_agent_contribution(data_item["question"], doctor.agent_id, reason)
-                        risk_audit = self.auditor_agent.audit_risk_and_quality(doctor.agent_id, reason)
+                        risk_audit = self.auditor_agent.audit_risk_and_quality(agent_id=doctor.agent_id, explanation=reason, image_path=data_item.get("image_path"))
                         audit_trail["collaboration_audits"][f"round_{round_num}_review_{doctor.agent_id}"] = {**contribution_audit, **risk_audit}
 
                         audit_trail["viewpoints"][doctor.agent_id].append({
@@ -533,7 +585,7 @@ class MACFramework:
                     # Mechanism 1: Identify KEY KEUs
                     all_keus_for_audit = [{"keu_id": k, "content": v.content} for k, v in audit_trail["keus"].items()]
                     if all_keus_for_audit:
-                        key_status_map = self.auditor_agent.identify_key_evidential_units(data_item["question"], current_doctor_responses_parsed, all_keus_for_audit)
+                        key_status_map = self.auditor_agent.identify_key_evidential_units(data_item["question"], current_doctor_responses_parsed, all_keus_for_audit, image_path=data_item.get("image_path"))
                         for keu_id, is_key in key_status_map.items():
                             if keu_id in audit_trail["keus"]:
                                 audit_trail["keus"][keu_id].is_key = is_key
@@ -593,9 +645,18 @@ class MACFramework:
                     f"**CRITICAL INSTRUCTION:** Your reasoning in the 'explanation' field must demonstrate synthesis, not just summarization. To do this, you **MUST selectively cite only the most pivotal KEU-IDs** that form the core basis of your conclusion. **DO NOT list or repeat all available KEUs.** Your task is to build an argument using the strongest evidence. (e.g., 'Based on the critical findings in KEU-1 and KEU-3, I conclude...').\n\n"
                     "Provide your supervisory assessment in the specified JSON format. Your summary must attempt to resolve the CCPs."
                 )
+                user_content = []
+                if data_item.get("image_path"):
+                    base64_image = encode_image(data_item["image_path"])
+                    image_url_content = {
+                        "type": "image_url",
+                        "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"},
+                    }
+                    user_content.append(image_url_content)
+                user_content.append({"type": "text", "text": user_prompt})
                 messages_for_llm = [
                     {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt}
+                    {"role": "user", "content": user_content}
                 ]
                 
                 # Mechanism 3: Pre-decision quality audit
@@ -604,7 +665,7 @@ class MACFramework:
                     quality_audit = self.auditor_agent.audit_overall_quality_for_decision(data_item["question"], pre_decision_args)
                     audit_trail["collaboration_audits"][f"round_{round_num}_pre_decision_quality"] = quality_audit
 
-                response_str, llm_input = self.supervisor_agent.call_llm(messages_for_llm)
+                response_str, llm_input = self.supervisor_agent.call_llm(messages=messages_for_llm, image_path=data_item.get("image_path"))
                 parsed_output = json.loads(preprocess_response_string(response_str))
                 log_entry = {
                     "role": "Supervisor",
@@ -619,8 +680,8 @@ class MACFramework:
                 summary_text = parsed_output.get("summary", "")
                 final_answer_text = parsed_output.get("final_answer", {}).get("explanation", "") if parsed_output.get("final_answer") else ""
                 supervisor_explanation = summary_text + "\n" + final_answer_text
-                risk_audit = self.auditor_agent.audit_risk_and_quality("supervisor", supervisor_explanation)
-                quality_audit = self.auditor_agent.audit_single_argument_quality(data_item["question"], supervisor_explanation)
+                risk_audit = self.auditor_agent.audit_risk_and_quality(agent_id="supervisor", explanation=supervisor_explanation, image_path=data_item.get("image_path"))
+                quality_audit = self.auditor_agent.audit_single_argument_quality(question=data_item["question"], explanation=supervisor_explanation, domain_agent_quality=quality_audit, image_path=data_item.get("image_path"))
                 audit_trail["collaboration_audits"][f"round_{round_num}_supervisor"] = {**risk_audit, **quality_audit}
                 
                 # Mechanism 1: Track KEUs in supervisor's response
@@ -699,17 +760,23 @@ def main():
     parser = argparse.ArgumentParser(description="Run MAC Framework with Quantitative Observation on medical datasets")
     parser.add_argument("--dataset", type=str, required=True, help="Specify dataset name")
     parser.add_argument("--qa_type", type=str, choices=["mc", "ff"], required=True, help="QA type: multiple-choice (mc) or free-form (ff)")
-    parser.add_argument("--start", type=int, required=True, help="Starting index of samples to process")
-    parser.add_argument("--end", type=int, required=True, help="Ending index of samples to process")
     parser.add_argument("--doctor_model", type=str, required=True, help="Model key for the Doctor agents")
     parser.add_argument("--supervisor_model", type=str, required=True, help="Model key for the Supervisor agent")
     parser.add_argument("--auditor_model", type=str, required=True, help="Model key for the Auditor agent")
-    parser.add_argument("--conflict_model", type=str, required=True, help="Model for conflict analysis")
     parser.add_argument("--num_doctors", type=int, default=DEFAULT_NUM_DOCTORS, help="Number of doctor agents")
     parser.add_argument("--max_rounds", type=int, default=DEFAULT_MAX_ROUNDS, help="Maximum discussion rounds")
+    parser.add_argument("--config_path", type=str, required=True,help="Path to the config.toml file,default = utils/config.toml")
+    parser.add_argument("--num_samples", type=int, required=True,help="Number of samples to process from the dataset")
     args = parser.parse_args()
 
-    method_name = f"MAC_full_log_{time.strftime('%Y%m%d_%H%M%S')}"
+    timestamp = time.strftime("%Y%m%d_%H%M%S")
+    terminal_log_dir = os.path.join("logs", "observation", "terminal_log", "MAC", args.dataset)
+    os.makedirs(terminal_log_dir, exist_ok=True)
+    terminal_log_file = os.path.join(terminal_log_dir, f"{args.dataset}_{timestamp}_full_terminal.log")
+    print(f"!!! Terminal output is being captured to: {terminal_log_file} !!!")
+    sys.stdout = DualLogger(terminal_log_file, sys.stdout)
+    sys.stderr = DualLogger(terminal_log_file, sys.stderr) # 捕获报错和tqdm进度条
+    
     data_path = f"./my_datasets/processed/medqa/{args.dataset}/medqa_{args.qa_type}_test.json"
     logs_dir = os.path.join("./logs", "observation", "MAC", args.dataset)
     os.makedirs(logs_dir, exist_ok=True)
@@ -730,10 +797,11 @@ def main():
         auditor_model_key=args.auditor_model,
         conflict_model_key=args.conflict_model,
         num_doctors=args.num_doctors,
-        max_rounds=args.max_rounds
+        max_rounds=args.max_rounds,
+        config_path = args.config_path
     )
 
-    framework.run_dataset(data[args.start:args.end])
+    framework.run_dataset(data[:args.num_samples])
 
 if __name__ == "__main__":
     main()

@@ -6,9 +6,9 @@ multi-agent discussion. Each agent generates an answer with step-by-step
 reasoning and an estimated confidence level. Then, the agents engage in
 multi-round discussions and a confidence-weighted vote produces the final team answer.
 This version has been modified to include extensive logging for detailed analysis
-of the multi-agent collaboration process, as requested for the WWW2026 research proposal.
+of the multi-agent collaboration process.
 """
-
+from openai import OpenAI
 import os
 import json
 import time
@@ -23,12 +23,13 @@ import traceback
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 # Import ColaCare utilities and analysis tools
-from medagentboard.utils.llm_configs import LLM_MODELS_SETTINGS
-from medagentboard.utils.json_utils import load_json, save_json, preprocess_response_string
-from medagentboard.utils.encode_image import encode_image
-from medagentboard.utils.keu import KEU
-from medagentboard.utils.analysishelper import AnalysisHelperLLM
-from multi_agent_colacare_full_log_add_mechanism import AuditorAgent # We can reuse the AuditorAgent directly
+from medagentaudit.utils.json_utils import load_json, save_json, preprocess_response_string
+from medagentaudit.utils.encode_image import encode_image
+from medagentaudit.utils.keu import KEU
+from medagentaudit.utils.analysishelper import AnalysisHelperLLM
+from medagentaudit.utils.config import get_config
+from medagentaudit.utils.dual_logger import DualLogger
+from medagentaudit.medqa.multi_agent_colacare_full_log_add_mechanism import AuditorAgent # We can reuse the AuditorAgent directly
 
 
 class DiscussionPhase(Enum):
@@ -43,7 +44,7 @@ class ReconcileAgent:
     An agent participating in the Reconcile framework.
     This version is enhanced for quantitative observation.
     """
-    def __init__(self, agent_id: str, model_key: str):
+    def __init__(self, agent_id: str, model_key: str, config_path: str):
         """
         Initialize a Reconcile agent.
         """
@@ -52,20 +53,14 @@ class ReconcileAgent:
         self.discussion_history = []
         self.memory = []
 
-        if model_key not in LLM_MODELS_SETTINGS:
-            raise ValueError(f"Model key '{model_key}' not configured in LLM_MODELS_SETTINGS")
-        self.model_config = LLM_MODELS_SETTINGS[model_key]
-
-        try:
-            from openai import OpenAI
-        except ImportError as e:
-            raise ImportError("OpenAI client is not installed. Please install it.") from e
+        self.llm = get_config(config_path, active_llm=model_key).llm
 
         self.client = OpenAI(
-            api_key=self.model_config["api_key"],
-            base_url=self.model_config["base_url"],
+            api_key=self.llm.api_key,
+            base_url=self.llm.base_url,
+            timeout=self.llm.timeout
         )
-        self.model_name = self.model_config["model_name"]
+        self.model_name = self.llm.model_name
         print(f"Initialized agent {self.agent_id} with model {self.model_name}")
 
     def call_llm(self, messages: List[Dict[str, Any]], max_retries: int = 3) -> Tuple[str, Dict[str, Any]]:
@@ -74,8 +69,6 @@ class ReconcileAgent:
         Returns the raw response text and a detailed log of the call.
         """
         attempt = 0
-        wait_time = 1
-
         call_log = {
             "llm_prompt": messages,
             "llm_raw_response": "",
@@ -91,28 +84,19 @@ class ReconcileAgent:
                     response_format={"type": "json_object"}
                 )
                 response_text = completion.choices[0].message.content
+                if not response_text.strip():
+                    raise ValueError("Empty response received from LLM")
                 print(f"Agent {self.agent_id} received response: {response_text[:100]}...")
 
                 call_log["llm_raw_response"] = response_text
                 return response_text, call_log
             except Exception as e:
                 attempt += 1
-                error_details = f"Agent {self.agent_id} LLM call attempt {attempt}/{max_retries} failed: {e}"
-                print(error_details)
-                call_log["error_message"] = error_details
-                if attempt < max_retries:
-                    print(f"Waiting {wait_time} seconds before retry...")
-                    time.sleep(wait_time)
-
-        print(f"Agent {self.agent_id} all LLM call attempts failed, returning default response")
-        failed_response_text = json.dumps({
-            "reasoning": "LLM call failed after multiple attempts",
-            "answer": "",
-            "confidence": 0.0,
-            "keus": []
-        })
-        call_log["llm_raw_response"] = failed_response_text
-        return failed_response_text, call_log
+                print(f"Agent {self.agent_id} LLM call attempt {attempt}/{max_retries} failed: {e}")
+                call_log["error_message"] = str(e)
+                if attempt >= max_retries:
+                    raise RuntimeError(f"CRITICAL: Agent {self.agent_id} failed after {max_retries} attempts. Reason: {str(e)}")
+                time.sleep(1)
 
     def generate_initial_response(self,
                                 question: str,
@@ -300,15 +284,14 @@ class ReconcileCoordinator:
     """
     The coordinator for the Reconcile framework, enhanced with auditing capabilities.
     """
-    def __init__(self, agent_configs: List[Dict[str, str]], max_rounds: int = 3, auditor_model_key: str = "gemini-2.5-pro", conflict_analysis_model_key: str = "gemini-2.5-pro"):
+    def __init__(self, agent_configs: List[Dict[str, str]], max_rounds: int = 3, auditor_model_key: str = "gemini-2.5-pro", conflict_analysis_model_key: str = "gemini-2.5-pro", config_path: str = "config.toml"):
         """
         Initialize the Reconcile coordinator with auditing agents.
         """
         self.agents = [ReconcileAgent(cfg["agent_id"], cfg["model_key"]) for cfg in agent_configs]
         self.max_rounds = max_rounds
-        # MODIFICATION: Instantiate Auditor and Analysis agents
-        self.auditor_agent = AuditorAgent("auditor", auditor_model_key)
-        self.analysis_llm = AnalysisHelperLLM(model_key=conflict_analysis_model_key)
+        self.auditor_agent = AuditorAgent(agent_id="auditor", model_key=auditor_model_key, config_path=config_path)
+        self.analysis_llm = AnalysisHelperLLM(model_key=conflict_analysis_model_key,config_path=config_path)
         print(f"Initialized ReconcileCoordinator with {len(self.agents)} agents, max_rounds={max_rounds}")
 
     def _group_answers(self, answers: List[Dict[str, Any]]) -> str:
@@ -405,19 +388,19 @@ class ReconcileCoordinator:
         keu_counter = 0
         ccp_counter = 0
         all_unresolved_ccps = []
-
+        doctor_opinions = []
         # === Phase 1: Initial responses ===
         print("Phase 1: Generating initial responses")
         current_answers = []
         initial_contributions_for_ccp = []
         for agent in self.agents:
-            resp, step_log = agent.generate_initial_response(question, options, image_path)
+            resp, step_log = agent.generate_initial_response(question, options, image_path) # resp is a dict including 4 keys
             current_answers.append(resp)
-            
+            doctor_opinions.append({"answer": resp.get("answer", ""), "explanation": resp.get("reasoning", "")})
             # --- Mechanism 1 & 3: Audit initial response ---
             explanation = resp.get("reasoning", "")
             contribution_audit = self.auditor_agent.audit_domain_agent_contribution(question, agent.agent_id, "Specialist", explanation) # Reconcile has no specialties
-            risk_audit = self.auditor_agent.audit_risk_and_quality(agent.agent_id, explanation)
+            risk_audit = self.auditor_agent.audit_risk_and_quality(agent.agent_id, explanation, image_path=image_path)
             audit_trail["collaboration_audits"][f"round_0_initial_{agent.agent_id}"] = {**contribution_audit, **risk_audit}
 
             # --- Mechanism 1: Collect KEUs ---
@@ -451,7 +434,7 @@ class ReconcileCoordinator:
         # --- Mechanism 1 & 4 after all initial responses ---
         all_keus_for_audit = [{"keu_id": k, "content": v.content} for k, v in audit_trail["keus"].items()]
         if all_keus_for_audit:
-            key_status_map = self.auditor_agent.identify_key_evidential_units(question, [], self.agents, all_keus_for_audit)
+            key_status_map = self.auditor_agent.identify_key_evidential_units(question, doctor_opinions, self.agents, all_keus_for_audit,image_path=image_path)
             for keu_id, is_key in key_status_map.items():
                 if keu_id in audit_trail["keus"]: audit_trail["keus"][keu_id].is_key = is_key
 
@@ -486,7 +469,7 @@ class ReconcileCoordinator:
                 
                 # --- Mechanism 1, 2, 3 Audits ---
                 contribution_audit = self.auditor_agent.audit_domain_agent_contribution(question, agent.agent_id, "Specialist", reasoning)
-                risk_audit = self.auditor_agent.audit_risk_and_quality(agent.agent_id, reasoning)
+                risk_audit = self.auditor_agent.audit_risk_and_quality(agent.agent_id, reasoning, image_path=image_path)
                 audit_trail["collaboration_audits"][f"round_{round_num}_discussion_{agent.agent_id}"] = {**contribution_audit, **risk_audit}
                 
                 viewpoint_entry = {
@@ -591,14 +574,15 @@ def process_item(item: Dict[str, Any],
                agent_configs: List[Dict[str, str]],
                max_rounds: int = 3,
                auditor_model_key: str = "gemini-2.5-pro",
-               conflict_analysis_model_key: str = "gemini-2.5-pro") -> Dict[str, Any]:
+               conflict_analysis_model_key: str = "gemini-2.5-pro",
+               config_path: str = "config.toml") -> Dict[str, Any]:
     """
     Process a single QA item with the Reconcile framework.
     """
     qid = item.get("qid", "unknown")
     print(f"Processing item {qid}")
 
-    coordinator = ReconcileCoordinator(agent_configs, max_rounds, auditor_model_key, conflict_analysis_model_key)
+    coordinator = ReconcileCoordinator(agent_configs, max_rounds, auditor_model_key, conflict_analysis_model_key, config_path = config_path)
     discussion_result = coordinator.run_discussion(
         qid=qid,
         question=item.get("question", ""),
@@ -627,15 +611,21 @@ def main():
     parser.add_argument("--dataset", type=str, required=True, help="Dataset name")
     parser.add_argument("--qa_type", type=str, choices=["mc", "ff"], default="mc", help="QA type: multiple-choice (mc) or free-form (ff)")
     parser.add_argument("--agents", nargs='+', required=True, help="List of agent model keys")
-    parser.add_argument("--start", type=int, required=True, help="Starting index for samples to run")
-    parser.add_argument("--end", type=int, required=True, help="Ending index for samples to run")
     parser.add_argument("--max_rounds", type=int, default=3, help="Maximum number of discussion rounds")
-    # MODIFICATION: Add arguments for auditor and conflict models
-    parser.add_argument("--auditor_model", type=str, default="gemini-2.5-pro", help="Model for the AuditorAgent.")
-    parser.add_argument("--conflict_model", type=str, default="gemini-2.5-pro", help="Model for conflict analysis (AnalysisHelperLLM).")
+    parser.add_argument("--auditor_model", type=str, required=True, help="Model for the AuditorAgent and conflict agent.")
+    parser.add_argument("--num_samples", type=int, required=True, help="Number of samples to process.")
+    parser.add_argument("--config_path", type=str, required=True, help="Path to the config.toml file,default = config.toml")
+
     args = parser.parse_args()
 
-    method = f"ReConcile_full_log_{time.strftime('%Y%m%d_%H%M%S')}"
+    timestamp = time.strftime("%Y%m%d_%H%M%S")
+    terminal_log_dir = os.path.join("logs", "observation", "terminal_log", "ReConcile", args.dataset)
+    os.makedirs(terminal_log_dir, exist_ok=True)
+    terminal_log_file = os.path.join(terminal_log_dir, f"{args.dataset}_{timestamp}_full_terminal.log")
+    print(f"!!! Terminal output is being captured to: {terminal_log_file} !!!")
+    sys.stdout = DualLogger(terminal_log_file, sys.stdout)
+    sys.stderr = DualLogger(terminal_log_file, sys.stderr) # 捕获报错和tqdm进度条
+
     logs_dir = os.path.join("logs", "observation", "ReConcile", args.dataset)
     os.makedirs(logs_dir, exist_ok=True)
     print(f"Logs will be saved to: {logs_dir}")
@@ -647,7 +637,7 @@ def main():
     agent_configs = [{"agent_id": f"agent_{idx}", "model_key": model_key} for idx, model_key in enumerate(args.agents, 1)]
     print(f"Configured {len(agent_configs)} agents: {[cfg['model_key'] for cfg in agent_configs]}")
 
-    for item in tqdm(data[args.start:args.end], desc=f"Processing {args.dataset} ({args.qa_type})"):
+    for item in tqdm(data[:args.num_samples], desc=f"Processing {args.dataset} ({args.qa_type})"):
         qid = item.get("qid")
         result_path = os.path.join(logs_dir, f"{qid}-result.json")
 
@@ -661,7 +651,8 @@ def main():
                 agent_configs,
                 args.max_rounds,
                 auditor_model_key=args.auditor_model,
-                conflict_analysis_model_key=args.conflict_model
+                conflict_analysis_model_key=args.auditor_model, 
+                config_path=args.config_path
             )
             save_json(result, result_path)
         except Exception as e:

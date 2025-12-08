@@ -18,8 +18,8 @@ import sys
 
 # Ensure project root is in path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-from utils.config import get_config
-from utils.dual_logger import DualLogger
+from medagentaudit.utils.config import get_config
+from medagentaudit.utils.dual_logger import DualLogger
 from medagentaudit.utils.encode_image import encode_image
 from medagentaudit.utils.json_utils import load_json, save_json, preprocess_response_string
 from medagentaudit.utils.keu import KEU
@@ -106,7 +106,7 @@ class BaseAgent:
 
                 response = "".join(response_chunks)
                 # check if the response is empty
-                if not response:
+                if not response.strip():
                     raise ValueError("Empty response received from LLM")
                 print(f"Agent {self.agent_id} received response: {response[:50]}...")
                 return response, system_message, user_message
@@ -130,7 +130,7 @@ class DoctorAgent(BaseAgent):
         """
         Initialize a doctor agent.
         """
-        super().__init__(agent_id, AgentType.DOCTOR, config_path, model_key)
+        super().__init__(agent_id=agent_id, agent_type=AgentType.DOCTOR, config_path=config_path, model_key=model_key)
         self.specialty = specialty
         print(f"Initializing {specialty.value} doctor agent, ID: {agent_id}, Model: {model_key}")
 
@@ -170,6 +170,7 @@ class DoctorAgent(BaseAgent):
         user_content = []
 
         if image_path:
+
             base64_image = encode_image(image_path)
             image_url_content = {
                 "type": "image_url",
@@ -370,7 +371,7 @@ class MetaAgent(BaseAgent):
         """
         Initialize a meta agent.
         """
-        super().__init__(agent_id, AgentType.META, config_path, model_key)
+        super().__init__(agent_id=agent_id, agent_type=AgentType.META, config_path=config_path, model_key = model_key)
         print(f"Initializing meta agent, ID: {agent_id}, Model: {model_key}")
 
     # MODIFICATION START: Changed return type to a dictionary for comprehensive logging.
@@ -616,7 +617,7 @@ class MetaAgent(BaseAgent):
 
 class AuditorAgent(BaseAgent):
     def __init__(self, agent_id: str = "auditor", config_path: str = None, model_key: str = "gemini-2.5-pro"):
-        super().__init__(agent_id, AgentType.AUDITOR, config_path, model_key) # Can reuse AUDITOR type
+        super().__init__(agent_id=agent_id, agent_type=AgentType.AUDITOR, config_path=config_path, model_key=model_key) # Can reuse AUDITOR type
     def audit_domain_agent_contribution(self, question: str, agent_id: str, specialty: MedicalSpecialty, explanation: str) -> Dict[str, Any]:
         """
         在领域智能体发言后，评估其角色知识一致性和专家相关性。
@@ -772,11 +773,6 @@ You MUST provide a JSON object with:
 2.  **`auditor_reasoning`**: A concise justification for your rating.
 """
         }
-        individual_quality_text = ""
-        for audit in overall_quality_audit:
-            individual_quality_text += f"- Agent: {audit.get('agent_id', 'Unknown')}\n"
-            individual_quality_text += f"  Quality: {audit.get('overall_quality_category', 'N/A')}\n"
-            individual_quality_text += f"  Auditor Reasoning: {audit.get('auditor_reasoning', 'No reasoning provided')}" + "\n"
         user_content = []
         if image_path:
             base64_image = encode_image(image_path)
@@ -784,13 +780,26 @@ You MUST provide a JSON object with:
                 "type":"image_url",
                 "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}
             })
-        text_content = {
-            f"Medical Question: \"{question}\"\n\n"
-            f"Argument to Evaluate:\n\"{explanation}\"\n\n"
-            f"We have evaluated the quality of individual doctors' arguments as follows:\n"
-            f"{individual_quality_text}\n"
-            f"Please provide the overall quality audit as a JSON object."
-        }
+        
+        if overall_quality_audit:
+            individual_quality_text = ""
+            for audit in overall_quality_audit:
+                individual_quality_text += f"- Agent: {audit.get('agent_id', 'Unknown')}\n"
+                individual_quality_text += f"  Quality: {audit.get('overall_quality_category', 'N/A')}\n"
+                individual_quality_text += f"  Auditor Reasoning: {audit.get('auditor_reasoning', 'No reasoning provided')}" + "\n"
+            text_content = {
+                f"Medical Question: \"{question}\"\n\n"
+                f"Argument to Evaluate:\n\"{explanation}\"\n\n"
+                f"We have evaluated the quality of individual doctors' arguments as follows:\n"
+                f"{individual_quality_text}\n"
+                f"Please provide the overall quality audit as a JSON object."
+            }
+        else:
+            text_content = {
+                f"Medical Question: \"{question}\"\n\n"
+                f"Argument to Evaluate:\n\"{explanation}\"\n\n"
+                f"Please provide the overall quality audit as a JSON object."
+            }
         user_content.append({
             "type":"text",
             "text": text_content
@@ -942,7 +951,7 @@ class MDTConsultation:
                  meta_model_key: str = "qwen-max-latest",
                  auditor_model_key: str = "gemini-2.5-pro",
                  conflict_analysis_model_key: str = "gemini-2.5-pro",
-                 config_path: str = "utils/config.toml"):
+                 config_path: str = "config.toml"):
         """
         Initialize MDT consultation.
         """
@@ -959,11 +968,11 @@ class MDTConsultation:
             agent_id = f"doctor_{idx}"
             specialty = config["specialty"]
             model_key = config.get("model_key", "qwen-vl-max")
-            doctor_agent = DoctorAgent(agent_id, specialty, config_path, model_key)
+            doctor_agent = DoctorAgent(agent_id=agent_id, specialty=specialty, config_path=config_path, model_key=model_key)
             self.doctor_agents.append(doctor_agent)
 
-        self.meta_agent = MetaAgent("meta", config_path, meta_model_key)
-        self.auditor_agent = AuditorAgent("auditor", config_path, auditor_model_key)
+        self.meta_agent = MetaAgent(agent_id="meta",config_path=config_path, model_key=meta_model_key)
+        self.auditor_agent = AuditorAgent(agent_id="auditor",config_path= config_path,model_key= auditor_model_key)
 
         # 初始化 AnalysisHelperLLM，使其在整个咨询流程中可用
         self.analysis_llm = AnalysisHelperLLM(config_path=config_path, model_key=conflict_analysis_model_key) 
@@ -1065,7 +1074,8 @@ class MDTConsultation:
                             question, 
                             doctor_opinion_parsed_outputs, 
                             self.doctor_agents, 
-                            all_keus_for_audit
+                            all_keus_for_audit,
+                            image_path=image_path
                         )
                         for keu_id, is_key in key_status_map.items():
                             if keu_id in audit_trail["keus"]:
@@ -1405,7 +1415,7 @@ def main():
     args = parser.parse_args()
 
     timestamp = time.strftime("%Y%m%d_%H%M%S")
-    terminal_log_dir = os.path.join("logs", "observation", "terminal_log", "ColaCare")
+    terminal_log_dir = os.path.join("logs", "observation", "terminal_log", "ColaCare", args.dataset)
     os.makedirs(terminal_log_dir, exist_ok=True)
     terminal_log_file = os.path.join(terminal_log_dir, f"{args.dataset}_{timestamp}_full_terminal.log")
     print(f"!!! Terminal output is being captured to: {terminal_log_file} !!!")

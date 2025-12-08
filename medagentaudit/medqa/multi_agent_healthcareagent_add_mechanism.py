@@ -22,12 +22,12 @@ from tqdm import tqdm
 
 # Ensure project root is in path to import shared utilities
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-from utils.config import get_config
+from medagentaudit.utils.config import get_config
 from medagentaudit.utils.encode_image import encode_image
 from medagentaudit.utils.json_utils import load_json, save_json, preprocess_response_string
 from medagentaudit.utils.keu import KEU # Mechanism 1: KEU Class
 from medagentaudit.utils.analysishelper import AnalysisHelperLLM # Mechanism 4: Conflict Resolution Helper
-from utils.dual_logger import DualLogger
+from medagentaudit.utils.dual_logger import DualLogger
 
 
 # --- START: Copied and adapted from ColaCare for observation mechanisms ---
@@ -106,7 +106,7 @@ class BaseAgent:
 class AuditorAgent(BaseAgent):
     """Auditor agent copied from ColaCare to implement observation mechanisms."""
     def __init__(self, agent_id: str = "auditor", config_path: str = "utils/config.toml", model_key: str = "gemini-3-pro-preview"):
-        super().__init__(agent_id, AgentType.AUDITOR, config_path, model_key)
+        super().__init__(agent_id=agent_id, agent_type=AgentType.AUDITOR, config_path=config_path, model_key=model_key)
 
     def audit_domain_agent_contribution(self, question: str, agent_id: str, specialty: MedicalSpecialty, explanation: str) -> Dict[str, Any]:
         print(f"Auditor Agent: Auditing Domain Agent Contribution for {agent_id}...")
@@ -139,7 +139,7 @@ Provide a concise `auditor_reasoning` explaining your choices.
         except (json.JSONDecodeError, TypeError):
             return {}
 
-    def audit_risk_and_quality(self, agent_id: str, explanation: str) -> Dict[str, Any]:
+    def audit_risk_and_quality(self, agent_id: str, explanation: str, image_path:Optional[str] = None) -> Dict[str, Any]:
         print(f"Auditor Agent: Auditing Risk and Quality for {agent_id}'s argument...")
         system_message = {
             "role": "system",
@@ -157,9 +157,23 @@ You MUST provide a JSON object with one classification:
 Provide a concise `auditor_reasoning` for your choice.
 """
         }
+        user_content = []
+        if image_path:
+            base64_image = encode_image(image_path)
+            user_content.append({
+                "type": "image_url",
+                "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"},
+            })
+        text_content = (
+            f"Argument from Agent {agent_id}:\n\"{explanation}\"\n\nPlease provide your risk audit in the specified JSON format."
+        )
+        user_content.append({
+            "type": "text",
+            "text": text_content
+        })
         user_message = {
             "role": "user",
-            "content": f"Argument from Agent {agent_id}:\n\"{explanation}\"\n\nPlease provide your risk audit in the specified JSON format."
+            "content": user_content
         }
         response_text, _, _ = self.call_llm(system_message, user_message)
         try:
@@ -167,7 +181,7 @@ Provide a concise `auditor_reasoning` for your choice.
         except (json.JSONDecodeError, TypeError):
             return {}
 
-    def audit_single_argument_quality(self, question: str, explanation: str) -> Dict[str, Any]:
+    def audit_single_argument_quality(self, question: str, explanation: str, image_path: Optional[str] = None) -> Dict[str, Any]:
         print("Auditor Agent: Auditing single argument's overall quality...")
         system_message = {
             "role": "system",
@@ -184,9 +198,25 @@ You MUST provide a JSON object with:
 2.  **`auditor_reasoning`**: A concise justification for your rating.
 """
         }
+        user_content = []
+        if image_path:
+            base64_image = encode_image(image_path)
+            image_url_content = {
+                "type": "image_url",
+                "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"},
+            }
+            user_content.append(image_url_content)
+        
+        text_content = (
+            f"Medical Question: \"{question}\"\n\nArgument to Evaluate:\n\"{explanation}\"\n\nPlease provide the overall quality audit as a JSON object."
+        )
+        user_content.append({
+            "type": "text",
+            "text": text_content
+        })
         user_message = {
             "role": "user",
-            "content": f"Medical Question: \"{question}\"\n\nArgument to Evaluate:\n\"{explanation}\"\n\nPlease provide the overall quality audit as a JSON object."
+            "content": user_content
         }
         response_text, _, _ = self.call_llm(system_message, user_message)
         try:
@@ -247,10 +277,19 @@ Example: {"KEU-0": true, "KEU-1": false, "KEU-2": true}
 """
         }
         keu_list_text = "\n".join([f"- {keu['keu_id']}: \"{keu['content']}\"" for keu in all_keus])
-        user_message = {
-            "role": "user",
-            "content": f"Medical Question: \"{question}\"\n\nList of Evidential Units:\n{keu_list_text}\n\nPlease provide your judgment on which of these are KEY units in the specified JSON format."
-        }
+        user_content = []
+        if image_path:
+            base64_image = encode_image(image_path)
+            user_content.append({
+                "type":"image_url",
+                "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}
+            })
+        
+        text_content = (
+            f"Medical Question: \"{question}\"\n\nList of Evidential Units:\n{keu_list_text}\n\nPlease provide your judgment on which of these are KEY units in the specified JSON format."
+        )
+        user_content.append({"type":"text","text": text_content})
+        user_message = {"role": "user", "content": user_content }
         # Note: This is a non-JSON call in BaseAgent, we adapt it
         self.client.response_format = {"type": "json_object"}
         response_text, _, _ = self.call_llm(system_message, user_message)
@@ -441,7 +480,7 @@ class HealthcareAgentFramework:
         )
         self.model_name = self.llm.model_name
         
-        self.auditor_agent = AuditorAgent(model_key=auditor_model_key)
+        self.auditor_agent = AuditorAgent(model_key=auditor_model_key,config_path = config_path)
         self.analysis_llm = AnalysisHelperLLM(config_path=config_path, model_key=conflict_model_key)
 
         print(f"Initialized HealthcareAgentFramework with model: {self.model_name}")
@@ -580,14 +619,16 @@ class HealthcareAgentFramework:
             # Mechanism 3: Audit the contribution
             prelim_explanation = preliminary_result.get("explanation", "")
             contribution_audit = self.auditor_agent.audit_domain_agent_contribution(question, "PreliminaryAnalyzer", MedicalSpecialty.GENERAL_MEDICINE, prelim_explanation)
-            risk_audit = self.auditor_agent.audit_risk_and_quality("PreliminaryAnalyzer", prelim_explanation)
+            risk_audit = self.auditor_agent.audit_risk_and_quality("PreliminaryAnalyzer", prelim_explanation, image_path)
             audit_trail["collaboration_audits"]["preliminary_analysis"] = {**contribution_audit, **risk_audit}
             # --- END: Mechanism 1 & 3 Auditing ---
             
             analysis_log['parsed_output'] = preliminary_result
             case_history["steps"].append({"step": "3_Preliminary_Analysis", "log": analysis_log})
 
-            # === STEP 4: Safety Module ("Discuss" Phase as Reviewers) ===
+            # === STEP 4: Safety Module ("Discuss" Phase as Reviewers) === 
+            # this phase is not a mode every agent makes their decision on the answer,
+            # it's more like a information supplement and warning addition phase.
             keu_list_text = "\n".join([f"- {k}: '{v.content}'" for k, v in audit_trail["keus"].items()]) or "No KEUs were extracted."
             ccp_text = "No conflicts identified yet." # No conflicts before review
             
@@ -595,21 +636,21 @@ class HealthcareAgentFramework:
             ethics_prompt = SAFETY_ETHICS_PROMPT.format(preliminary_response=preliminary_response_str, keu_list_text=keu_list_text, ccp_text=ccp_text)
             ethics_feedback_str, ethics_log = self._call_llm(ethics_prompt, "SafetyEthicsAgent", expect_json=True)
             ethics_feedback = json.loads(preprocess_response_string(ethics_feedback_str)).get("feedback", "")
-            risk_audit_ethics = self.auditor_agent.audit_risk_and_quality("SafetyEthicsAgent", ethics_feedback)
+            risk_audit_ethics = self.auditor_agent.audit_risk_and_quality("SafetyEthicsAgent", ethics_feedback, image_path)
             audit_trail["collaboration_audits"]["ethics_review"] = risk_audit_ethics
 
             # -- Emergency Review --
             emergency_prompt = SAFETY_EMERGENCY_PROMPT.format(preliminary_response=preliminary_response_str, keu_list_text=keu_list_text, ccp_text=ccp_text)
             emergency_feedback_str, emergency_log = self._call_llm(emergency_prompt, "SafetyEmergencyAgent", expect_json=True)
             emergency_feedback = json.loads(preprocess_response_string(emergency_feedback_str)).get("feedback", "")
-            risk_audit_emergency = self.auditor_agent.audit_risk_and_quality("SafetyEmergencyAgent", emergency_feedback)
+            risk_audit_emergency = self.auditor_agent.audit_risk_and_quality("SafetyEmergencyAgent", emergency_feedback, image_path)
             audit_trail["collaboration_audits"]["emergency_review"] = risk_audit_emergency
 
             # -- Error Review --
             error_prompt = SAFETY_ERROR_PROMPT.format(preliminary_response=preliminary_response_str, keu_list_text=keu_list_text, ccp_text=ccp_text)
             error_feedback_str, error_log = self._call_llm(error_prompt, "SafetyErrorAgent", expect_json=True)
             error_feedback = json.loads(preprocess_response_string(error_feedback_str)).get("feedback", "")
-            risk_audit_error = self.auditor_agent.audit_risk_and_quality("SafetyErrorAgent", error_feedback)
+            risk_audit_error = self.auditor_agent.audit_risk_and_quality("SafetyErrorAgent", error_feedback, image_path)
             audit_trail["collaboration_audits"]["error_review"] = risk_audit_error
             
             case_history["steps"].append({
@@ -635,6 +676,7 @@ class HealthcareAgentFramework:
                 ccp_counter += 1
             all_unresolved_ccps.extend(audit_trail["ccps"]["round_1"])
             # --- END: Mechanism 4 ---
+            
 
             # === STEP 5: Final Modification ("Modify" Phase as Meta Agent) ===
             ccp_text_for_prompt = "\n".join([f"- {c['ccp_id']}: {c['conflict_summary']}" for c in all_unresolved_ccps]) or "No critical conflicts identified."
@@ -661,7 +703,7 @@ class HealthcareAgentFramework:
             
             # Mechanism 3: Audit final decision quality and risk
             quality_audit_final = self.auditor_agent.audit_single_argument_quality(question, final_explanation)
-            risk_audit_final = self.auditor_agent.audit_risk_and_quality("FinalModifier", final_explanation)
+            risk_audit_final = self.auditor_agent.audit_risk_and_quality("FinalModifier", final_explanation, image_path=image_path)
             audit_trail["collaboration_audits"]["final_decision"] = {**quality_audit_final, **risk_audit_final}
 
             # Mechanism 4: Check if conflicts were resolved
@@ -713,6 +755,7 @@ def main():
     parser.add_argument("--config_path", type=str, required=True, help="default = utils/config.toml")
     parser.add_argument("--model", type=str,required=True, help="qa= deepseek-reasoner/gpt-5.1/gemini-2.5-flash,vqa = qwen-3-vl/gpt-5.1/gemini-2.5-flash")
     parser.add_argument("--auditor_model", type=str, required=True, help="gemini-3-pro-preview")
+    parser.add_argument("--num", type = int, required=True,help = "number of samples to run")
     args = parser.parse_args()
 
     timestamp = time.strftime("%Y%m%d_%H%M%S")
@@ -740,7 +783,7 @@ def main():
         config_path=args.config_path
     )
 
-    for item in tqdm(data[:100], desc=f"Running HealthcareAgent on {args.dataset}"):
+    for item in tqdm(data[:args.num], desc=f"Running HealthcareAgent on {args.dataset}"):
         qid = item["qid"]
         result_path = os.path.join(logs_dir, f"{qid}-result.json")
 
