@@ -767,10 +767,15 @@ def main():
     parser.add_argument("--max_rounds", type=int, default=DEFAULT_MAX_ROUNDS, help="Maximum discussion rounds")
     parser.add_argument("--config_path", type=str, required=True,help="Path to the config.toml file,default = utils/config.toml")
     parser.add_argument("--num_samples", type=int, required=True,help="Number of samples to process from the dataset")
+    parser.add_argument("--test_mode", type=bool, required=True, help="If set, log will be saved to a test-specific directory.")
     args = parser.parse_args()
 
     timestamp = time.strftime("%Y%m%d_%H%M%S")
-    terminal_log_dir = os.path.join("logs", "observation", "terminal_log", "MAC", args.dataset)
+    test_mode = args.test_mode
+    if test_mode:
+        terminal_log_dir = os.path.join("logs", "observation", "test", "terminal_log", "MAC", args.dataset)
+    else:
+        terminal_log_dir = os.path.join("logs", "observation", "terminal_log", "MAC", args.dataset)
     os.makedirs(terminal_log_dir, exist_ok=True)
     terminal_log_file = os.path.join(terminal_log_dir, f"{args.dataset}_{timestamp}_full_terminal.log")
     print(f"!!! Terminal output is being captured to: {terminal_log_file} !!!")
@@ -778,7 +783,10 @@ def main():
     sys.stderr = DualLogger(terminal_log_file, sys.stderr) # 捕获报错和tqdm进度条
     
     data_path = f"./my_datasets/processed/medqa/{args.dataset}/medqa_{args.qa_type}_test.json"
-    logs_dir = os.path.join("./logs", "observation", "MAC", args.dataset)
+    if test_mode:
+        logs_dir = os.path.join("./logs", "observation", "test", "MAC", args.dataset)
+    else:
+        logs_dir = os.path.join("./logs", "observation", "MAC", args.dataset)
     os.makedirs(logs_dir, exist_ok=True)
     print(f"Using Log Directory: {logs_dir}")
 

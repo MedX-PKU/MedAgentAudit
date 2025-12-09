@@ -64,7 +64,7 @@ class BaseAgent:
         self.client = OpenAI(
             api_key=self.llm.api_key,
             base_url=self.llm.base_url,
-            timeout = self.llm.timeout # if time out then atonomously report error
+            timeout = self.llm.timeout, # if time out then atonomously report error
         )
         self.model_name = self.llm.model_name
     # MODIFICATION START: Adjusted return type to include prompts for logging.
@@ -91,14 +91,26 @@ class BaseAgent:
         while retries < max_retries:
             try:
                 print(f"Agent {self.agent_id} calling LLM, system message: {system_message['content'][:50]}...")
-                completion = self.client.chat.completions.create(
-                    model=self.model_name,
-                    messages=[system_message, user_message],
-                    response_format={"type": "json_object"},
-                    extra_body={"enable_thinking": False},
-                    stream=True,
-                    timeout=self.llm.timeout # just in case timeout error!
-                )
+                print(f'the llm model name is {self.model_name}')
+                if hasattr(self.llm, 'reasoning') and self.llm.reasoning: # for model like gpt-5.1
+                    completion = self.client.chat.completions.create(
+                        model=self.model_name,
+                        messages=[system_message, user_message],
+                        response_format={"type": "json_object"},
+                        extra_body={"enable_thinking": True},
+                        reasoning_effort=self.llm.reasoning.effort,
+                        stream=True,
+                        timeout=self.llm.timeout # just in case timeout error!
+                    )
+                else:
+                    completion = self.client.chat.completions.create(
+                        model=self.model_name,
+                        messages=[system_message, user_message],
+                        response_format={"type": "json_object"},
+                        extra_body={"enable_thinking": True},
+                        stream=True,
+                        timeout=self.llm.timeout # just in case timeout error!
+                    )
                 response_chunks = []
                 for chunk in completion:
                     if chunk.choices[0].delta.content is not None:
@@ -1412,10 +1424,16 @@ def main():
     parser.add_argument("--auditor_model", type=str, required=True, help="gemini-3-pro-preview") # auditor model is the conflict model
     parser.add_argument("--config_path", type=str, required=True,help="Path to the config.toml file,default = utils/config.toml")
     parser.add_argument("--num_samples", type=int, required=True,help="Number of samples to process from the dataset")
+    parser.add_argument("--test_mode", type=bool, required=True, help="If set, log will be saved to a test-specific directory.")
     args = parser.parse_args()
 
+    test_mode = args.test_mode
     timestamp = time.strftime("%Y%m%d_%H%M%S")
-    terminal_log_dir = os.path.join("logs", "observation", "terminal_log", "ColaCare", args.dataset)
+    if test_mode:
+        print("!!! TEST MODE ENABLED: Logs will be saved to test-specific directories !!!")
+        terminal_log_dir = os.path.join("logs", "observation", "test", "terminal_log", "ColaCare", args.dataset)
+    else:
+        terminal_log_dir = os.path.join("logs", "observation", "terminal_log", "ColaCare", args.dataset)
     os.makedirs(terminal_log_dir, exist_ok=True)
     terminal_log_file = os.path.join(terminal_log_dir, f"{args.dataset}_{timestamp}_full_terminal.log")
     print(f"!!! Terminal output is being captured to: {terminal_log_file} !!!")
@@ -1427,7 +1445,10 @@ def main():
     qa_type = args.qa_type
     print(f"QA Format: {qa_type}")
 
-    logs_dir = os.path.join("logs", "observation",'ColaCare', dataset_name)
+    if test_mode:
+        logs_dir = os.path.join("logs", "observation","test","ColaCare", dataset_name)
+    else:
+        logs_dir = os.path.join("logs", "observation","ColaCare", dataset_name)
     os.makedirs(logs_dir, exist_ok=True)
     print(f"Logs will be saved to: {logs_dir}")
 

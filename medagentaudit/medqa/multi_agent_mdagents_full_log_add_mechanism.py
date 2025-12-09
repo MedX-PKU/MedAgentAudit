@@ -1519,18 +1519,25 @@ def main():
     parser.add_argument("--num_samples",type = int, required = True, help = "number of samples to run")
     parser.add_argument("--num_experts", type=int, default=DEFAULT_NUM_EXPERTS_INTERMEDIATE)
     parser.add_argument("--num_teams", type=int, default=DEFAULT_NUM_TEAMS_ADVANCED)
+    parser.add_argument("--test_mode", type=bool, required=True, help="If set, log will be saved to a test-specific directory.")
+
     
     args = parser.parse_args()
-    
+    test_mode = args.test_mode
     timestamp = time.strftime("%Y%m%d_%H%M%S")
-    terminal_log_dir = os.path.join("logs", "observation", "terminal_log", "MDAgents", args.dataset)
+    if test_mode:
+        terminal_log_dir = os.path.join("logs", "observation", "test", "terminal_log", "MDAgents", args.dataset)
+    else:
+        terminal_log_dir = os.path.join("logs", "observation", "terminal_log", "MDAgents", args.dataset)
     os.makedirs(terminal_log_dir, exist_ok=True)
     terminal_log_file = os.path.join(terminal_log_dir, f"{args.dataset}_{timestamp}_full_terminal.log")
     print(f"!!! Terminal output is being captured to: {terminal_log_file} !!!")
     sys.stdout = DualLogger(terminal_log_file, sys.stdout)
     sys.stderr = DualLogger(terminal_log_file, sys.stderr) # 捕获报错和tqdm进度条
-
-    logs_dir = os.path.join("./logs", "observation", "MDAgents", args.dataset)
+    if test_mode:
+        logs_dir = os.path.join("./logs", "observation", "test", "MDAgents", args.dataset)
+    else:
+        logs_dir = os.path.join("./logs", "observation", "MDAgents", args.dataset)
     os.makedirs(logs_dir, exist_ok=True)
     
     data_path = f"./my_datasets/processed/medqa/{args.dataset}/medqa_{args.qa_type}_test.json"

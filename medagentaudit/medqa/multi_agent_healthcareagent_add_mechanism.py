@@ -78,6 +78,7 @@ class BaseAgent:
         while retries < max_retries:
             try:
                 print(f"Agent {self.agent_id} calling LLM...")
+                print(f"the name of llm is {self.model_name}")
                 completion = self.client.chat.completions.create(
                     model=self.model_name,
                     messages=[system_message, user_message],
@@ -755,18 +756,25 @@ def main():
     parser.add_argument("--config_path", type=str, required=True, help="default = utils/config.toml")
     parser.add_argument("--model", type=str,required=True, help="qa= deepseek-reasoner/gpt-5.1/gemini-2.5-flash,vqa = qwen-3-vl/gpt-5.1/gemini-2.5-flash")
     parser.add_argument("--auditor_model", type=str, required=True, help="gemini-3-pro-preview")
-    parser.add_argument("--num", type = int, required=True,help = "number of samples to run")
-    args = parser.parse_args()
+    parser.add_argument("--num_samples", type = int, required=True,help = "number of samples to run")
+    parser.add_argument("--test_mode", type=bool, required=True, help="If set, log will be saved to a test-specific directory.")
 
+    args = parser.parse_args()
+    test_mode = args.test_mode
     timestamp = time.strftime("%Y%m%d_%H%M%S")
-    terminal_log_dir = os.path.join("logs", "observation", "terminal_log", "HealthcareAgent")
+    if test_mode:
+        terminal_log_dir = os.path.join("logs", "observation", "test", "terminal_log", "HealthcareAgent", args.dataset)
+    else:
+        terminal_log_dir = os.path.join("logs", "observation", "terminal_log", "HealthcareAgent", args.dataset)
     os.makedirs(terminal_log_dir, exist_ok=True)
     terminal_log_file = os.path.join(terminal_log_dir, f"{args.dataset}_{timestamp}_full_terminal.log")
     print(f"!!! Terminal output is being captured to: {terminal_log_file} !!!")
     sys.stdout = DualLogger(terminal_log_file, sys.stdout)
     sys.stderr = DualLogger(terminal_log_file, sys.stderr) # 捕获报错和tqdm进度条
-
-    logs_dir = os.path.join("logs", "observation", "HealthcareAgent", args.dataset)
+    if test_mode:
+        logs_dir = os.path.join("logs", "observation", "test", "HealthcareAgent", args.dataset)
+    else:
+        logs_dir = os.path.join("logs", "observation", "HealthcareAgent", args.dataset)
     os.makedirs(logs_dir, exist_ok=True)
     data_path = f"./my_datasets/processed/medqa/{args.dataset}/medqa_{args.qa_type}_test.json"
 
@@ -783,7 +791,7 @@ def main():
         config_path=args.config_path
     )
 
-    for item in tqdm(data[:args.num], desc=f"Running HealthcareAgent on {args.dataset}"):
+    for item in tqdm(data[:args.num_samples], desc=f"Running HealthcareAgent on {args.dataset}"):
         qid = item["qid"]
         result_path = os.path.join(logs_dir, f"{qid}-result.json")
 

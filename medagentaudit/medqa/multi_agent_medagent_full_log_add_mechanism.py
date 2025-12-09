@@ -75,6 +75,7 @@ class BaseAgent:
             timeout= self.llm.timeout,
         )
         self.model_name = self.llm.model_name
+        print(f"Initialized {self.agent_type.value} agent with ID: {self.agent_id}, Model: {self.model_name}")
 
     def call_llm(self,
                  system_message: Dict[str, str],
@@ -1075,17 +1076,25 @@ def main():
     parser.add_argument("--auditor_model", type=str, required=True, help="Model for auditor agent")
     parser.add_argument("--num_samples", type=int, required=True, help="Number of samples to process")
     parser.add_argument("--config_path", type=str, default="config.toml", help="Path to config file")
+    parser.add_argument("--test_mode", type=bool, required=True, help="If set, log will be saved to a test-specific directory.")
     args = parser.parse_args()
 
+    test_mode = args.test_mode
     timestamp = time.strftime("%Y%m%d_%H%M%S")
-    terminal_log_dir = os.path.join("logs", "observation", "terminal_log", "MedAgent", args.dataset)
+    if test_mode:
+        terminal_log_dir = os.path.join("logs", "observation", "test", "terminal_log", "MedAgent", args.dataset)
+    else:
+        terminal_log_dir = os.path.join("logs", "observation", "terminal_log", "MedAgent", args.dataset)
     os.makedirs(terminal_log_dir, exist_ok=True)
     terminal_log_file = os.path.join(terminal_log_dir, f"{args.dataset}_{timestamp}_full_terminal.log")
     print(f"!!! Terminal output is being captured to: {terminal_log_file} !!!")
     sys.stdout = DualLogger(terminal_log_file, sys.stdout)
     sys.stderr = DualLogger(terminal_log_file, sys.stderr) # 捕获报错和tqdm进度条
 
-    logs_dir = os.path.join("logs", "observation", "MedAgent", args.dataset)
+    if test_mode:
+        logs_dir = os.path.join("logs", "observation", "test", "MedAgent", args.dataset)
+    else:
+        logs_dir = os.path.join("logs", "observation", "MedAgent", args.dataset)
     os.makedirs(logs_dir, exist_ok=True)
     print(f"Logs will be saved to: {logs_dir}")
 
