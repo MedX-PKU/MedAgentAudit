@@ -21,13 +21,13 @@ class MedagentAudit(BaseModel):
     system: SystemConfig
 
 
-def get_config(config_path: Path, active_llm: str) -> MedagentAudit:
+def get_config(config_path: str, active_llm: str) -> MedagentAudit:
     """
     Loads configuration from a TOML file, validates it, selects the active LLM's
     settings, and returns a unified HealthFlowConfig object.
     """
-    if not config_path.exists():
-        example_path = Path("utils/config.toml")
+    if not Path(config_path).exists():
+        example_path = Path("config.toml")
         if example_path.exists():
              raise FileNotFoundError(f"Configuration file not found at '{config_path}'. Please copy '{example_path}' to '{config_path}' and fill in your API key.")
         raise FileNotFoundError(f"Configuration file not found at '{config_path}'.")

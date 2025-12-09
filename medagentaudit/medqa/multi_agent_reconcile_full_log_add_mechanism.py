@@ -52,7 +52,7 @@ class ReconcileAgent:
         self.model_key = model_key
         self.discussion_history = []
         self.memory = []
-
+        self.specialty = "Reconcile" 
         self.llm = get_config(config_path, active_llm=model_key).llm
 
         self.client = OpenAI(
@@ -288,7 +288,7 @@ class ReconcileCoordinator:
         """
         Initialize the Reconcile coordinator with auditing agents.
         """
-        self.agents = [ReconcileAgent(cfg["agent_id"], cfg["model_key"]) for cfg in agent_configs]
+        self.agents = [ReconcileAgent(agent_id=cfg["agent_id"], model_key=cfg["model_key"], config_path=config_path) for cfg in agent_configs]
         self.max_rounds = max_rounds
         self.auditor_agent = AuditorAgent(agent_id="auditor", model_key=auditor_model_key, config_path=config_path)
         self.analysis_llm = AnalysisHelperLLM(model_key=conflict_analysis_model_key,config_path=config_path)

@@ -646,13 +646,6 @@ class MACFramework:
                     "Provide your supervisory assessment in the specified JSON format. Your summary must attempt to resolve the CCPs."
                 )
                 user_content = []
-                if data_item.get("image_path"):
-                    base64_image = encode_image(data_item["image_path"])
-                    image_url_content = {
-                        "type": "image_url",
-                        "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"},
-                    }
-                    user_content.append(image_url_content)
                 user_content.append({"type": "text", "text": user_prompt})
                 messages_for_llm = [
                     {"role": "system", "content": system_prompt},
@@ -681,7 +674,10 @@ class MACFramework:
                 final_answer_text = parsed_output.get("final_answer", {}).get("explanation", "") if parsed_output.get("final_answer") else ""
                 supervisor_explanation = summary_text + "\n" + final_answer_text
                 risk_audit = self.auditor_agent.audit_risk_and_quality(agent_id="supervisor", explanation=supervisor_explanation, image_path=data_item.get("image_path"))
-                quality_audit = self.auditor_agent.audit_single_argument_quality(question=data_item["question"], explanation=supervisor_explanation, domain_agent_quality=quality_audit, image_path=data_item.get("image_path"))
+                if round_num > 1:
+                    quality_audit = self.auditor_agent.audit_single_argument_quality(question=data_item["question"], explanation=supervisor_explanation, domain_agent_quality=quality_audit, image_path=data_item.get("image_path"))
+                else:
+                    quality_audit = self.auditor_agent.audit_single_argument_quality(question=data_item["question"], explanation=supervisor_explanation, image_path=data_item.get("image_path"))
                 audit_trail["collaboration_audits"][f"round_{round_num}_supervisor"] = {**risk_audit, **quality_audit}
                 
                 # Mechanism 1: Track KEUs in supervisor's response
@@ -803,7 +799,7 @@ def main():
         doctor_model_key=args.doctor_model,
         supervisor_model_key=args.supervisor_model,
         auditor_model_key=args.auditor_model,
-        conflict_model_key=args.conflict_model,
+        conflict_model_key=args.auditor_model,
         num_doctors=args.num_doctors,
         max_rounds=args.max_rounds,
         config_path = args.config_path

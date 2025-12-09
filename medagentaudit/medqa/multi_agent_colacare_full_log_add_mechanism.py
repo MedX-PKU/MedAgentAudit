@@ -697,9 +697,9 @@ Provide a concise `auditor_reasoning` for your choice.
                 "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"},
             }
             user_content.append(image_url_content)
-        text_content = {
+        text_content = (
             f"Argument from Agent {agent_id}:\n\"{explanation}\"\n\nPlease provide your risk audit in the specified JSON format."
-        }
+        )
         user_content.append({
             "type":"text",
             "text":text_content
@@ -799,19 +799,19 @@ You MUST provide a JSON object with:
                 individual_quality_text += f"- Agent: {audit.get('agent_id', 'Unknown')}\n"
                 individual_quality_text += f"  Quality: {audit.get('overall_quality_category', 'N/A')}\n"
                 individual_quality_text += f"  Auditor Reasoning: {audit.get('auditor_reasoning', 'No reasoning provided')}" + "\n"
-            text_content = {
+            text_content = (
                 f"Medical Question: \"{question}\"\n\n"
                 f"Argument to Evaluate:\n\"{explanation}\"\n\n"
                 f"We have evaluated the quality of individual doctors' arguments as follows:\n"
                 f"{individual_quality_text}\n"
                 f"Please provide the overall quality audit as a JSON object."
-            }
+            )
         else:
-            text_content = {
+            text_content = (
                 f"Medical Question: \"{question}\"\n\n"
                 f"Argument to Evaluate:\n\"{explanation}\"\n\n"
                 f"Please provide the overall quality audit as a JSON object."
-            }
+            )
         user_content.append({
             "type":"text",
             "text": text_content

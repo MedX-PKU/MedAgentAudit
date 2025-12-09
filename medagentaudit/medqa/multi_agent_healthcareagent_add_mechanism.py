@@ -64,10 +64,9 @@ class BaseAgent:
         self.client = OpenAI(
             api_key=self.llm.api_key,
             base_url=self.llm.base_url,
-            stream = True,
             timeout=self.llm.timeout
         )
-        self.model_name = self.config.llm.model_name
+        self.model_name = self.llm.model_name
 
     def call_llm(self,
                  system_message: Dict[str, str],
@@ -84,7 +83,8 @@ class BaseAgent:
                     messages=[system_message, user_message],
                     response_format={"type": "json_object"},
                     extra_body={"enable_thinking": False},
-                    timeout=self.llm.timeout
+                    timeout=self.llm.timeout, 
+                    stream=True
                 )
                 # streaming response handling
                 response_chunks = []
@@ -473,8 +473,7 @@ class HealthcareAgentFramework:
         self.model_key = model_key
 
 
-        self.llm = get_config(config_path, active_llm=model_key).llm
-        self.llm = self.config.llm
+        self.llm = get_config(config_path=config_path, active_llm=model_key).llm
         self.client = OpenAI(
             api_key=self.llm.api_key,
             base_url=self.llm.base_url,
@@ -519,9 +518,12 @@ class HealthcareAgentFramework:
                 completion = self.client.chat.completions.create(
                     model=self.model_name,
                     messages=messages,
-                    response_format=response_format
+                    response_format=response_format,
+                    max_tokens=4096
                 )
                 response = completion.choices[0].message.content
+                if not response:
+                    raise ValueError("Empty response from LLM")
                 print(f"LLM call successful. Response snippet: {response[:80]}...")
                 
                 log_data = {
@@ -536,11 +538,8 @@ class HealthcareAgentFramework:
                 retries += 1
                 print(f"LLM API call error (attempt {retries}/{max_retries}): {e}")
                 if retries >= max_retries:
-                    error_msg = f"LLM API call failed after {max_retries} attempts."
-                    error_log = {"error": error_msg, "llm_input": {"system_message": system_message, "user_message": user_message}}
-                    return error_msg, error_log
+                    raise RuntimeError(f"CRITICAL: LLM call failed after {max_retries} attempts. Reason: {str(e)}")
                 time.sleep(1)
-        return "", {}
 
     def run_query(self, data_item: Dict) -> Dict:
         """
@@ -717,10 +716,12 @@ class HealthcareAgentFramework:
             
             final_log['parsed_output'] = final_result_json
             case_history["steps"].append({"step": "5_Final_Modification", "log": final_log})
-
+            
             # === STEP 6: Parse Final Result ===
-            predicted_answer = final_result_json.get("answer", "Parsing Error")
-            explanation = final_result_json.get("explanation", "Parsing Error")
+            if not final_result_json.get("answer") or not final_result_json.get("explanation"):
+                raise ValueError("Final result JSON missing 'answer' or 'explanation' fields.")
+            predicted_answer = final_result_json.get("answer")
+            explanation = final_result_json.get("explanation")
 
         except Exception as e:
             print(f"FATAL ERROR during query processing for QID {qid}: {e}")
@@ -805,7 +806,7 @@ def main():
         except Exception as e:
             print(f"CRITICAL MAIN LOOP ERROR processing item {qid}: {e}")
             error_result = {"qid": qid, "error": str(e), "timestamp": int(time.time())}
-            save_json(error_result, result_path)
+            save_json(error_result, os.path.join(logs_dir, f"{qid}-error.json"))
 
 if __name__ == "__main__":
     main()

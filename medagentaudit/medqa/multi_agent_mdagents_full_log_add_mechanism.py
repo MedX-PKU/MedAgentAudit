@@ -722,6 +722,7 @@ class MDAgentsFramework:
         self.num_experts_intermediate = num_experts_intermediate
         self.num_teams_advanced = num_teams_advanced
         self.num_agents_per_team_advanced = num_agents_per_team_advanced
+        self.config_path = config_path
         os.makedirs(self.log_dir, exist_ok=True) 
 
         self.moderator_agent = BaseAgent("moderator", 
@@ -744,7 +745,7 @@ class MDAgentsFramework:
         )
         
         self.auditor_agent = AuditorAgent(agent_id="auditor", model_key=auditor_model_key,config_path = config_path)
-        self.analysis_llm = AnalysisHelperLLM(conflict_model_key,config_path=config_path)
+        self.analysis_llm = AnalysisHelperLLM(model_key=conflict_model_key,config_path=config_path)
         
     def _determine_complexity(self, question: str, options: Optional[Dict] = None, image_path: Optional[str] = None) -> Tuple[ComplexityLevel, Dict[str, Any]]:
         print("\n--- Determining Complexity ---")
@@ -972,6 +973,7 @@ class MDAgentsFramework:
         agent = BaseAgent(
             agent_id="basic_solver",
             role=AgentRole.GENERAL_DOCTOR,
+            config_path=self.config_path,
             model_key=agent_model_key,
             instruction="You are a helpful medical assistant. Answer the following medical question accurately. Respond in JSON format."
         )
@@ -1465,7 +1467,7 @@ class MDAgentsFramework:
             process_log.append(complexity_log)
 
             if complexity == ComplexityLevel.BASIC:
-                result_data = self._process_basic_query(data_item, audit_trail)
+                result_data = self._process_basic_query(data_item=data_item, audit_trail=audit_trail)
             else:
                 recruited, recruitment_log = self._recruit_experts(data_item["question"], data_item.get("options"), complexity, data_item.get("image_path"))
                 process_log.append(recruitment_log)
@@ -1501,7 +1503,7 @@ class MDAgentsFramework:
                 print(f"Skipping {qid} - result file already exists.")
                 continue
             try:
-                result = self.run_query(item)
+                result = self.run_query(item = item)
                 save_json(result, result_path)
             except Exception as e:
                 print(f"FATAL ERROR for QID {qid}: {e}")
@@ -1556,7 +1558,7 @@ def main():
         config_path = args.config_path
     )
 
-    framework.run_dataset(data[:args.num_samples])
+    framework.run_dataset(data=data[:args.num_samples])
 
 if __name__ == "__main__":
     main()

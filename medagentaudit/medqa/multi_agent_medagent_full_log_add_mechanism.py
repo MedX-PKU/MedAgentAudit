@@ -68,7 +68,7 @@ class BaseAgent:
         self.model_key = model_key
         self.memory = [] # 为每个Agent实例添加memory用于追踪自身历史
 
-        self.llm = get_config(config_path,active_llm=model_key).llm
+        self.llm = get_config(config_path=config_path,active_llm=model_key).llm
         self.client = OpenAI(
             api_key=self.llm.api_key,
             base_url=self.llm.base_url,
@@ -127,8 +127,8 @@ class BaseAgent:
 class ExpertGathererAgent(BaseAgent):
     """Agent responsible for gathering domain experts based on medical questions."""
 
-    def __init__(self, agent_id: str, model_key: str = "qwen-vl-max"):
-        super().__init__(agent_id, AgentType.EXPERT_GATHERER, model_key)
+    def __init__(self, agent_id: str, model_key: str = "qwen-vl-max", config_path: str = "config.toml"):
+        super().__init__(agent_id=agent_id, agent_type=AgentType.EXPERT_GATHERER, model_key=model_key, config_path=config_path)
         print(f"Initializing expert gatherer agent, ID: {agent_id}, Model: {model_key}")
 
     def gather_question_domain_experts(self, question: str) -> Tuple[List[MedicalSpecialty], Dict[str, Any]]:
@@ -374,8 +374,8 @@ Pay close attention to correctly populating 'viewpoint_changed', 'justification_
 class MetaAgent(BaseAgent):
     """Meta agent that synthesizes multiple doctors' opinions."""
 
-    def __init__(self, agent_id: str, model_key: str = "qwen-vl-max"):
-        super().__init__(agent_id, AgentType.META, model_key)
+    def __init__(self, agent_id: str, model_key: str = "qwen-vl-max", config_path: str = "config.toml"):
+        super().__init__(agent_id=agent_id, agent_type=AgentType.META, model_key=model_key, config_path=config_path)
         print(f"Initializing meta agent, ID: {agent_id}, Model: {model_key}")
 
     def synthesize_opinions(self,
@@ -457,8 +457,8 @@ Provide your synthesis in JSON format, including 'explanation' (comprehensive re
 class DecisionMakingAgent(BaseAgent):
     """Decision making agent that gives final answers based on synthesized opinions."""
 
-    def __init__(self, agent_id: str, model_key: str = "qwen-max-latest"):
-        super().__init__(agent_id, AgentType.DECISION_MAKER, model_key)
+    def __init__(self, agent_id: str, model_key: str = "qwen-max-latest", config_path: str = "config.toml"):
+        super().__init__(agent_id=agent_id, agent_type=AgentType.DECISION_MAKER, model_key=model_key, config_path=config_path)
         print(f"Initializing decision making agent, ID: {agent_id}, Model: {model_key}")
 
     def make_decision(self,
@@ -771,10 +771,10 @@ class MDTConsultation:
         self.model_key = model_key
         
         # Initialize agents
-        self.expert_gatherer = ExpertGathererAgent("expert_gatherer", model_key)
-        self.meta_agent = MetaAgent("meta", meta_model_key)
-        self.decision_agent = DecisionMakingAgent("decision", decision_model_key)
-        self.auditor_agent = AuditorAgent("auditor", auditor_model_key)
+        self.expert_gatherer = ExpertGathererAgent(agent_id="expert_gatherer", model_key=model_key, config_path=config_path)
+        self.meta_agent = MetaAgent(agent_id="meta", model_key=meta_model_key, config_path=config_path)
+        self.decision_agent = DecisionMakingAgent(agent_id="decision", model_key=decision_model_key, config_path=config_path)
+        self.auditor_agent = AuditorAgent(agent_id="auditor", model_key=auditor_model_key, config_path=config_path)
         self.analysis_llm = AnalysisHelperLLM(model_key=conflict_analysis_model_key, config_path=config_path)
 
         self.doctor_agents: List[DoctorAgent] = []
