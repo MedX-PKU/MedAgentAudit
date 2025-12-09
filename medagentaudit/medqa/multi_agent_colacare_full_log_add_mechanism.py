@@ -99,7 +99,7 @@ class BaseAgent:
                         response_format={"type": "json_object"},
                         extra_body={"enable_thinking": True},
                         reasoning_effort=self.llm.reasoning.effort,
-                        stream=True,
+                        stream=self.llm.stream,
                         timeout=self.llm.timeout # just in case timeout error!
                     )
                 else:
@@ -108,15 +108,17 @@ class BaseAgent:
                         messages=[system_message, user_message],
                         response_format={"type": "json_object"},
                         extra_body={"enable_thinking": True},
-                        stream=True,
+                        stream=self.llm.stream,
                         timeout=self.llm.timeout # just in case timeout error!
                     )
-                response_chunks = []
-                for chunk in completion:
-                    if chunk.choices[0].delta.content is not None:
-                        response_chunks.append(chunk.choices[0].delta.content)
-
-                response = "".join(response_chunks)
+                if not self.llm.stream:
+                    response = completion.choices[0].message.content
+                else:
+                    response_chunks = []
+                    for chunk in completion:
+                        if chunk.choices[0].delta.content is not None:
+                            response_chunks.append(chunk.choices[0].delta.content)
+                    response = "".join(response_chunks)
                 # check if the response is empty
                 if not response.strip():
                     raise ValueError("Empty response received from LLM")
@@ -394,7 +396,6 @@ class MetaAgent(BaseAgent):
                             audit_trail: Dict[str, Any],
                             ccp_text: str = "",
                             current_round: int = 1,
-                            image_path:Optional[str] = None,
                             options: Optional[Dict[str, str]] = None) -> Dict[str, Any]:
         # MODIFICATION END
         """
@@ -440,13 +441,6 @@ class MetaAgent(BaseAgent):
             keu_list_text += f"- {keu_id}: '{keu_obj.content}' (from {keu_obj.source_agent})\n"
 
         user_content = []
-        if image_path:
-            base64_image = encode_image(image_path)
-            image_url_content = {
-                "type": "image_url",
-                "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"},
-            }
-            user_content.append(image_url_content)
         text_content = (
             f"Question: {question_with_options}\n\n"
             f"Round {current_round} Doctors' Opinions:\n{opinions_text}\n\n"
@@ -1146,7 +1140,7 @@ class MDTConsultation:
             print("Meta agent synthesizing opinions")
             synthesis_log = self.meta_agent.synthesize_opinions(
                 question, doctor_opinion_parsed_outputs, self.doctor_specialties,
-                audit_trail=audit_trail, ccp_text=ccp_text_for_prompt, current_round=current_round, image_path=image_path,options=options
+                audit_trail=audit_trail, ccp_text=ccp_text_for_prompt, current_round=current_round, options=options
             )
             round_data["synthesis"] = synthesis_log # Store the entire log
             synthesis_parsed_output = synthesis_log["parsed_output"]

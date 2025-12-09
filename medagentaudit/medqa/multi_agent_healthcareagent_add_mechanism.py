@@ -78,20 +78,34 @@ class BaseAgent:
             try:
                 print(f"Agent {self.agent_id} calling LLM...")
                 print(f"the name of llm is {self.model_name}")
-                completion = self.client.chat.completions.create(
-                    model=self.model_name,
-                    messages=[system_message, user_message],
-                    response_format={"type": "json_object"},
-                    extra_body={"enable_thinking": False},
-                    timeout=self.llm.timeout, 
-                    stream=True
-                )
+                if hasattr(self.llm, "reasoning") and self.llm.reasoning:
+                    completion = self.client.chat.completions.create(
+                        model=self.model_name,
+                        messages=[system_message, user_message],
+                        response_format={"type": "json_object"},
+                        extra_body={"enable_thinking": False},
+                        timeout=self.llm.timeout, 
+                        stream=self.llm.stream,
+                        reasoning_effort=self.llm.reasoning.effort
+                    )
+                else:
+                    completion = self.client.chat.completions.create(
+                        model=self.model_name,
+                        messages=[system_message, user_message],
+                        response_format={"type": "json_object"},
+                        extra_body={"enable_thinking": False},
+                        timeout=self.llm.timeout,
+                        stream=self.llm.stream
+                    )
+                if self.llm.stream:
                 # streaming response handling
-                response_chunks = []
-                for chunk in completion:
-                    if chunk.choices[0].delta.content is not None:
-                        response_chunks.append(chunk.choices[0].delta.content)
-                response = "".join(response_chunks)
+                    response_chunks = []
+                    for chunk in completion:
+                        if chunk.choices[0].delta.content is not None:
+                            response_chunks.append(chunk.choices[0].delta.content)
+                    response = "".join(response_chunks)
+                else:
+                    response = completion.choices[0].message.content
                 if not response:
                     raise ValueError("Empty response from LLM")
                 print(f"Agent {self.agent_id} received response snippet: {response[:80]}...")
@@ -332,7 +346,6 @@ Example: {{"questions": ["How long have you experienced this symptom?", "Is ther
 """
 
 # MODIFICATION START: Mechanism 1 is injected here.
-# TODO: Completed. The prompt now requires a 'keus' field.
 PRELIMINARY_ANALYSIS_PROMPT_TEMPLATE = """
 As a medical doctor, provide a preliminary analysis of the following case based on the available information.
 {inquiry_context}
@@ -352,7 +365,6 @@ Question: {question}
 # --- Safety Module Prompts (The "Discuss" Phase) ---
 
 # MODIFICATION START: Mechanisms 1 & 4 are injected.
-# TODO: Completed. Prompts now receive KEU and CCP context.
 SAFETY_ETHICS_PROMPT = """
 As a safety supervisor specializing in medical ethics, review the following AI doctor's preliminary analysis.
 Your primary task is to critique it for necessary disclaimers about its AI nature and the potential risks of its advice.
@@ -423,7 +435,6 @@ Your feedback should be a JSON object with a single key "feedback".
 
 # --- Final Modification Prompt (The "Modify" Phase) ---
 # MODIFICATION START: Mechanisms 1 & 4 are injected.
-# TODO: Completed. The final prompt now demands KEU citation and CCP resolution.
 FINAL_MODIFICATION_PROMPT_TEMPLATE = """
 You are a senior medical supervisor tasked with creating the final, definitive response.
 Revise the preliminary analysis by thoughtfully incorporating the feedback from the internal safety review.

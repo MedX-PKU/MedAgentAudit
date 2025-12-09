@@ -37,7 +37,8 @@ class DiscussionPhase(Enum):
     INITIAL = "initial"        # Initial answer generation
     DISCUSSION = "discussion"  # Multi-round discussion
     FINAL = "final"            # Final team answer
-
+class Spciality(Enum):
+    RECONCILE = "Reconcile"
 
 class ReconcileAgent:
     """
@@ -52,8 +53,8 @@ class ReconcileAgent:
         self.model_key = model_key
         self.discussion_history = []
         self.memory = []
-        self.specialty = "Reconcile" 
-        self.llm = get_config(config_path, active_llm=model_key).llm
+        self.specialty = Spciality.RECONCILE
+        self.llm = get_config(config_path=config_path, active_llm=model_key).llm
 
         self.client = OpenAI(
             api_key=self.llm.api_key,
@@ -78,12 +79,29 @@ class ReconcileAgent:
         while attempt < max_retries:
             try:
                 print(f"Agent {self.agent_id} calling LLM with model {self.model_name} (attempt {attempt+1}/{max_retries})")
-                completion = self.client.chat.completions.create(
-                    model=self.model_name,
-                    messages=messages,
-                    response_format={"type": "json_object"}
-                )
-                response_text = completion.choices[0].message.content
+                if hasattr(self.llm, 'reasoning') and self.llm.reasoning: # for model like gpt-5.1
+                    completion = self.client.chat.completions.create( 
+                        model=self.model_name,
+                        messages=messages,
+                        response_format={"type": "json_object"},
+                        reasoning_effort= self.llm.reasoning.effort,
+                        stream= self.llm.stream
+                    )
+                else:
+                    completion = self.client.chat.completions.create( 
+                        model=self.model_name,
+                        messages=messages,
+                        response_format={"type": "json_object"},
+                        stream= self.llm.stream
+                    )
+                if self.llm.stream:
+                    response_chunks = []
+                    for chunk in completion:
+                        if chunk.choices[0].delta.content is not None:
+                            response_chunks.append(chunk.choices[0].delta.content)
+                    response_text = "".join(response_chunks)
+                else:
+                    response_text = completion.choices[0].message.content
                 if not response_text.strip():
                     raise ValueError("Empty response received from LLM")
                 print(f"Agent {self.agent_id} received response: {response_text[:100]}...")

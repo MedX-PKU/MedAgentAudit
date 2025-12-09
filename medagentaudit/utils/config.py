@@ -27,9 +27,6 @@ def get_config(config_path: str, active_llm: str) -> MedagentAudit:
     settings, and returns a unified HealthFlowConfig object.
     """
     if not Path(config_path).exists():
-        example_path = Path("config.toml")
-        if example_path.exists():
-             raise FileNotFoundError(f"Configuration file not found at '{config_path}'. Please copy '{example_path}' to '{config_path}' and fill in your API key.")
         raise FileNotFoundError(f"Configuration file not found at '{config_path}'.")
 
     try:

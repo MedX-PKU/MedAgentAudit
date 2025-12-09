@@ -99,19 +99,32 @@ class BaseAgent:
         while retries < max_retries:
             try:
                 print(f"Agent {self.agent_id} calling LLM, system message: {system_message['content'][:50]}...",flush=True)
-                completion = self.client.chat.completions.create(
-                    model=self.model_name,
-                    messages=[system_message, user_message],
-                    response_format={"type": "json_object"},
-                    extra_body={"enable_thinking": False},
-                    stream=True,
-                )
-                response_chunks = []
-                for chunk in completion:
-                    if chunk.choices[0].delta.content is not None:
-                        response_chunks.append(chunk.choices[0].delta.content)
+                if hasattr(self.llm, 'reasoning') and self.llm.reasoning: # for model like gpt-5.1
+                    completion = self.client.chat.completions.create(
+                        model=self.model_name,
+                        messages=[system_message, user_message],
+                        response_format={"type": "json_object"},
+                        extra_body={"enable_thinking": True},
+                        reasoning_effort=self.llm.reasoning.effort,
+                        stream=self.llm.stream,
+                    )
+                else:
+                    completion = self.client.chat.completions.create(
+                        model=self.model_name,
+                        messages=[system_message, user_message],
+                        response_format={"type": "json_object"},
+                        extra_body={"enable_thinking": True},
+                        stream=self.llm.stream,
+                    )
+                if not self.llm.stream:
+                    response = completion.choices[0].message.content
+                else:
+                    response_chunks = []
+                    for chunk in completion:
+                        if chunk.choices[0].delta.content is not None:
+                            response_chunks.append(chunk.choices[0].delta.content)
 
-                response = "".join(response_chunks)
+                    response = "".join(response_chunks)
                 if not response.strip():
                     raise ValueError("Empty response from LLM")
                 print(f"Agent {self.agent_id} received response: {response[:50]}...")
@@ -214,8 +227,8 @@ class DoctorAgent(BaseAgent):
     def __init__(self,
                  agent_id: str,
                  specialty: MedicalSpecialty,
-                 model_key: str = "qwen-vl-max"):
-        super().__init__(agent_id, AgentType.DOCTOR, model_key)
+                 model_key: str = "qwen-vl-max", config_path: str = "config.toml"):
+        super().__init__(agent_id=agent_id, agent_type=AgentType.DOCTOR, model_key=model_key, config_path=config_path)
         self.specialty = specialty
         print(f"Initializing {specialty.value} doctor agent, ID: {agent_id}, Model: {model_key}")
 
@@ -769,7 +782,7 @@ class MDTConsultation:
                 config_path: str = "config.toml"):
         self.max_rounds = max_rounds
         self.model_key = model_key
-        
+        self.config_path = config_path
         # Initialize agents
         self.expert_gatherer = ExpertGathererAgent(agent_id="expert_gatherer", model_key=model_key, config_path=config_path)
         self.meta_agent = MetaAgent(agent_id="meta", model_key=meta_model_key, config_path=config_path)
@@ -785,7 +798,7 @@ class MDTConsultation:
         self.doctor_agents = []
         for idx, specialty in enumerate(specialties, 1):
             agent_id = f"doctor_{idx}"
-            self.doctor_agents.append(DoctorAgent(agent_id, specialty, self.model_key))
+            self.doctor_agents.append(DoctorAgent(agent_id=agent_id, specialty=specialty, model_key=self.model_key, config_path=self.config_path))
         self.doctor_specialties = specialties
 
     def run_consultation(self,

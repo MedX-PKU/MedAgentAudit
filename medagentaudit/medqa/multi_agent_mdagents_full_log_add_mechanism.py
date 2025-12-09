@@ -90,11 +90,29 @@ class BaseAgent:
         while retries < max_retries:
             try:
                 # print(f"Agent {self.agent_id} calling LLM ({self.model_name}). Attempt {retries + 1}/{max_retries}.")
-                completion_params = {"model": self.model_name, "messages": messages}
+                if hasattr(self.llm, 'reasoning') and self.llm.reasoning:
+                    completion_params = {
+                        "model": self.model_name, 
+                        "messages": messages,
+                        "reasoning_effort": self.llm.reasoning.effort,
+                        "stream": self.llm.stream}
+                else:
+                    completion_params = {
+                        "model": self.model_name, 
+                        "messages": messages,
+                        "stream": self.llm.stream}
                 if response_format:
                     completion_params["response_format"] = response_format
                 completion = self.llm_client.chat.completions.create(**completion_params)
-                response_content = completion.choices[0].message.content
+
+                if self.llm.stream:
+                    response_chunks = []
+                    for chunk in completion:
+                        if chunk.choices[0].delta.content is not None:
+                            response_chunks.append(chunk.choices[0].delta.content)
+                    response_content = "".join(response_chunks)
+                else:
+                    response_content = completion.choices[0].message.content
                 # print(f"Agent {self.agent_id} received response successfully.")
                 if not response_content:
                     raise ValueError("Received empty response from LLM.")
@@ -1503,7 +1521,7 @@ class MDAgentsFramework:
                 print(f"Skipping {qid} - result file already exists.")
                 continue
             try:
-                result = self.run_query(item = item)
+                result = self.run_query(data_item=item)
                 save_json(result, result_path)
             except Exception as e:
                 print(f"FATAL ERROR for QID {qid}: {e}")

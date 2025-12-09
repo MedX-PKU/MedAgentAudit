@@ -54,95 +54,95 @@ num=1
 
 echo "Starting experiments..."
 
-# # 1. ColaCare
+# # 1. ColaCare  QA fixed VQA fixed
 # for dataset in "${QA_DATASETS[@]}"; do
 #     for qa_type in ${DATASET_QA_TYPES[$dataset]}; do
-#         cmd="python -m medagentaudit.medqa.multi_agent_colacare_full_log_add_mechanism --dataset $dataset --qa_type $qa_type --meta_model deepseek-reasoner --doctor_models deepseek-reasoner gpt-5.1 gemini-2.5-flash --auditor_model gemini-3-pro-preview --config_path config.toml --num_samples $num --test_mode True" 
+#         cmd="python -m medagentaudit.medqa.multi_agent_colacare_full_log_add_mechanism --dataset $dataset --qa_type $qa_type --meta_model deepseek-reasoner --doctor_models deepseek-reasoner gpt-5.1 gemini-2.5-flash --auditor_model gemini-2.5-flash --config_path config.toml --num_samples $num --test_mode True" 
 #         run_command "$cmd"
 #     done
 # done
 
 # for dataset in "${VQA_DATASETS[@]}"; do
 #     for qa_type in ${DATASET_QA_TYPES[$dataset]}; do
-#         cmd="python -m medagentaudit.medqa.multi_agent_colacare_full_log_add_mechanism --dataset $dataset --qa_type $qa_type --meta_model glm-4.6v --doctor_models glm-4.6v gpt-5.1 gemini-2.5-flash --auditor_model gemini-3-pro-preview --config_path config.toml --num_samples $num --test_mode True"
+#         cmd="python -m medagentaudit.medqa.multi_agent_colacare_full_log_add_mechanism --dataset $dataset --qa_type $qa_type --meta_model glm-4.6v --doctor_models glm-4.6v gpt-5.1 gemini-2.5-flash --auditor_model gemini-2.5-flash --config_path config.toml --num_samples $num --test_mode True"
 #         run_command "$cmd"
 #     done
 # done
 
-# # 2. MedAgent
+# # 2. MedAgent QA fixed VQA fixed
 # for dataset in "${QA_DATASETS[@]}"; do
 #     for qa_type in ${DATASET_QA_TYPES[$dataset]}; do
-#         cmd="python -m medagentaudit.medqa.multi_agent_medagent_full_log_add_mechanism --dataset $dataset --qa_type $qa_type --model deepseek-reasoner --meta_model gpt-5.1 --decision_model gemini-2.5-flash --auditor_model gemini-3-pro-preview --config_path config.toml --num_samples $num --test_mode True"
+#         cmd="python -m medagentaudit.medqa.multi_agent_medagent_full_log_add_mechanism --dataset $dataset --qa_type $qa_type --model deepseek-reasoner --meta_model gpt-5.1 --decision_model gemini-2.5-flash --auditor_model gemini-2.5-flash --config_path config.toml --num_samples $num --test_mode True"
 #         run_command "$cmd"
 #     done
 # done
 
 # for dataset in "${VQA_DATASETS[@]}"; do
 #     for qa_type in ${DATASET_QA_TYPES[$dataset]}; do
-#         cmd="python -m medagentaudit.medqa.multi_agent_medagent_full_log_add_mechanism --dataset $dataset --qa_type $qa_type --model glm-4.6v --meta_model gpt-5.1 --decision_model gemini-2.5-flash --auditor_model gemini-3-pro-preview --config_path config.toml --num_samples $num --test_mode True"
+#         cmd="python -m medagentaudit.medqa.multi_agent_medagent_full_log_add_mechanism --dataset $dataset --qa_type $qa_type --model glm-4.6v --meta_model gpt-5.1 --decision_model gemini-2.5-flash --auditor_model gemini-2.5-flash --config_path config.toml --num_samples $num --test_mode True"
 #         run_command "$cmd"
 #     done
 # done
 
-# # 3. MDAgents
+# # 3. MDAgents # QA fixed VQA fixed
 # for dataset in "${QA_DATASETS[@]}"; do
 #     for qa_type in ${DATASET_QA_TYPES[$dataset]}; do
-#         cmd="python -m medagentaudit.medqa.multi_agent_mdagents_full_log_add_mechanism --dataset $dataset --qa_type $qa_type --moderator_model deepseek-reasoner --recruiter_model gpt-5.1 --agent_model gemini-2.5-flash --auditor_model gemini-3-pro-preview --config_path config.toml --num_samples $num --test_mode True"
+#         cmd="python -m medagentaudit.medqa.multi_agent_mdagents_full_log_add_mechanism --dataset $dataset --qa_type $qa_type --moderator_model deepseek-reasoner --recruiter_model gpt-5.1 --agent_model gemini-2.5-flash --auditor_model gemini-2.5-flash --config_path config.toml --num_samples $num --test_mode True"
 #         run_command "$cmd"
 #     done
 # done
 
 # for dataset in "${VQA_DATASETS[@]}"; do
 #     for qa_type in ${DATASET_QA_TYPES[$dataset]}; do
-#         cmd="python -m medagentaudit.medqa.multi_agent_mdagents_full_log_add_mechanism --dataset $dataset --qa_type $qa_type --moderator_model glm-4.6v --recruiter_model gpt-5.1 --agent_model gemini-2.5-flash --auditor_model gemini-3-pro-preview --config_path config.toml --num_samples $num --test_mode True"
+#         cmd="python -m medagentaudit.medqa.multi_agent_mdagents_full_log_add_mechanism --dataset $dataset --qa_type $qa_type --moderator_model glm-4.6v --recruiter_model gpt-5.1 --agent_model gemini-2.5-flash --auditor_model gemini-2.5-flash --config_path config.toml --num_samples $num --test_mode True"
 #         run_command "$cmd"
 #     done
 # done
 
-# # 4. ReConcile
+# # 4. ReConcile QA fixed VQA fixed
 # for dataset in "${QA_DATASETS[@]}"; do
 #     for qa_type in ${DATASET_QA_TYPES[$dataset]}; do
-#         cmd="python -m medagentaudit.medqa.multi_agent_reconcile_full_log_add_mechanism --dataset $dataset --qa_type $qa_type --agents deepseek-reasoner gpt-5.1 gemini-2.5-flash --auditor_model gemini-3-pro-preview --config_path config.toml --num_samples $num --test_mode True --max_rounds 3"
+#         cmd="python -m medagentaudit.medqa.multi_agent_reconcile_full_log_add_mechanism --dataset $dataset --qa_type $qa_type --agents deepseek-reasoner gpt-5.1 gemini-2.5-flash --auditor_model gemini-2.5-flash --config_path config.toml --num_samples $num --test_mode True --max_rounds 3"
 #         run_command "$cmd"
 #     done
 # done
 
 # for dataset in "${VQA_DATASETS[@]}"; do
 #     for qa_type in ${DATASET_QA_TYPES[$dataset]}; do
-#         cmd="python -m medagentaudit.medqa.multi_agent_reconcile_full_log_add_mechanism --dataset $dataset --qa_type $qa_type --agents glm-4.6v gpt-5.1 gemini-2.5-flash --auditor_model gemini-3-pro-preview --config_path config.toml --num_samples $num --test_mode True --max_rounds 3"
+#         cmd="python -m medagentaudit.medqa.multi_agent_reconcile_full_log_add_mechanism --dataset $dataset --qa_type $qa_type --agents glm-4.6v gpt-5.1 gemini-2.5-flash --auditor_model gemini-2.5-flash --config_path config.toml --num_samples $num --test_mode True --max_rounds 3"
 #         run_command "$cmd"
 #     done
 # done
 
-# # 5. MAC
+# # 5. MAC  QA fixed   VQA fixed
 # for dataset in "${QA_DATASETS[@]}"; do
 #     for qa_type in ${DATASET_QA_TYPES[$dataset]}; do
-#         cmd="python -m medagentaudit.medqa.multi_agent_mac_add_mechanism --dataset $dataset --qa_type $qa_type --doctor_model deepseek-reasoner --supervisor_model gpt-5.1 --auditor_model gemini-3-pro-preview --config_path config.toml --num_samples $num --test_mode True --max_rounds 3"
+#         cmd="python -m medagentaudit.medqa.multi_agent_mac_add_mechanism --dataset $dataset --qa_type $qa_type --doctor_model deepseek-reasoner --supervisor_model gpt-5.1 --auditor_model gemini-2.5-flash --config_path config.toml --num_samples $num --test_mode True --max_rounds 3"
 #         run_command "$cmd"
 #     done
 # done
 
 # for dataset in "${VQA_DATASETS[@]}"; do
 #     for qa_type in ${DATASET_QA_TYPES[$dataset]}; do
-#         cmd="python -m medagentaudit.medqa.multi_agent_mac_add_mechanism --dataset $dataset --qa_type $qa_type --doctor_model glm-4.6v --supervisor_model gpt-5.1 --auditor_model gemini-3-pro-preview --config_path config.toml --num_samples $num --test_mode True --max_rounds 3"
+#         cmd="python -m medagentaudit.medqa.multi_agent_mac_add_mechanism --dataset $dataset --qa_type $qa_type --doctor_model glm-4.6v --supervisor_model gpt-5.1 --auditor_model gemini-2.5-flash --config_path config.toml --num_samples $num --test_mode True --max_rounds 3"
 #         run_command "$cmd"
 #     done
 # done
 
-# 6. HealthcareAgent
+# # 6. HealthcareAgent QA fixed VQA fixed
 # for dataset in "${QA_DATASETS[@]}"; do
 #     for qa_type in ${DATASET_QA_TYPES[$dataset]}; do
-#         cmd="python -m medagentaudit.medqa.multi_agent_healthcareagent_add_mechanism --dataset $dataset --qa_type $qa_type --model deepseek-reasoner --auditor_model gemini-3-pro-preview --config_path config.toml --num_samples $num --test_mode True"
+#         cmd="python -m medagentaudit.medqa.multi_agent_healthcareagent_add_mechanism --dataset $dataset --qa_type $qa_type --model deepseek-reasoner --auditor_model gemini-2.5-flash --config_path config.toml --num_samples $num --test_mode True"
 #         run_command "$cmd"
 #     done
 # done
 
-for dataset in "${VQA_DATASETS[@]}"; do
-    for qa_type in ${DATASET_QA_TYPES[$dataset]}; do
-        cmd="python -m medagentaudit.medqa.multi_agent_healthcareagent_add_mechanism --dataset $dataset --qa_type $qa_type --model glm-4.6v --auditor_model gemini-3-pro-preview --config_path config.toml --num_samples $num --test_mode True"
-        run_command "$cmd"
-    done
-done
+# for dataset in "${VQA_DATASETS[@]}"; do
+#     for qa_type in ${DATASET_QA_TYPES[$dataset]}; do
+#         cmd="python -m medagentaudit.medqa.multi_agent_healthcareagent_add_mechanism --dataset $dataset --qa_type $qa_type --model glm-4.6v --auditor_model gemini-2.5-flash --config_path config.toml --num_samples $num --test_mode True"
+#         run_command "$cmd"
+#     done
+# done
 # 等待所有任务完成
 wait
 

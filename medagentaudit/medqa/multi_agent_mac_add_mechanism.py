@@ -355,18 +355,35 @@ class BaseAgent:
         self.model_name = self.llm.model_name
         print(f"Initialized Agent: ID={self.agent_id}, Role={self.role.value}, Model={self.model_key} ({self.model_name})")
 
-    def call_llm(self, messages: List[Dict[str, Any]], max_retries: int = 3, image_path: Optional[str] = None) -> Tuple[str, List[Dict[str, Any]]]:
+    def call_llm(self, messages: List[Dict[str, Any]], max_retries: int = 3) -> Tuple[str, List[Dict[str, Any]]]:
         """Call LLM, handle retries, and return response + full prompt for logging."""
         retries = 0
         while retries < max_retries:
             try:
                 print(f"Agent {self.agent_id} calling LLM. Attempt {retries + 1}/{max_retries}.")
-                completion = self.llm_client.chat.completions.create(
-                    model=self.model_name,
-                    messages=messages,
-                    response_format={"type": "json_object"}
-                )
-                response = completion.choices[0].message.content
+                if hasattr(self.llm, 'reasoning') and self.llm.reasoning:
+                    completion = self.llm_client.chat.completions.create(
+                        model=self.model_name,
+                        messages=messages,
+                        response_format={"type": "json_object"},
+                        reasoning_effort=self.llm.reasoning.effort,
+                        stream = self.llm.stream
+                    )
+                else:
+                    completion = self.llm_client.chat.completions.create(
+                        model=self.model_name,
+                        messages=messages,
+                        response_format={"type": "json_object"},
+                        stream = self.llm.stream
+                    )
+                if self.llm.stream:
+                    response_chunks = []
+                    for chunk in completion:
+                        if chunk.choices[0].delta.get("content"):
+                            response_chunks.append(chunk.choices[0].delta.content)
+                    response = "".join(response_chunks)
+                else:
+                    response = completion.choices[0].message.content
                 if not response:
                     raise ValueError("Received empty response from LLM.")
                 print(f"Agent {self.agent_id} received response successfully.")
@@ -459,7 +476,9 @@ class MACFramework:
 
         try:
             initial_content = self._format_initial_prompt_content(data_item)
-            conversation_log.append({"role": "Admin", "raw_content": initial_content})
+            initial_info = initial_content.copy()
+            initial_info.pop(1) # remove fig in case of token explosion
+            conversation_log.append({"role": "Admin", "raw_content": initial_info})
 
             for round_num in range(1, self.max_rounds + 1):
                 print(f"\n--- Starting Round {round_num}/{self.max_rounds} for QID: {qid} ---")
@@ -489,11 +508,13 @@ class MACFramework:
 
                         response_str, llm_input = doctor.call_llm(messages_for_llm)
                         parsed_output = json.loads(preprocess_response_string(response_str))
-                        
+                        if len(llm_input) > 1:
+                            llm_input.pop(1) # remove repeated initial_content
+                        print()
                         log_entry = {
                             "role": f"Doctor ({doctor.agent_id})",
                             "parsed_output": parsed_output,
-                            "llm_input": llm_input,
+                            "llm_input": llm_input, 
                             "raw_content": response_str
                         }
                         round_data["doctor_responses"].append(log_entry)
@@ -545,7 +566,6 @@ class MACFramework:
                         )
                         messages_for_llm = [
                             {"role": "system", "content": system_prompt},
-                            {"role": "user", "content": initial_content},
                             {"role": "user", "content": user_prompt}
                         ]
                         
@@ -638,7 +658,7 @@ class MACFramework:
                     "- `final_answer`: A JSON object with `answer` and `explanation`(final reasoning,citing KEU-IDs and addressing CCPs in explanation.) fields (null if not final)."
                 )
                 user_prompt = (
-                    f"{history_str}\n"
+                    f"{history_str}\n" 
                     f"--- Information for Supervisor (End of Round {round_num}) ---\n"
                     f"Available KEUs:\n{keu_list_text}\n\n"
                     f"Unresolved CCPs:\n{ccp_text}\n\n"
@@ -646,7 +666,14 @@ class MACFramework:
                     "Provide your supervisory assessment in the specified JSON format. Your summary must attempt to resolve the CCPs."
                 )
                 user_content = []
-                user_content.append({"type": "text", "text": user_prompt})
+                if data_item.get("image_path"):
+                    base64_image = encode_image(data_item["image_path"])
+                    user_content.append({
+                        "type":"image_url",
+                        "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}
+                    })
+                user_content.append(
+                    {"type": "text", "text": user_prompt})
                 messages_for_llm = [
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_content}
@@ -658,7 +685,7 @@ class MACFramework:
                     quality_audit = self.auditor_agent.audit_overall_quality_for_decision(data_item["question"], pre_decision_args)
                     audit_trail["collaboration_audits"][f"round_{round_num}_pre_decision_quality"] = quality_audit
 
-                response_str, llm_input = self.supervisor_agent.call_llm(messages=messages_for_llm, image_path=data_item.get("image_path"))
+                response_str, llm_input = self.supervisor_agent.call_llm(messages=messages_for_llm) 
                 parsed_output = json.loads(preprocess_response_string(response_str))
                 log_entry = {
                     "role": "Supervisor",
