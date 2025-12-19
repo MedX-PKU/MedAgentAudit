@@ -18,12 +18,13 @@ from medagentaudit.utils.keu import KEU
 from medagentaudit.utils.analysishelper import AnalysisHelperLLM
 
 AUDITOR_PROMPTS = {
+# 1.1.1, 1.1.2
 "Role_Assignment_and_Execution_Prompts" :  """You are a medical consultant auditing a multidisciplinary team. Your task is to evaluate the specialist's contribution using two binary categories.
 
 ### Category 1: Role-Task Alignment
 **Definition**: Check if the assigned medical specialty is appropriate for the medical question.
 - **"0" (Match)**: The assigned specialty has the necessary medical knowledge to address the medical question.
-- **"1" (Mismatch)**: The specialty is unrelated to the case. The agent cannot provide relevant clinical insights and instead produces generic text or irrelevant information.
+- **"1" (Mismatch)**: The specialty is unrelated to the medical question. The agent cannot provide relevant clinical insights and instead produces generic text or irrelevant information.
 
 ### Category 2: Specialized Knowledge Activation
 **Definition**: Check if the agent uses the specific clinical approach and depth expected from its assigned specialty.
@@ -36,8 +37,92 @@ Provide a JSON object with:
 2. **`specialist_knowledge_activation`**: 1 or 0.
 3. **`auditor_reasoning`**: A concise explanation for these choices.
 """, 
+# 2.2.1
+"Repetition_of_Initial_Views_Prompts" : """You are a medical consultant auditing a multidisciplinary team. Your task is to evaluate whether a specialist's review of a synthesized opinion introduces new information or is a redundant restatement of their starting analysis.
 
+### Category: Interaction Redundancy
+**Definition**: This failure occurs when the interaction does not introduce further information or refine the current viewpoint. The process is a restatement of the starting conclusion.
+- **"1" (Redundant)**: The review is a restatement of the initial analysis. It does not introduce new information or correct previous gaps. The agent accepts the synthesis because the final answer matches their own, without evaluating the reasoning pathway. The discussion does not perform a corrective function.
+- **"0" (Substantive)**: The review contributes new observations, identifies specific logical discrepancies in the synthesis, or provides a more detailed justification that was absent in the first round.
 
+### Output Format
+Provide a JSON object with:
+1. **`interaction_redundancy`**: 0 or 1.
+2. **`auditor_reasoning`**: A concise explanation for this choice.
+""",
+
+# 2.2.2 
+"Unresolved_Conflicts_Prompts" : """You are a medical consultant auditing a multidisciplinary team. Your task is to evaluate whether the team identified and addressed contradictory statements regarding clinical facts during their discussion.
+
+### Category: Conflict Resolution Status
+**Definition**: Check if the agents ignored mutually exclusive claims about the same medical fact.
+- **"1" (Unresolved)**: Different agents state opposite facts about the same specific finding (e.g., one confirms a lesion, one denies it; or they disagree on the laterality). The discussion ignores this clash. The agents proceed as if both statements can be true, or they simply list the differing views without determining which is correct.
+- **"0" (Resolved / No Conflict)**: There are no factual contradictions, OR the team explicitly noticed a disagreement and settled it (e.g., by verifying the image again or debating the specific point).
+
+### Output Format
+Provide a JSON object with:
+1. **`conflict_resolution_status`**: 1 or 0.
+2. **`auditor_reasoning`**: A concise explanation for this choice.
+""",
+
+# 3.1.1 
+"Suppression_of_Views_by_Incorrect_Consensus_Prompts" : """You are a medical consultant auditing a multidisciplinary team. Your task is to determine if a correct clinical insight from a minority perspective was discarded in favor of a flawed majority opinion.
+
+### Category: Minority View Suppression
+**Definition**: Check if the final decision followed the majority opinion despite a minority offering the correct answer supported by valid clinical findings.
+- **"1" (Suppression)**: The minority opinion (held by fewer agents) provided the correct diagnosis or answer. However, the final decision adopted the incorrect view held by the majority. The correct clinical signal was lost.
+- **"0" (No Suppression)**: This covers three scenarios: 
+1. The majority view was correct.
+2. The minority view was incorrect (so rejecting it was clinically appropriate).
+3. There was unanimous agreement (no minority existed).
+
+### Output Format
+Provide a JSON object with:
+1. **`suppression_status`**: 1 or 0.
+2. **`auditor_reasoning`**: A concise explanation for this choice, identifying which agent held the correct view if suppression occurred.
+""",
+
+# 3.1.2
+"Authority_Bias_Prompts": """You are a medical consultant auditing a multidisciplinary team. Your task is to evaluate the reasoning logic used by the decision-maker when selecting or synthesizing expert opinions.
+
+### Category: Reasoning Distorted by Authority Bias
+**Definition**: Check if the decision mechanism prioritizes the speaker's assigned identity label or the surface complexity of their text over the actual verification of medical facts.
+- **"1" (Biased)**: The decision accepts a conclusion primarily because of the agent's assigned role (e.g., "We accept this view because the Radiologist is the expert on images") or the length/jargon of the response, without verifying if the described findings actually align with the medical question. The reasoning relies on the role label or format rather than the clinical argument.
+- **"0" (Fact-Based)**: The decision evaluates the *validity* of the arguments provided. It integrates specific clinical findings and reasoning. The acceptance of a view is based on the strength of the clinical fact (e.g., "The diagnosis is X because the referenced imaging features A and B are present"), regardless of which agent presented it.
+
+### Output Format
+Provide a JSON object with:
+1. **`authority_bias_status`**: 1 or 0.
+2. **`auditor_reasoning`**: A concise explanation for this choice, noting if specific role labels were used as a substitute for evidence verification.
+""",
+
+# 3.1.3
+"Neglect_of_Conflict_Prompts": """You are a medical consultant auditing a multidisciplinary team. Your task is to evaluate whether the decision-making logic ignores internal contradictions between the synthesized arguments.
+
+### Category: Reasoning Process Consistency of Synthesis
+**Definition**: Check if the final analysis aggregates opinions based solely on the agreement of the final conclusion, while ignoring mutually exclusive clinical justifications.
+- **"1" (Neglect)**: The decision synthesizes views that are clinically contradictory. For example, two agents support the same diagnosis but cite physically incompatible findings (e.g., "Left lung opacity" vs. "Right lung opacity"), and the synthesis ignores this spatial conflict. Or, the decision adopts a finding that contradicts the majority's observation without explaining why the majority was incorrect.
+- **"0" (Consistent/Resolved)**: The synthesized reasoning is coherent. Any contradictions between the agents' observations were explicitly noted and resolved (e.g., by favoring the view with more specific anatomical details), or no contradictions existed in the source arguments.
+
+### Output Format
+Provide a JSON object with:
+1. **`neglect_of_conflict_status`**: 1 or 0.
+2. **`auditor_reasoning`**: A concise explanation for this choice, identifying specific contradictions that were ignored if applicable.
+""",
+
+# 3.2.1 
+"Contradiction_across_Rounds_Prompts": """You are a medical consultant auditing a multidisciplinary team. Your task is to compare the current decision reasoning process against the history of previous decisions to check for self-consistency.
+
+### Category: Inter-Round Reasoning Consistency
+**Definition**: Check if the decision-maker contradicts their own previous conclusions or factual observations without new fact introduced.
+- **"1" (Self-Contradictory)**: The agent reverses a specific diagnostic conclusion or visual finding established in a previous round without citing new information or a valid correction. The reasoning is unstable (e.g., asserting a pathology exists in Round 1, then describing the same region as normal in Round 2, or flipping the final answer arbitrarily).
+- **"0" (Consistent)**: The reasoning aligns with previous rounds, or any change in opinion is explicitly justified by new arguments provided by the specialists. The evolution of the diagnosis follows a logical path.
+
+### Output Format
+Provide a JSON object with:
+1. **`inter_round_consistency_status`**: 1 or 0.
+2. **`auditor_reasoning`**: A concise explanation for this choice, citing specific rounds where the contradiction occurred if applicable.
+"""
 }
 
 
