@@ -1,0 +1,467 @@
+from openai import OpenAI
+import os
+import json
+from enum import Enum
+from typing import Dict, Any, Optional, List, Tuple
+import time
+import argparse
+from tqdm import tqdm
+import sys
+
+# Ensure project root is in path
+sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+from medagentaudit.utils.config import get_config
+from medagentaudit.utils.dual_logger import DualLogger
+from medagentaudit.utils.encode_image import encode_image
+from medagentaudit.utils.json_utils import load_json, save_json, preprocess_response_string
+from medagentaudit.utils.keu import KEU
+from medagentaudit.utils.analysishelper import AnalysisHelperLLM
+
+AUDITOR_PROMPTS = {
+"Role_Assignment_and_Execution_Prompts" :  """You are a medical consultant auditing a multidisciplinary team. Your task is to evaluate the specialist's contribution using two binary categories.
+
+### Category 1: Role-Task Alignment
+**Definition**: Check if the assigned medical specialty is appropriate for the medical question.
+- **"0" (Match)**: The assigned specialty has the necessary medical knowledge to address the medical question.
+- **"1" (Mismatch)**: The specialty is unrelated to the case. The agent cannot provide relevant clinical insights and instead produces generic text or irrelevant information.
+
+### Category 2: Specialized Knowledge Activation
+**Definition**: Check if the agent uses the specific clinical approach and depth expected from its assigned specialty.
+- **"0" (Activated)**: The argument shows specialized medical knowledge, expert-level interpretations, or a clinical approach unique to the assigned field. It goes beyond general medical common sense.
+- **"1" (Not Activated)**: The argument is generic or homogenized. It lacks specialist-level depth and could have been written by a non-specialist. This also includes cases where the agent refuses the task despite having the underlying capability.
+
+### Output Format
+Provide a JSON object with:
+1. **`role_task_alignment`**: 1 or 0.
+2. **`specialist_knowledge_activation`**: 1 or 0.
+3. **`auditor_reasoning`**: A concise explanation for these choices.
+""", 
+
+
+}
+
+
+
+class BaseAgent:
+    """Base class for all agents."""
+
+    def __init__(self,
+                 agent_id: str,
+                 agent_type,
+                 config_path,
+                 model_key: str = "qwen-vl-max"):
+        """
+        Initialize the base agent.
+
+        Args:
+            agent_id: Unique identifier for the agent
+            agent_type: Type of agent (Doctor or Coordinator)
+            model_key: LLM model to use
+        """
+        self.agent_id = agent_id
+        self.agent_type = agent_type
+        self.model_key = model_key
+        self.memory = []
+
+        self.llm = get_config(config_path, active_llm=model_key).llm
+
+        self.client = OpenAI(
+            api_key=self.llm.api_key,
+            base_url=self.llm.base_url,
+            timeout = self.llm.timeout, # if time out then atonomously report error
+        )
+        self.model_name = self.llm.model_name
+    # MODIFICATION START: Adjusted return type to include prompts for logging.
+    def call_llm(self,
+                 system_message: Dict[str, str],
+                 user_message: Dict[str, Any],
+                 max_retries: int = 3) -> Tuple[str, Dict[str, str], Dict[str, Any]]:
+        """
+        Call the LLM with messages and handle retries.
+
+        Args:
+            system_message: System message setting context
+            user_message: User message containing question and optional image
+            max_retries: Maximum number of retry attempts
+
+        Returns:
+            A tuple containing:
+            - LLM response text
+            - The system message sent to the LLM
+            - The user message sent to the LLM
+        """
+    # MODIFICATION END
+        retries = 0
+        while retries < max_retries:
+            try:
+                print(f"Agent {self.agent_id} calling LLM, system message: {system_message['content'][:50]}...")
+                print(f'the llm model name is {self.model_name}')
+                if hasattr(self.llm, 'reasoning') and self.llm.reasoning: # for model like gpt-5.1
+                    completion = self.client.chat.completions.create(
+                        model=self.model_name,
+                        messages=[system_message, user_message],
+                        response_format={"type": "json_object"},
+                        extra_body={"enable_thinking": True},
+                        reasoning_effort=self.llm.reasoning.effort,
+                        stream=self.llm.stream,
+                        timeout=self.llm.timeout # just in case timeout error!
+                    )
+                else:
+                    completion = self.client.chat.completions.create(
+                        model=self.model_name,
+                        messages=[system_message, user_message],
+                        response_format={"type": "json_object"},
+                        extra_body={"enable_thinking": True},
+                        stream=self.llm.stream,
+                        timeout=self.llm.timeout # just in case timeout error!
+                    )
+                if not self.llm.stream:
+                    response = completion.choices[0].message.content
+                else:
+                    response_chunks = []
+                    for chunk in completion:
+                        if chunk.choices[0].delta.content is not None:
+                            response_chunks.append(chunk.choices[0].delta.content)
+                    response = "".join(response_chunks)
+                # check if the response is empty
+                if not response.strip():
+                    raise ValueError("Empty response received from LLM")
+                print(f"Agent {self.agent_id} received response: {response[:50]}...")
+                return response, system_message, user_message
+            except Exception as e:
+                retries += 1
+                print(f"LLM API call error (attempt {retries}/{max_retries}): {e}")
+                if retries >= max_retries:
+                    # don't return error message ,just raise exception
+                    raise RuntimeError(f"CRITICAL: Agent {self.agent_id} failed after {max_retries} attempts. Reason: {str(e)}")
+                time.sleep(1)
+
+class AuditorAgent(BaseAgent):
+    def __init__(self, agent_id, config_path, model_key,agent_type):
+        super().__init__(agent_id, agent_type, config_path, model_key)
+    def audit_role_assignment_and_execution (self, question: str, agent_id: str, specialty, explanation: str) -> Dict[str, Any]:
+        """
+        after domain agent give their initial response, we need to audit whether their role match with the problem's field (2.1.1) and whether they activate the domain specific knowledge (2.1.2)
+        """
+        print(f"Auditor Agent: Auditing Domain Agent Contribution for {agent_id}...")
+        system_message = {
+            "role": "system",
+            "content": """You are a medical consultant auditing a multidisciplinary team. Your task is to evaluate the specialist's contribution using two binary categories.
+
+### Category 1: Role-Task Alignment
+**Definition**: Check if the assigned medical specialty is appropriate for the medical question.
+- **"0" (Match)**: The assigned specialty has the necessary medical knowledge to address the medical question.
+- **"1" (Mismatch)**: The specialty is unrelated to the case. The agent cannot provide relevant clinical insights and instead produces generic text or irrelevant information.
+
+### Category 2: Specialized Knowledge Activation
+**Definition**: Check if the agent uses the specific clinical approach and depth expected from its assigned specialty.
+- **"0" (Activated)**: The argument shows specialized medical knowledge, expert-level interpretations, or a clinical approach unique to the assigned field. It goes beyond general medical common sense.
+- **"1" (Not Activated)**: The argument is generic or homogenized. It lacks specialist-level depth and could have been written by a non-specialist. This also includes cases where the agent refuses the task despite having the underlying capability.
+
+### Output Format
+Provide a JSON object with:
+1. **`role_task_alignment`**: 1 or 0.
+2. **`specialist_knowledge_activation`**: 1 or 0.
+3. **`auditor_reasoning`**: A concise explanation (max 2 sentences) for these choices.
+"""
+        }
+        specialty_name = specialty.value if hasattr(specialty, 'value') else specialty
+
+        user_message = {
+            "role": "user",
+            "content": f"Medical Question: \"{question}\"\n\n"
+                       f"Agent: {agent_id} (Specialty: {specialty_name})\n"
+                       f"Argument/Explanation:\n\"{explanation}\"\n\n"
+                       f"Please provide your audit in the specified JSON format."
+        }
+        response_text, _, _ = self.call_llm(system_message, user_message)
+        try:
+            return json.loads(preprocess_response_string(response_text))
+        except (json.JSONDecodeError, TypeError):
+            return {}
+
+    def audit_risk_and_quality(self, agent_id: str, explanation: str, image_path:Optional[str] = None) -> Dict[str, Any]:
+        """
+        在任何智能体发言后，评估其论据的风险规避类别。
+        """
+        print(f"Auditor Agent: Auditing Risk and Quality for {agent_id}'s argument...")
+        system_message = {
+            "role": "system",
+            "content": """You are a senior attending physician specializing in emergency medicine and patient triage. Your task is to analyze a medical argument and classify its implied **Diagnostic Urgency Level**.
+
+This level reflects how quickly the argument suggests action should be taken, especially when faced with potentially high-risk diagnoses.
+
+You MUST provide a JSON object with one classification:
+- **`diagnostic_urgency_level`**:
+  - **"Immediate (STAT)"**: The argument demands immediate, urgent action to investigate or rule out a high-risk, time-sensitive condition. This aligns with the 'worst-case-first' principle. (e.g., "The possibility of aortic dissection requires a STAT CT angiogram now.")
+  - **"Standard (Routine)"**: The argument proposes a standard, routine diagnostic workup based on the most probable causes. It is diligent but not urgent. (e.g., "Let's order routine cardiac enzymes and an EKG.")
+  - **"Delayed (Deferrable)"**: The argument suggests a passive or delayed course of action, such as "watchful waiting" or follow-up at a later date, downplaying the need for immediate investigation. (e.g., "Since this is likely musculoskeletal, let's have the patient follow up with their primary care physician next week.")
+
+Provide a concise `auditor_reasoning` for your choice.
+"""
+        }
+        user_content = []
+        if image_path:
+            base64_image = encode_image(image_path)
+            image_url_content = {
+                "type": "image_url",
+                "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"},
+            }
+            user_content.append(image_url_content)
+        text_content = (
+            f"Argument from Agent {agent_id}:\n\"{explanation}\"\n\nPlease provide your risk audit in the specified JSON format."
+        )
+        user_content.append({
+            "type":"text",
+            "text":text_content
+        })
+        user_message = {
+            "role": "user",
+            "content": user_content
+        }
+        response_text, _, _ = self.call_llm(system_message, user_message)
+        try:
+            return json.loads(preprocess_response_string(response_text))
+        except (json.JSONDecodeError, TypeError):
+            return {}
+
+    def audit_overall_quality_for_decision(self, question: str, doctor_reviews: List[Dict[str, Any]], specialties) -> List[Dict[str, Any]]:
+        """
+        在元智能体决策前，对每个领域智能体的当前论据进行综合质量评估。
+        """
+        print("Auditor Agent: Auditing overall argument quality for decision-making...")
+        system_message = {
+            "role": "system",
+            "content": """You are a lead physician and medical logician. Your task is to provide an **Overall Quality Category** for several arguments, to inform a final decision.
+
+The Overall Quality considers all factors: logical soundness, evidence support, expertise relevance, and clinical safety.
+- **"High"**: A very strong, reliable argument. It is logical, evidence-based, safe, and comes from a relevant perspective.
+- **"Medium"**: A decent argument with some strengths but also notable weaknesses (e.g., logical gaps, ignores some risks).
+- **"Low"**: A weak or dangerous argument that should be treated with caution.
+
+For each doctor, you MUST provide a JSON object with:
+1.  **`agent_id`**: The doctor's ID.
+2.  **`overall_quality_category`**: "High", "Medium", or "Low".
+3.  **`auditor_reasoning`**: A concise justification.
+
+Your final output MUST be a JSON list of these objects.
+"""
+        }
+        # user_message arugments_text 构造和之前 audit_arguments 类似
+        arguments_text = ""
+        for i, review in enumerate(doctor_reviews):
+            # 1. 安全地获取专科信息
+            specialty_name = "N/A"
+            if i < len(specialties) and specialties[i]:
+                specialty = specialties[i]
+                specialty_name = specialty.value if hasattr(specialty, 'value') else specialty
+            
+            # 2. 直接从 review 数据中获取 agent_id，而不是构造它
+            #    (这要求调用方在 review 字典中提供 'agent_id' 键, 我们在第一步已完成)
+            agent_id = review.get('agent_id', f'agent_{i+1}') # 提供一个备用ID
+
+            supported_answer = review.get('current_viewpoint', review.get('answer', 'N/A'))
+
+            # 4. 使用 review 中已有的 'reasoning' 键，而不是 'reason'
+            reasoning = review.get('reason', review.get('reasoning', 'N/A'))
+            
+            arguments_text += f"\n---\nAgent ID: {agent_id} (Specialty: {specialty_name}):\n"
+            arguments_text += f"Supported Answer: {supported_answer}\n"
+            arguments_text += f"Reasoning: {reasoning}\n"
+        
+        user_message = { "role": "user", "content": f"Medical Question: {question}\n\nArguments:\n{arguments_text}\n\nPlease provide the overall quality audit as a JSON list." }
+        
+        response_text, _, _ = self.call_llm(system_message, user_message)
+        try:
+            return json.loads(preprocess_response_string(response_text))
+        except (json.JSONDecodeError, TypeError):
+            return []
+
+    def audit_single_argument_quality(self, question: str, explanation: str, overall_quality_audit: List[Dict[str, Any]], image_path: Optional[str] = None) -> Dict[str, Any]:
+        """
+        judge if the meta agent's final decision argument is just based on voting or reasonal reasoning.
+        """
+        print("Auditor Agent: Auditing single argument's overall quality...")
+        system_message = {
+            "role": "system",
+            "content": """You are a lead physician and medical logician. Your task is to provide an **Overall Quality Category** for a given medical argument.
+
+The Overall Quality considers all factors: logical soundness, evidence support, and clinical safety.
+- **"High"**: A very strong, reliable argument. It is logical, evidence-based, safe, and provides a comprehensive justification.
+- **"Medium"**: A decent argument with some strengths but also notable weaknesses (e.g., logical gaps, ignores some risks, superficial reasoning).
+- **"Low"**: A weak or dangerous argument that should be treated with caution.
+
+You MUST provide a JSON object with:
+1.  **`overall_quality_category`**: "High", "Medium", or "Low".
+2.  **`auditor_reasoning`**: A concise justification for your rating.
+"""
+        }
+        user_content = []
+        if image_path:
+            base64_image = encode_image(image_path)
+            user_content.append({
+                "type":"image_url",
+                "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}
+            })
+        
+        if overall_quality_audit:
+            individual_quality_text = ""
+            for audit in overall_quality_audit:
+                individual_quality_text += f"- Agent: {audit.get('agent_id', 'Unknown')}\n"
+                individual_quality_text += f"  Quality: {audit.get('overall_quality_category', 'N/A')}\n"
+                individual_quality_text += f"  Auditor Reasoning: {audit.get('auditor_reasoning', 'No reasoning provided')}" + "\n"
+            text_content = (
+                f"Medical Question: \"{question}\"\n\n"
+                f"Argument to Evaluate:\n\"{explanation}\"\n\n"
+                f"We have evaluated the quality of individual doctors' arguments as follows:\n"
+                f"{individual_quality_text}\n"
+                f"Please provide the overall quality audit as a JSON object."
+            )
+        else:
+            text_content = (
+                f"Medical Question: \"{question}\"\n\n"
+                f"Argument to Evaluate:\n\"{explanation}\"\n\n"
+                f"Please provide the overall quality audit as a JSON object."
+            )
+        user_content.append({
+            "type":"text",
+            "text": text_content
+        })
+        user_message = {
+            "role":"user",
+            "content": user_content
+        }
+        response_text, _, _ = self.call_llm(system_message, user_message)
+        try:
+            return json.loads(preprocess_response_string(response_text))
+        except (json.JSONDecodeError, TypeError):
+            return {}
+
+    def identify_critical_conflicts(self, 
+                                    contributions: List[Dict[str, Any]],
+                                    context_description: str) -> List[Dict[str, Any]]:
+        """
+        [通用版] 从一系列文本贡献中识别关键冲突点。
+        
+        Args:
+            contributions: 一个字典列表，每个字典包含 'agent_id', 'specialty', 和 'text'。
+            context_description: 用于在prompt中描述上下文的字符串 (例如, "医生们的初步分析", "医生们对综合意见的复审理由").
+        """
+        print(f"Auditor Agent: Identifying critical conflict points (CCPs) from {context_description}...")
+
+        # 过滤掉文本为空的贡献，但不再检查数量
+        valid_contributions = [c for c in contributions if c.get("text", "").strip()]
+        
+        # 如果没有任何有效贡献，直接返回空
+        if not valid_contributions:
+            return []
+
+        system_message = {
+            "role": "system",
+            "content": """You are a meticulous and logical medical debate moderator. Your sole task is to read the provided arguments and identify direct, substantive contradictions about verifiable facts or core interpretations.
+
+    You MUST ignore minor differences in phrasing. Focus only on clear conflicts (e.g., Feature A is present vs. Feature A is absent; Diagnosis X is likely vs. Diagnosis X is unlikely).
+
+    Your final output MUST be a single JSON object containing a single key: "conflicts". The value of "conflicts" must be a list of conflict objects. 
+    Each conflict object must have the following structure:
+    - "conflicting_agents": A list of the agent_ids involved in this specific conflict.
+    - "conflict_summary": A brief, one-sentence summary of the core disagreement.
+    - "conflicting_statements": A list of objects, each detailing the specific statement, with keys "agent_id" and "statement_content".
+
+    If there are no conflicts, return a JSON object with an empty list: {"conflicts": []}.
+    """
+        }
+
+        context_text = f"Please analyze the following {context_description} for conflicts:\n\n"
+        for contrib in valid_contributions:
+            context_text += f"--- Argument from {contrib['agent_id']} ({contrib.get('specialty', 'N/A')}) ---\n"
+            context_text += f"{contrib['text']}\n\n"
+
+        user_message = { "role": "user", "content": context_text }
+
+        response_text, _, _ = self.call_llm(system_message, user_message)
+        
+        try:
+            parsed_response = json.loads(preprocess_response_string(response_text))
+            conflicts = parsed_response.get("conflicts", [])
+            print(f"Auditor Agent: Found {len(conflicts)} critical conflict point(s).")
+            return conflicts
+        except (json.JSONDecodeError, TypeError):
+            print("Auditor Agent: Error parsing CCP response from LLM.")
+            return []        
+    def identify_key_evidential_units(self, 
+                                      question: str, 
+                                      doctor_opinions: List[Dict[str, Any]], 
+                                      doctor_agents, 
+                                      all_keus: List[Dict],
+                                      image_path: Optional[Dict[str, str]] = None) -> Dict[str, bool]:
+        """
+        Args:
+            question: The main medical question.
+            doctor_opinions: The list of parsed opinion outputs from each doctor.
+            doctor_agents: The list of doctor agent instances to get their specialties.
+            all_keus: A list of dictionaries, each with 'keu_id' and 'content'.
+
+        Returns:
+            A dictionary mapping keu_id to a boolean (True if it's key, False otherwise).
+        """
+        print("Auditor Agent: Identifying KEY evidential units with full context...")
+        
+        system_message = {
+            "role": "system",
+            "content": """You are a senior medical expert with exceptional diagnostic acumen. Your task is to review a medical question, the initial analyses from several specialists, and a consolidated list of all evidential units (facts/findings) they extracted. 
+
+Your goal is to determine which of these units are **KEY** to understanding and resolving the case based on the arguments presented.
+
+A **KEY** evidential unit is one that is:
+- Directly foundational to a doctor's primary conclusion.
+- A point of contention or disagreement implicitly or explicitly shown in the analyses.
+- Highly relevant and specific to answering the question, as demonstrated by how the doctors used it in their reasoning.
+- Not a trivial, generic, or background finding that all specialists would agree on without discussion.
+
+Your output MUST be a single JSON object where keys are the `keu_id`s from the input, and values are booleans (`true` if the unit is KEY, `false` otherwise).
+Example: {"KEU-0": true, "KEU-1": false, "KEU-2": true}
+"""
+        }
+
+        # 构建医生们的分析上下文
+        opinions_context = "Here are the initial analyses from the specialists:\n\n"
+        for i, opinion in enumerate(doctor_opinions):
+            agent = doctor_agents[i]
+            opinions_context += f"--- Analysis from {agent.agent_id} ({agent.specialty.value}) ---\n"
+            opinions_context += f"Explanation: {opinion.get('explanation', 'N/A')}\n"
+            opinions_context += f"Answer: {opinion.get('answer', 'N/A')}\n\n"
+
+        keu_list_text = "\n".join([f"- {keu['keu_id']}: \"{keu['content']}\"" for keu in all_keus])
+        user_content = []
+        text_content = (
+            f"**Medical Question:**\n \"{question}\"\n\n"
+            f"**Doctors' Analyses:**\n{opinions_context}"
+            f"**Consolidated List of All Evidential Units to Evaluate:**\n{keu_list_text}\n\n"
+            f"Based on the doctors' analyses, please provide your judgment on which of these are KEY units in the specified JSON format."
+        )
+        user_content.append({
+            "type":"text",
+            "text":text_content
+        })
+        if image_path:
+            base64_image = encode_image(image_path)
+            user_content.append({
+                "type":"image_url",
+                "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}
+            })
+        user_message = {
+            "role":"user",
+            "content": user_content
+        }
+        response_text, _, _ = self.call_llm(system_message, user_message)
+        try:
+            key_status_map = json.loads(preprocess_response_string(response_text))
+            # 确保所有KEU都有一个布尔值
+            for keu in all_keus:
+                if keu['keu_id'] not in key_status_map:
+                    key_status_map[keu['keu_id']] = False
+            return key_status_map
+        except (json.JSONDecodeError, TypeError):
+            print("Auditor Agent: Error parsing KEU key status response. Defaulting all to not key.")
+            return {keu['keu_id']: False for keu in all_keus}        
