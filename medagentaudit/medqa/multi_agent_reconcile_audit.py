@@ -29,7 +29,7 @@ from medagentaudit.utils.keu import KEU
 from medagentaudit.utils.analysishelper import AnalysisHelperLLM
 from medagentaudit.utils.config import get_config
 from medagentaudit.utils.dual_logger import DualLogger
-from medagentaudit.medqa.multi_agent_colacare_full_log_add_mechanism import AuditorAgent # We can reuse the AuditorAgent directly
+from medagentaudit.medqa.multi_agent_colacare_audit import AuditorAgent # We can reuse the AuditorAgent directly
 
 
 class DiscussionPhase(Enum):

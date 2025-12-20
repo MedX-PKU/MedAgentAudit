@@ -54,12 +54,10 @@ class DoctorAgent(BaseAgent):
         self.specialty = specialty
         print(f"Initializing {specialty.value} doctor agent, ID: {agent_id}, Model: {model_key}")
 
-    # MODIFICATION START: Changed return type to a dictionary for comprehensive logging.
     def analyze_case(self,
                      question: str,
                      image_path: str | None,
                      options: Optional[Dict[str, str]] = None) -> Dict[str, Any]:
-    # MODIFICATION END
         """
         Analyze a medical case.
         Returns:
@@ -553,7 +551,7 @@ class MDTConsultation:
             self.doctor_agents.append(doctor_agent)
 
         self.meta_agent = MetaAgent(agent_id="meta",config_path=config_path, model_key=meta_model_key)
-        self.auditor_agent = AuditorAgent(agent_id="auditor",config_path= config_path,model_key= auditor_model_key)
+        self.auditor_agent = AuditorAgent(agent_id="auditor", config_path = config_path, model_key= auditor_model_key)
 
         # 初始化 AnalysisHelperLLM，使其在整个咨询流程中可用
         self.analysis_llm = AnalysisHelperLLM(config_path=config_path, model_key=conflict_analysis_model_key) 
@@ -588,12 +586,12 @@ class MDTConsultation:
         current_round = 0
         final_decision_log = None
         consensus_reached = False
-        decision_log = None # Initialize decision_log to handle cases with no rounds    
+        decision_log = None # Initialize decision_log to handle cases with no rounds
         audit_trail = {
-            "keus": {},  # Dict[str, KEU]
-            "viewpoints": {doc.agent_id: [] for doc in self.doctor_agents},
-            "collaboration_audits": {}, # 新的、更结构化的审计记录
-            "ccps": {} # critical conflict points
+            "keus": {},  # Dict[str, KEU] # TODO 
+            "viewpoints": {doc.agent_id: [] for doc in self.doctor_agents}, # TODO
+            "collaboration_audits": {}, # TODO
+            "ccps": {} # TODO
         }
         all_unresolved_ccps = []
         ccp_counter = 0
@@ -601,13 +599,13 @@ class MDTConsultation:
             current_round += 1
             print(f"Starting round {current_round}")
 
-            round_data = {"round": current_round, "opinions": [], "synthesis": None, "reviews": [], "decision": None} # 加入了decision字段
+            round_data = {"round": current_round, "opinions": [], "synthesis": None, "reviews": [], "decision": None} 
 
             # Step 1: Each doctor analyzes the case
             doctor_opinion_parsed_outputs = []
 
             if current_round == 1:
-                keu_counter = 0
+                keu_counter = 0 # TODO
 
             for i, doctor in enumerate(self.doctor_agents):
                 print(f"Doctor {i+1} ({doctor.specialty.value}) analyzing case")
@@ -615,9 +613,10 @@ class MDTConsultation:
                 parsed_output = opinion_log["parsed_output"]
                 explanation = parsed_output.get("explanation", "")
 
-                # audit 2.1.1 speciality ability dismatch and 2.1.2 failure to activate domain-specific knowledge
+                # audit 2.1.1 speciality ability dismatch and 2.1.2 failure to activate domain-specific knowledge TODO,先插入位置，之后再修改接口。
+                # for colacare, 2.1.1 and 2.1.2 need to be audited for many times, because this mas doesn't give the specific role assignment.
                 contribution_audit = self.auditor_agent.audit_role_assignment_and_execution(question, doctor.agent_id, doctor.specialty, explanation)
-                # TODO: 这里要改，目前没有风险管理审计了
+
                 risk_audit = self.auditor_agent.audit_risk_and_quality(doctor.agent_id, explanation, image_path)
                 step_id = f"round_1_analysis_{doctor.agent_id}"
                 audit_trail["collaboration_audits"][step_id] = {**contribution_audit, **risk_audit}
@@ -747,16 +746,19 @@ class MDTConsultation:
             all_agree = True
             for i, doctor in enumerate(self.doctor_agents):
                 print(f"Doctor {i+1} ({doctor.specialty.value}) reviewing synthesis")
-                # MODIFICATION START: Capture the full log from the agent.
                 review_log = doctor.review_synthesis(question, synthesis_parsed_output, audit_trail=audit_trail, ccp_text=ccp_text_for_prompt, options=options, image_path=image_path)
                 review_parsed_output = review_log["parsed_output"]
                 review_reason = review_parsed_output.get("reason", "")
+                review_outcome = "agrees" if review_parsed_output.get("agree", False) else "disagrees"
                 cited_refs = review_parsed_output.get("cited_references", [])
 
-                # 机制三：审计领域智能体专家相关性得分、领域特定知识激活率、风险规避类别
-                contribution_audit = self.auditor_agent.audit_domain_agent_contribution(question, doctor.agent_id, doctor.specialty, review_reason)
-                risk_audit = self.auditor_agent.audit_risk_and_quality(doctor.agent_id, review_reason, image_path)
+                # audit 2.1.2 Failure to Activate Specialist Knowledge During Role Execution during Collaborative discussion
+                contribution_audit = self.auditor_agent.audit_role_execution_specialist_knowledge(question, doctor.agent_id, doctor.specialty, review_reason)
+                # audit 2.2.1 Repetition of Initial Views during Collaborative discussion 
+                audit_results_repetition_of_initial_views = self.auditor_agent.audit_repetition_of_initial_views(question, doctor.agent_id, doctor.specialty, review_outcome, review_reason, collaboration_context) # collaboration_context include full discussion text before this review
                 
+                # audit 2.2.2 Unresolved Conflicts during Collaborative discussion
+                audit_results_unresolved_conflicts = self.auditor_agent.audit_unresolved_conflicts_during_Collaboration(question, options, doctor.agent_id, doctor.specialty, review_outcome, review_reason, collaboration_context) 
                 step_id = f"round_{current_round}_review_{doctor.agent_id}"
                 audit_trail["collaboration_audits"][step_id] = {**contribution_audit, **risk_audit}
 
@@ -798,7 +800,6 @@ class MDTConsultation:
                 agrees = review_parsed_output.get('agree', False)
                 all_agree = all_agree and agrees
                 print(f"Doctor {i+1} agrees: {'Yes' if agrees else 'No'}")
-                # MODIFICATION END
 
             
             # 机制三：在元智能体决策前，审计论据综合质量得分

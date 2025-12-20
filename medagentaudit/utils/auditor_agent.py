@@ -14,7 +14,7 @@ from config import get_config
 from encode_image import encode_image
 from json_utils import load_json, save_json, preprocess_response_string
 AUDITOR_PROMPTS = {
-# 1.1.1, 1.1.2
+# 2.1.1, 2.1.2
 "Role_Assignment_and_Execution_Prompts" :  """You are a medical consultant auditing a multidisciplinary team. Your task is to evaluate the specialist's contribution using two binary categories.
 
 ### Category 1: Role-Task Alignment
