@@ -14,25 +14,36 @@ from config import get_config
 from encode_image import encode_image
 from json_utils import load_json, save_json, preprocess_response_string
 AUDITOR_PROMPTS = {
-# 2.1.1, 2.1.2
+# 2.1.1
 "Role_Assignment_and_Execution_Prompts" :  """You are a medical consultant auditing a multidisciplinary team. Your task is to evaluate the specialist's contribution using two binary categories.
 
-### Category 1: Role-Task Alignment
+### Category: Role-Task Alignment
 **Definition**: Check if the assigned medical specialty is appropriate for the medical question.
 - **"0" (Match)**: The assigned specialty has the necessary medical knowledge to address the medical question.
 - **"1" (Mismatch)**: The specialty is unrelated to the medical question. The agent cannot provide relevant clinical insights and instead produces generic text or irrelevant information.
 
-### Category 2: Specialized Knowledge Activation
-**Definition**: Check if the agent uses the specific clinical approach and depth expected from its assigned specialty.
-- **"0" (Activated)**: The argument shows specialized medical knowledge, expert-level interpretations, or a clinical approach unique to the assigned field. It goes beyond general medical common sense.
-- **"1" (Not Activated)**: The argument is generic or homogenized. It lacks specialist-level depth and could have been written by a non-specialist. This also includes cases where the agent refuses the task despite having the underlying capability.
-
 ### Output Format
 Provide a JSON object with:
 1. **`role_task_alignment`**: 1 or 0.
-2. **`specialist_knowledge_activation`**: 1 or 0.
 3. **`auditor_reasoning`**: A concise explanation for these choices.
 """, 
+
+# 2.1.2 
+"Failure_to_Activate_Specialist_Knowledge_Prompts": """You are a medical consultant auditing a multidisciplinary team. Your task is to evaluate whether the specialist's analysis reflects their specific domain expertise regarding the medical question.
+
+### Category: Specialist Knowledge Activation
+**Definition**: Check if the agent applied knowledge specific to its assigned role or merely provided general medical information.
+- **"1" (Generic or Restrictive)**: This covers two scenarios:
+1. The response is generic. It provides broad medical facts that a general practitioner could state, lacking the specific terminology, observational focus, or procedural depth of the assigned specialty.
+2. The agent refuses to answer based on a literal interpretation of its role title (e.g., claiming a cardiologist cannot interpret a general anatomical image), hindering collaboration.
+- **"0" (Specific)**: The response applies distinct domain knowledge. It includes specific observations, technical interpretations, or clinical considerations that are intrinsic to the assigned specialty.
+
+### Output Format
+Provide a JSON object with:
+1. **`knowledge_activation_status`**: 1 or 0.
+2. **`auditor_reasoning`**: A concise explanation for this choice.
+""",
+
 # 2.2.1
 "Repetition_of_Initial_Views_Prompts" : """You are a medical consultant auditing a multidisciplinary team. Your task is to evaluate whether a specialist's review of a synthesized opinion introduces new information or is a redundant restatement of their starting analysis.
 
@@ -222,7 +233,32 @@ class AuditorAgent(BaseAgent):
         super().__init__(agent_id, agent_type, config_path, model_key)
     def audit_role_assignment_and_execution (self, question: str, agent_id: str, specialty, explanation: str, image_path: str | None) -> Dict[str, Any]:
         """
-        audit failure mode 1.1.1, 1.1.2
+        audit failure mode 2.1.1
+        after domain agent give their initial response, we need to audit whether their role match with the problem's field (2.1.1) and whether they activate the domain specific knowledge (2.1.2)
+        """
+        print(f"Auditor Agent: Auditing Domain Agent Contribution for {agent_id}...")
+        system_message = {
+            "role": "system",
+            "content": AUDITOR_PROMPTS["Role_Assignment_Prompts"]
+        }
+        specialty_name = specialty.value if hasattr(specialty, 'value') else specialty
+
+        user_message = {
+            "role": "user",
+            "content": f"Medical Question: \"{question}\"\n\n"
+                       f"Agent: {agent_id} (Specialty: {specialty_name})\n"
+                       f"Argument/Explanation:\n\"{explanation}\"\n\n"
+                       f"Please provide your audit in the specified JSON format."
+        }
+        response_text, _, _ = self.call_llm(system_message, user_message)
+        try:
+            return json.loads(preprocess_response_string(response_text))
+        except (json.JSONDecodeError, TypeError):
+            return {}
+        
+    def audit_role_assignment_and_execution (self, question: str, agent_id: str, specialty, explanation: str, image_path: str | None) -> Dict[str, Any]:
+        """
+        audit failure mode 2.1.1, 2.1.2
         after domain agent give their initial response, we need to audit whether their role match with the problem's field (2.1.1) and whether they activate the domain specific knowledge (2.1.2)
         """
         print(f"Auditor Agent: Auditing Domain Agent Contribution for {agent_id}...")
