@@ -1,22 +1,18 @@
 from openai import OpenAI
-import os
 import json
-from enum import Enum
-from typing import Dict, Any, Optional, List, Tuple
+from typing import Dict, Any, List, Tuple
 import time
-import argparse
-from tqdm import tqdm
 import sys
+from pathlib import Path
 
 # Ensure project root is in path
-sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-from medagentaudit.utils.config import get_config
-from medagentaudit.utils.dual_logger import DualLogger
-from medagentaudit.utils.encode_image import encode_image
-from medagentaudit.utils.json_utils import load_json, save_json, preprocess_response_string
-from medagentaudit.utils.keu import KEU
-from medagentaudit.utils.analysishelper import AnalysisHelperLLM
-
+current_file_path = Path(__file__).resolve()
+project_root = current_file_path.parents[2]
+utils_root = current_file_path.parents[0]
+sys.path.extend([str(project_root),str(utils_root)])
+from config import get_config
+from encode_image import encode_image
+from json_utils import load_json, save_json, preprocess_response_string
 AUDITOR_PROMPTS = {
 # 1.1.1, 1.1.2
 "Role_Assignment_and_Execution_Prompts" :  """You are a medical consultant auditing a multidisciplinary team. Your task is to evaluate the specialist's contribution using two binary categories.

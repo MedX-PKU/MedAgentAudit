@@ -1,14 +1,9 @@
 # multi_agent_colacare_full_log.py
-# logging以及NOTIFICIATION为修改的部分
 """
-medagentboard/medqa/multi_agent_colacare.py
-
-This version has been modified to include extensive logging for detailed analysis
-of the multi-agent collaboration process, as requested for the WWW2026 research proposal.
+medagentaudit/medqa/multi_agent_colacare.py
 """
 
 from openai import OpenAI
-import os
 import json
 from enum import Enum
 from typing import Dict, Any, Optional, List, Tuple
@@ -16,15 +11,21 @@ import time
 import argparse
 from tqdm import tqdm
 import sys
+from pathlib import Path
 
 # Ensure project root is in path
-sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-from medagentboard.utils.llm_configs import LLM_MODELS_SETTINGS
-from medagentboard.utils.encode_image import encode_image
-from medagentboard.utils.json_utils import load_json, save_json, preprocess_response_string
-from medagentboard.utils.keu import KEU
-
-
+current_file_path = Path(__file__).resolve()
+utils_root = current_file_path.parents[1] / "utils"
+project_root = current_file_path.parents[2]
+sys.path.extend([str(utils_root), str(project_root)])
+from config import get_config
+from dual_logger import DualLogger
+from encode_image import encode_image
+from json_utils import load_json, save_json, preprocess_response_string
+from keu import KEU
+from analysishelper import AnalysisHelperLLM
+from auditor_agent import AuditorAgent
+from BaseAgent import BaseAgent
 class MedicalSpecialty(Enum):
     """Medical specialty enumeration."""
     INTERNAL_MEDICINE = "Internal Medicine"
@@ -36,89 +37,7 @@ class AgentType(Enum):
     """Agent type enumeration."""
     DOCTOR = "Doctor"
     META = "Coordinator"
-
-
-class BaseAgent:
-    """Base class for all agents."""
-
-    def __init__(self,
-                 agent_id: str,
-                 agent_type: AgentType,
-                 model_key: str = "qwen-vl-max"):
-        """
-        Initialize the base agent.
-
-        Args:
-            agent_id: Unique identifier for the agent
-            agent_type: Type of agent (Doctor or Coordinator)
-            model_key: LLM model to use
-        """
-        self.agent_id = agent_id
-        self.agent_type = agent_type
-        self.model_key = model_key
-        self.memory = []
-
-        if model_key not in LLM_MODELS_SETTINGS:
-            raise ValueError(f"Model key '{model_key}' not found in LLM_MODELS_SETTINGS")
-
-        model_settings = LLM_MODELS_SETTINGS[model_key]
-        self.client = OpenAI(
-            api_key=model_settings["api_key"],
-            base_url=model_settings["base_url"],
-        )
-        self.model_name = model_settings["model_name"]
-
-    # MODIFICATION START: Adjusted return type to include prompts for logging.
-    def call_llm(self,
-                 system_message: Dict[str, str],
-                 user_message: Dict[str, Any],
-                 max_retries: int = 3) -> Tuple[str, Dict[str, str], Dict[str, Any]]:
-        """
-        Call the LLM with messages and handle retries.
-
-        Args:
-            system_message: System message setting context
-            user_message: User message containing question and optional image
-            max_retries: Maximum number of retry attempts
-
-        Returns:
-            A tuple containing:
-            - LLM response text
-            - The system message sent to the LLM
-            - The user message sent to the LLM
-        """
-    # MODIFICATION END
-        retries = 0
-        while retries < max_retries:
-            try:
-                print(f"Agent {self.agent_id} calling LLM, system message: {system_message['content'][:50]}...")
-                completion = self.client.chat.completions.create(
-                    model=self.model_name,
-                    messages=[system_message, user_message],
-                    response_format={"type": "json_object"},
-                    extra_body={"enable_thinking": False},
-                    stream=True,
-                )
-                response_chunks = []
-                for chunk in completion:
-                    if chunk.choices[0].delta.content is not None:
-                        response_chunks.append(chunk.choices[0].delta.content)
-
-                response = "".join(response_chunks)
-                print(f"Agent {self.agent_id} received response: {response[:50]}...")
-                # MODIFICATION START: Return prompts along with the response.
-                return response, system_message, user_message
-                # MODIFICATION END
-            except Exception as e:
-                retries += 1
-                print(f"LLM API call error (attempt {retries}/{max_retries}): {e}")
-                if retries >= max_retries:
-                    # MODIFICATION START: Return error information for logging.
-                    error_message = f"LLM API call failed after {max_retries} attempts: {e}"
-                    return error_message, system_message, user_message
-                    # MODIFICATION END
-                time.sleep(1)
-
+    AUDITOR = "Auditor"
 
 class DoctorAgent(BaseAgent):
     """Doctor agent with a medical specialty."""
@@ -126,19 +45,20 @@ class DoctorAgent(BaseAgent):
     def __init__(self,
                  agent_id: str,
                  specialty: MedicalSpecialty,
+                 config_path: str,
                  model_key: str = "qwen-vl-max"):
         """
         Initialize a doctor agent.
         """
-        super().__init__(agent_id, AgentType.DOCTOR, model_key)
+        super().__init__(agent_id=agent_id, agent_type=AgentType.DOCTOR, config_path=config_path, model_key=model_key)
         self.specialty = specialty
         print(f"Initializing {specialty.value} doctor agent, ID: {agent_id}, Model: {model_key}")
 
     # MODIFICATION START: Changed return type to a dictionary for comprehensive logging.
     def analyze_case(self,
                      question: str,
-                     options: Optional[Dict[str, str]] = None,
-                     image_path: Optional[str] = None) -> Dict[str, Any]:
+                     image_path: str | None,
+                     options: Optional[Dict[str, str]] = None) -> Dict[str, Any]:
     # MODIFICATION END
         """
         Analyze a medical case.
@@ -151,8 +71,6 @@ class DoctorAgent(BaseAgent):
             "role": "system",
             "content": f"You are a doctor specializing in {self.specialty.value}. "
                        f"Analyze the medical case and provide your professional opinion on the question. "
-                       f"Your output should be in JSON format, including 'explanation' (detailed reasoning) and "
-                       f"'answer' (clear conclusion) fields."
         }
 
         if options:
@@ -164,6 +82,7 @@ class DoctorAgent(BaseAgent):
         user_content = []
 
         if image_path:
+
             base64_image = encode_image(image_path)
             image_url_content = {
                 "type": "image_url",
@@ -181,8 +100,12 @@ class DoctorAgent(BaseAgent):
 
         text_content = {
             "type": "text",
-            "text": f"{question_with_options}\n\nProvide your analysis in JSON format, including 'explanation' and 'answer' fields."
+            "text": f"{question_with_options}\n\nProvide your analysis in JSON format, including 'explanation' (detailed reasoning) ,'answer' (clear conclusion) , and 'IU' (a list of information units)  fields."
         }
+        text_content["text"] += (
+            f"Each IU in the list should be a string representing a single piece of object you perceive from the input text or image(if we have the image)"
+            f"(e.g., 'A 2cm nodule is visible in the upper left lung lobe.', 'The patient's white blood cell count is 15,000/µL.')"
+        )
         user_content.append(text_content)
 
         user_message = {
@@ -233,6 +156,8 @@ class DoctorAgent(BaseAgent):
     def review_synthesis(self,
                          question: str,
                          synthesis: Dict[str, Any],
+                         audit_trail: Dict[str, Any],
+                         ccp_text: str = "",
                          options: Optional[Dict[str, str]] = None,
                          image_path: Optional[str] = None) -> Dict[str, Any]:
         """
@@ -252,10 +177,15 @@ class DoctorAgent(BaseAgent):
         system_message = {
             "role": "system",
             "content": f"You are a doctor specializing in {self.specialty.value}, participating in round {current_round} of a multidisciplinary team consultation. "
-                       f"Review the synthesis of multiple doctors' opinions and determine if you agree with the conclusion. "
-                       f"Consider your previous analysis and the MetaAgent's synthesized opinion to decide whether to agree or provide a different perspective. "
-                       f"Your output should be in JSON format, including 'agree' (boolean or 'yes'/'no'), 'reason' (rationale for your decision), "
-                       f"and 'answer' (your suggested answer if you disagree; if you agree, you can repeat the synthesized answer) fields."
+                    f"Review the synthesis of multiple doctors' opinions and determine if you agree with the conclusion. "
+                    f"Consider your previous analysis and the MetaAgent's synthesized opinion to decide whether to agree or provide a different perspective. "
+                    f"Your output must be a JSON object, including:"
+                    f"1. 'agree': boolean (true/false)."
+                    f"2. 'current_viewpoint': Your current final answer after this review (e.g., 'A', 'B')."
+                    f"3. 'viewpoint_changed': boolean, true if your 'current_viewpoint' is different from your initial analysis's answer."
+                    f"4. 'justification_type': A string, must be one of ['evidence_based', 'consensus_based']. Choose 'evidence_based' if your decision is primarily driven by specific KEU facts. Choose 'consensus_based' if your decision is primarily to align with the synthesized opinion or majority view."
+                    f"5. 'cited_references': A list of strings containing the KEU-IDs or Agent-IDs that influenced your decision."
+                    f"6. 'reason': Your detailed textual explanation for your decision."
         }
 
         user_content = []
@@ -283,15 +213,21 @@ class DoctorAgent(BaseAgent):
         synthesis_text = f"Synthesized explanation: {synthesis.get('explanation', '')}\n"
         synthesis_text += f"Suggested answer: {synthesis.get('answer', '')}"
 
+        keu_list_text = "\n\nKey Evidential Units (KEUs) proposed so far:\n"
+        for keu_id, keu_obj in audit_trail["keus"].items():
+            keu_list_text += f"- {keu_id}: '{keu_obj.content}' (from {keu_obj.source_agent})\n"
+
         text_content = {
             "type": "text",
             "text": f"Original question: {question_with_options}\n\n"
                     f"{own_analysis_text}"
-                    f"{synthesis_text}\n\n"
-                    f"Do you agree with this synthesized result? Please provide your response in JSON format, including:\n"
-                    f"1. 'agree': 'yes'/'no'\n"
-                    f"2. 'reason': Your rationale for agreeing or disagreeing\n"
-                    f"3. 'answer': Your supported answer (can be the synthesized answer if you agree, or your own suggested answer if you disagree)"
+                    f"Synthesized Opinion for Review:\n{synthesis_text}\n\n"
+                    f"Available Key Evidential Units (KEUs):\n{keu_list_text}\n\n"
+                    f"Available Critical Consensus Points (CCPs):\n{ccp_text}\n\n" 
+                    f"Pay attention to the potential conflicts (CCPs) listed above, as addressing them in your 'reason' field will strengthen your argument. "
+                    f"Please provide your comprehensive review.\nYour 'reason' field MUST reference the KEU-IDs that support your decision. \n"
+                    f"Your response MUST be a single JSON object, strictly adhering to the 6-field structure defined in your system instructions. "
+                    f"Pay close attention to correctly populating 'viewpoints_changed', 'justification_type', and 'cited_references'."
         }
         user_content.append(text_content)
 
@@ -347,11 +283,11 @@ class DoctorAgent(BaseAgent):
 class MetaAgent(BaseAgent):
     """Meta agent that synthesizes multiple doctors' opinions."""
 
-    def __init__(self, agent_id: str, model_key: str = "qwen-max-latest"):
+    def __init__(self, agent_id: str, config_path: str, model_key: str = "qwen-max-latest"):
         """
         Initialize a meta agent.
         """
-        super().__init__(agent_id, AgentType.META, model_key)
+        super().__init__(agent_id=agent_id, agent_type=AgentType.META, config_path=config_path, model_key = model_key)
         print(f"Initializing meta agent, ID: {agent_id}, Model: {model_key}")
 
     # MODIFICATION START: Changed return type to a dictionary for comprehensive logging.
@@ -359,9 +295,11 @@ class MetaAgent(BaseAgent):
                             question: str,
                             doctor_opinions: List[Dict[str, Any]],
                             doctor_specialties: List[MedicalSpecialty],
+                            audit_trail: Dict[str, Any],
+                            ccp_text: str = "",
                             current_round: int = 1,
                             options: Optional[Dict[str, str]] = None) -> Dict[str, Any]:
-    # MODIFICATION END
+        # MODIFICATION END
         """
         Synthesize multiple doctors' opinions.
         Returns:
@@ -400,14 +338,29 @@ class MetaAgent(BaseAgent):
         else:
             question_with_options = question
 
-        user_message = {
-            "role": "user",
-            "content": f"Question: {question_with_options}\n\n"
-                       f"Round {current_round} Doctors' Opinions:\n{opinions_text}\n\n"
-                       f"Please synthesize these opinions into a consensus view. Provide your synthesis in JSON format, including "
-                       f"'explanation' (comprehensive reasoning) and 'answer' (clear conclusion) fields."
-        }
+        keu_list_text = "\n\nKey Evidential Units (KEUs) proposed so far:\n"
+        for keu_id, keu_obj in audit_trail["keus"].items():
+            keu_list_text += f"- {keu_id}: '{keu_obj.content}' (from {keu_obj.source_agent})\n"
 
+        user_content = []
+        text_content = (
+            f"Question: {question_with_options}\n\n"
+            f"Round {current_round} Doctors' Opinions:\n{opinions_text}\n\n"
+            f"Available KEUs (Key Evidential Units):\n{keu_list_text}\n"
+            f"Available CCPs (Critical Consensus Points):\n{ccp_text}\n\n"
+            f"Note that potential conflicts (CCPs) have been identified; a robust synthesis must acknowledge or resolve these points.\n\n"
+            f"**CRITICAL INSTRUCTION:** Your task is to synthesize these diverse opinions into a single, coherent analysis. In your 'explanation', you **MUST selectively cite only the most important KEU-IDs** that support your synthesized view. **DO NOT simply list all available KEUs.** Your goal is to demonstrate a deep understanding by building a new, consolidated argument from the strongest evidence (e.g., 'Synthesizing the specialists' views, the consensus leans towards X, primarily supported by the crucial findings in KEU-2 and KEU-5...').\n\n"
+            f"Provide your synthesis in JSON format, including 'explanation' (comprehensive reasoning) and 'answer' (clear conclusion) fields."
+        )
+        user_content.append({
+            "type":"text",
+            "text":text_content
+        })
+
+        user_message = {
+            "role":"user",
+            "content": user_content
+        }
         response_text, system_msg, user_msg = self.call_llm(system_message, user_message)
 
         try:
@@ -439,6 +392,8 @@ class MetaAgent(BaseAgent):
                             current_synthesis: Dict[str, Any],
                             current_round: int,
                             max_rounds: int,
+                            audit_trail: Dict[str, Any],
+                            image_path:Optional[str] = None,
                             options: Optional[Dict[str, str]] = None) -> Dict[str, Any]:
     # MODIFICATION END
         """
@@ -483,7 +438,7 @@ class MetaAgent(BaseAgent):
             formatted_review = f"Doctor {i+1} ({specialty.value}):\n"
             formatted_review += f"Agree: {'Yes' if review.get('agree', False) else 'No'}\n"
             formatted_review += f"Reason: {review.get('reason', '')}\n"
-            formatted_review += f"Answer: {review.get('answer', '')}\n"
+            formatted_review += f"Answer: {review.get('current_viewpoint', '')}\n"
             formatted_reviews.append(formatted_review)
 
         reviews_text = "\n".join(formatted_reviews)
@@ -513,14 +468,34 @@ class MetaAgent(BaseAgent):
 
         previous_syntheses_text = "\n\n".join(previous_syntheses) if previous_syntheses else "No previous syntheses available."
 
+        keu_list_text = "\n\nKey Evidential Units (KEUs) proposed so far:\n"
+        for keu_id, keu_obj in audit_trail["keus"].items():
+            keu_list_text += f"- {keu_id}: '{keu_obj.content}' (from {keu_obj.source_agent})\n"
+            
+        user_content =[]
+        if image_path:
+            base64_image = encode_image(image_path)
+            user_content.append({
+                "type":"image_url",
+                "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}
+            })
+        text_content = (
+            f"Question: {question_with_options}\n\n"
+            f"{current_synthesis_text}\n\n"
+            f"Doctor Reviews on this synthesis:\n{reviews_text}\n\n"
+            f"{keu_list_text}\n\n"
+            f"**CRITICAL INSTRUCTION:** Your reasoning in the 'explanation' field must demonstrate synthesis, not just summarization. To do this, you **MUST selectively cite only the most pivotal KEU-IDs** that form the core basis of your conclusion. **DO NOT list or repeat all available KEUs.** Your task is to build an argument using the strongest evidence. (e.g., 'Based on the critical findings in KEU-1 and KEU-3, I conclude...').\n\n"
+            f"History of Previous Rounds:\n{previous_syntheses_text}\n\n"
+            f"Based on ALL available information presented above, provide your {decision_type} decision. Your explanation should be grounded in the evidence and reasoning from the synthesis and reviews. "
+            f"Your response must be in JSON format, including 'explanation' and 'answer' fields."
+        )
+        user_content.append({
+            "type":"text",
+            "text":text_content
+        })
         user_message = {
-            "role": "user",
-            "content": f"Question: {question_with_options}\n\n"
-                       f"{current_synthesis_text}\n\n"
-                       f"Doctor Reviews on this synthesis:\n{reviews_text}\n\n"
-                       f"History of Previous Rounds:\n{previous_syntheses_text}\n\n"
-                       f"Based on all the information, please provide your {decision_type} decision. "
-                       f"Your response must be in JSON format, including 'explanation' and 'answer' fields."
+            "role":"user",
+            "content": user_content
         }
 
         response_text, system_msg, user_msg = self.call_llm(system_message, user_message)
@@ -548,14 +523,16 @@ class MetaAgent(BaseAgent):
         }
         return decision_log # logging，返回了完整的系统和用户消息。
 
-
 class MDTConsultation:
     """Multi-disciplinary team consultation coordinator."""
 
     def __init__(self,
                  max_rounds: int = 3,
                  doctor_configs: List[Dict] = None,
-                 meta_model_key: str = "qwen-max-latest"):
+                 meta_model_key: str = None,
+                 auditor_model_key: str = None,
+                 conflict_analysis_model_key: str = None,
+                 config_path: str = "config.toml"):
         """
         Initialize MDT consultation.
         """
@@ -572,10 +549,15 @@ class MDTConsultation:
             agent_id = f"doctor_{idx}"
             specialty = config["specialty"]
             model_key = config.get("model_key", "qwen-vl-max")
-            doctor_agent = DoctorAgent(agent_id, specialty, model_key)
+            doctor_agent = DoctorAgent(agent_id=agent_id, specialty=specialty, config_path=config_path, model_key=model_key)
             self.doctor_agents.append(doctor_agent)
 
-        self.meta_agent = MetaAgent("meta", meta_model_key)
+        self.meta_agent = MetaAgent(agent_id="meta",config_path=config_path, model_key=meta_model_key)
+        self.auditor_agent = AuditorAgent(agent_id="auditor",config_path= config_path,model_key= auditor_model_key)
+
+        # 初始化 AnalysisHelperLLM，使其在整个咨询流程中可用
+        self.analysis_llm = AnalysisHelperLLM(config_path=config_path, model_key=conflict_analysis_model_key) 
+
         self.doctor_specialties = [doctor.specialty for doctor in self.doctor_agents]
 
         doctor_info_parts = []
@@ -606,8 +588,15 @@ class MDTConsultation:
         current_round = 0
         final_decision_log = None
         consensus_reached = False
-        decision_log = None # Initialize decision_log to handle cases with no rounds
-
+        decision_log = None # Initialize decision_log to handle cases with no rounds    
+        audit_trail = {
+            "keus": {},  # Dict[str, KEU]
+            "viewpoints": {doc.agent_id: [] for doc in self.doctor_agents},
+            "collaboration_audits": {}, # 新的、更结构化的审计记录
+            "ccps": {} # critical conflict points
+        }
+        all_unresolved_ccps = []
+        ccp_counter = 0
         while current_round < self.max_rounds and not consensus_reached:
             current_round += 1
             print(f"Starting round {current_round}")
@@ -616,10 +605,63 @@ class MDTConsultation:
 
             # Step 1: Each doctor analyzes the case
             doctor_opinion_parsed_outputs = []
+
+            if current_round == 1:
+                keu_counter = 0
+
             for i, doctor in enumerate(self.doctor_agents):
                 print(f"Doctor {i+1} ({doctor.specialty.value}) analyzing case")
                 opinion_log = doctor.analyze_case(question, options, image_path)
-                doctor_opinion_parsed_outputs.append(opinion_log["parsed_output"])
+                parsed_output = opinion_log["parsed_output"]
+                explanation = parsed_output.get("explanation", "")
+
+                # audit 2.1.1 speciality ability dismatch and 2.1.2 failure to activate domain-specific knowledge
+                contribution_audit = self.auditor_agent.audit_role_assignment_and_execution(question, doctor.agent_id, doctor.specialty, explanation)
+                # TODO: 这里要改，目前没有风险管理审计了
+                risk_audit = self.auditor_agent.audit_risk_and_quality(doctor.agent_id, explanation, image_path)
+                step_id = f"round_1_analysis_{doctor.agent_id}"
+                audit_trail["collaboration_audits"][step_id] = {**contribution_audit, **risk_audit}
+                doctor_opinion_parsed_outputs.append(parsed_output)
+
+                # 机制二：在 analyze_case 后立即记录初始观点
+                if current_round == 1:
+                    initial_viewpoint_entry = {
+                        "step": f"round_{current_round}_analysis",
+                        "viewpoint": parsed_output.get("answer"),
+                        "viewpoint_changed": False,
+                        "justification_type": "initial_analysis",
+                        # 在初始分析中，引用的就是自己找到的KEU
+                        "cited_references": [f"KEU-{idx}" for idx, content in enumerate(parsed_output.get("keus", []))]
+                    }
+                    audit_trail["viewpoints"][doctor.agent_id].append(initial_viewpoint_entry)
+                # 机制一：提取出关键证据单元
+                if current_round == 1 and "keus" in parsed_output:
+                    for keu_content in parsed_output["keus"]:
+                        keu_id = f"KEU-{keu_counter}"
+                        # 每个证据注册一个KEU对象
+                        new_keu = KEU(
+                            keu_id=keu_id,
+                            content=keu_content,
+                            source_agent=doctor.agent_id,
+                            round_introduced=current_round
+                        )
+                        audit_trail["keus"][keu_id] = new_keu
+                        keu_counter += 1
+                    # 调用审计员代理来识别哪些KEU是关键的
+                    all_keus_for_audit = [{"keu_id": k, "content": v.content} for k, v in audit_trail["keus"].items()]
+                    if all_keus_for_audit:
+                        # 传入医生们的观点 (doctor_opinion_parsed_outputs) 作为额外上下文
+                        key_status_map = self.auditor_agent.identify_key_evidential_units(
+                            question, 
+                            doctor_opinion_parsed_outputs, 
+                            self.doctor_agents, 
+                            all_keus_for_audit,
+                            image_path=image_path
+                        )
+                        for keu_id, is_key in key_status_map.items():
+                            if keu_id in audit_trail["keus"]:
+                                audit_trail["keus"][keu_id].is_key = is_key
+
                 round_data["opinions"].append({
                     "doctor_id": doctor.agent_id,
                     "specialty": doctor.specialty.value,
@@ -627,47 +669,212 @@ class MDTConsultation:
                 })
                 print(f"Doctor {i+1} opinion: {opinion_log['parsed_output'].get('answer', '')}")
                 # MODIFICATION END
+            
+            # 机制四：在初始分析后鉴别出关键冲突点
+            if current_round == 1: # 通常只在第一轮后识别初始冲突
+
+                initial_contributions = []
+                for i, opinion in enumerate(doctor_opinion_parsed_outputs):
+                    agent = self.doctor_agents[i]
+                    # 将 explanation 和 keus 合并作为完整的观点文本
+                    full_text = opinion.get('explanation', '')
+                    keus = opinion.get('keus', [])
+                    if keus:
+                        full_text += "\nKey Evidential Units:\n- " + "\n- ".join(keus)
+                    
+                    initial_contributions.append({
+                        'agent_id': agent.agent_id,
+                        'specialty': agent.specialty.value,
+                        'text': full_text
+                    })
+
+                initial_ccps = self.auditor_agent.identify_critical_conflicts(
+                    initial_contributions,
+                    context_description="doctors' initial analyses"
+                )
+                audit_trail["ccps"][current_round] = []
+                for ccp in initial_ccps:
+                    ccp['ccp_id'] = f"CCP-{ccp_counter}" # 分配唯一ID
+                    ccp['round_identified'] = 1
+                    ccp['status'] = 'unresolved'
+                    ccp['round_resolved'] = None
+                    audit_trail["ccps"][current_round].append(ccp)
+                    ccp_counter += 1
+                all_unresolved_ccps.extend(audit_trail["ccps"][current_round])
+
+            ccp_text_for_prompt = ""
+            if all_unresolved_ccps:
+                ccp_text_for_prompt += "\n\n[ATTENTION] The following Critical Conflict Points (CCPs) from previous rounds remain UNRESOLVED and MUST be addressed:\n"
+                for ccp in all_unresolved_ccps:
+                    ccp_text_for_prompt += f"- CCP ID: {ccp['ccp_id']} (Identified in Round {ccp['round_identified']})\n"
+                    ccp_text_for_prompt += f"  Conflict: {ccp['conflict_summary']}\n"
+                    ccp_text_for_prompt += f"  Involved Agents: {', '.join(ccp['conflicting_agents'])}\n"
+
 
             # Step 2: Meta agent synthesizes opinions
             print("Meta agent synthesizing opinions")
-            # MODIFICATION START: Capture the full log from the agent.
             synthesis_log = self.meta_agent.synthesize_opinions(
                 question, doctor_opinion_parsed_outputs, self.doctor_specialties,
-                current_round, options
+                audit_trail=audit_trail, ccp_text=ccp_text_for_prompt, current_round=current_round, options=options
             )
             round_data["synthesis"] = synthesis_log # Store the entire log
             synthesis_parsed_output = synthesis_log["parsed_output"]
+            synthesis_explanation = synthesis_parsed_output.get("explanation", "")
             print(f"Meta agent synthesis: {synthesis_parsed_output.get('answer', '')}")
-            # MODIFICATION END
 
+            # 机制三：审计元智能体风险规避层级
+            synthesis_risk_audit = self.auditor_agent.audit_risk_and_quality(self.meta_agent.agent_id, synthesis_explanation, image_path)
+            step_id = f"round_{current_round}_synthesis"
+            audit_trail["collaboration_audits"][step_id] = synthesis_risk_audit
+
+
+            # 机制一：记录keu在synthesis中的出现和引用情况。
+            for keu_id, keu in audit_trail["keus"].items():
+                if keu_id in synthesis_explanation or keu.content in synthesis_explanation:
+                    keu.present_in_synthesis[current_round] = True
+                    keu.cited_by.append({
+                        "agent_id": self.meta_agent.agent_id,
+                        "round": current_round,
+                        "action": "synthesis"
+                    })
+                else:
+                    keu.present_in_synthesis[current_round] = False
             # Step 3: Doctors review synthesis
             doctor_review_parsed_outputs = []
+            # 机制2修改：初始化观点追踪器，确保每个医生的观点都有记录
+            if "viewpoints" not in audit_trail:
+                audit_trail["viewpoints"] = {doc.agent_id: [] for doc in self.doctor_agents}
             all_agree = True
             for i, doctor in enumerate(self.doctor_agents):
                 print(f"Doctor {i+1} ({doctor.specialty.value}) reviewing synthesis")
                 # MODIFICATION START: Capture the full log from the agent.
-                review_log = doctor.review_synthesis(question, synthesis_parsed_output, options, image_path)
+                review_log = doctor.review_synthesis(question, synthesis_parsed_output, audit_trail=audit_trail, ccp_text=ccp_text_for_prompt, options=options, image_path=image_path)
                 review_parsed_output = review_log["parsed_output"]
+                review_reason = review_parsed_output.get("reason", "")
+                cited_refs = review_parsed_output.get("cited_references", [])
+
+                # 机制三：审计领域智能体专家相关性得分、领域特定知识激活率、风险规避类别
+                contribution_audit = self.auditor_agent.audit_domain_agent_contribution(question, doctor.agent_id, doctor.specialty, review_reason)
+                risk_audit = self.auditor_agent.audit_risk_and_quality(doctor.agent_id, review_reason, image_path)
+                
+                step_id = f"round_{current_round}_review_{doctor.agent_id}"
+                audit_trail["collaboration_audits"][step_id] = {**contribution_audit, **risk_audit}
+
+                # 检查机制1在review过程中的引用和反驳情况
+                for keu_id, keu in audit_trail["keus"].items():
+                    # 检查是否被引用
+                    if keu_id in cited_refs or keu_id in review_reason or keu.content in review_reason:
+                        keu.cited_by.append({
+                            "agent_id": doctor.agent_id,
+                            "round": current_round,
+                            "action": "review"
+                        })
+                    # 检查是否被反驳 (这里用一个简单的关键词启发式，精确判断在后分析阶段)
+                    # 我们将主要的反驳判断逻辑放在 analyze_failures.py 中
+                    if not review_parsed_output.get("agree", True):
+                        # 如果医生不同意synthesis，且在他的理由中提到了某个KEU，我们初步标记为潜在反驳
+                        if keu_id in review_reason or keu.content in review_reason:
+                             keu.rebuttals.append({
+                                 "agent_id": doctor.agent_id,
+                                 "round": current_round,
+                                 "reason": review_reason
+                             })
+
                 doctor_review_parsed_outputs.append(review_parsed_output)
                 round_data["reviews"].append({
                     "doctor_id": doctor.agent_id,
                     "specialty": doctor.specialty.value,
                     "log": review_log # Store the entire log
                 })
-
+                # 机制二：在review后记录观点变化
+                review_viewpoint_entry = {
+                    "step": f"round_{current_round}_review",
+                    "viewpoint": review_parsed_output.get("current_viewpoint"),
+                    "viewpoint_changed": review_parsed_output.get("viewpoint_changed", False),
+                    "justification_type": review_parsed_output.get("justification_type", "unknown"),
+                    "cited_references": review_parsed_output.get("cited_references", []),
+                }
+                audit_trail["viewpoints"][doctor.agent_id].append(review_viewpoint_entry)
                 agrees = review_parsed_output.get('agree', False)
                 all_agree = all_agree and agrees
                 print(f"Doctor {i+1} agrees: {'Yes' if agrees else 'No'}")
                 # MODIFICATION END
 
+            
+            # 机制三：在元智能体决策前，审计论据综合质量得分
+            overall_quality_audit = self.auditor_agent.audit_overall_quality_for_decision(
+                question, doctor_review_parsed_outputs, self.doctor_specialties
+            )
+            audit_trail["collaboration_audits"][f"round_{current_round}_pre_decision_quality"] = overall_quality_audit
+
+
+            # 机制四：每轮复审结束后，更新和发现冲突
+            # 收集本轮的所有讨论文本
+            round_discussion_text = round_data["synthesis"]["parsed_output"]["explanation"]
+            for review in round_data["reviews"]:
+                round_discussion_text += "\n" + review["log"]["parsed_output"].get("reason", "")
+            
+            # 判断遗留的冲突是否被解决
+            resolved_this_round_log = []
+            still_unresolved = []
+            for ccp in all_unresolved_ccps:
+                was_addressed, resolution_reasoning = self.analysis_llm.check_if_conflict_was_addressed(ccp, round_discussion_text)
+                if was_addressed:
+                    ccp['status'] = 'resolved'
+                    ccp['round_resolved'] = current_round
+                    ccp['resolution_reasoning'] = resolution_reasoning  # Store the reasoning
+                    resolved_this_round_log.append(ccp)
+                else:
+                    still_unresolved.append(ccp)
+            all_unresolved_ccps = still_unresolved
+            print(f"Round {current_round}: {len(resolved_this_round_log)} CCP(s) were resolved.")
+            # 基于本轮复审的文本，发现新冲突
+            # 注意：这里的输入应该是 review 的文本，因为新的冲突往往产生于对 synthesis 的异议
+            review_contributions = []
+            for review_log in round_data["reviews"]:
+                review_contributions.append({
+                    'agent_id': review_log["doctor_id"],
+                    'specialty': review_log["specialty"],
+                    'text': review_log["log"]["parsed_output"].get("reason", "")
+                })
+
+            # 无条件调用冲突识别
+            new_ccps = self.auditor_agent.identify_critical_conflicts(
+                review_contributions,
+                context_description="doctors' review reasons"
+            )
+
+            # 4. 将新发现的冲突加入追踪列表
+            if current_round not in audit_trail["ccps"]:
+                audit_trail["ccps"][current_round] = []
+                
+            for ccp in new_ccps:
+                ccp['ccp_id'] = f"CCP-{ccp_counter}" # 分配唯一ID
+                ccp['round_identified'] = current_round
+                ccp['status'] = 'unresolved'
+                ccp['round_resolved'] = None
+                audit_trail["ccps"][current_round].append(ccp)
+                ccp_counter += 1
+
+            all_unresolved_ccps.extend(new_ccps)
+
             # Step 4: Meta agent makes decision based on reviews
             # MODIFICATION START: Capture the full log from the agent.
             decision_log = self.meta_agent.make_final_decision(
                 question, doctor_review_parsed_outputs, self.doctor_specialties,
-                synthesis_parsed_output, current_round, self.max_rounds, options
+                synthesis_parsed_output, current_round, self.max_rounds, audit_trail, image_path = image_path, options=options
             )
+            
             round_data["decision"] = decision_log # Store the decision log for this round
             # MODIFICATION END
+            decision_explanation = decision_log.get("parsed_output", {}).get("explanation", "")
+            
+            #机制三：审计元智能体是否是投票决策
+            decision_quality_audit = self.auditor_agent.audit_single_argument_quality(question, decision_explanation, overall_quality_audit, image_path)
+            #机制三：审计元智能体风险规避类别
+            decision_risk_audit = self.auditor_agent.audit_risk_and_quality(self.meta_agent.agent_id, decision_explanation, image_path)
+            step_id = f"round_{current_round}_decision"
+            audit_trail["collaboration_audits"][step_id] = {**decision_risk_audit, **decision_quality_audit}
 
             case_history["rounds"].append(round_data)
 
@@ -682,16 +889,28 @@ class MDTConsultation:
 
         if not final_decision_log:
             final_decision_log = decision_log
-        
+
+        # 机制1:记录keu在最终决策中的出现情况
+        if final_decision_log:
+            final_explanation = final_decision_log.get("parsed_output", {}).get("explanation", "")
+            # --- 机制一升级：记录KEU在最终决策中的出现情况 ---
+            for keu_id, keu in audit_trail["keus"].items():
+                if keu_id in final_explanation or keu.content in final_explanation:
+                    keu.present_in_final_decision = True
+                    
         final_decision_parsed = final_decision_log['parsed_output'] if final_decision_log else {}
         print(f"Final decision: {final_decision_parsed.get('answer', 'N/A')}")
 
         processing_time = time.time() - start_time
-
+        if "keus" in audit_trail and audit_trail["keus"]:
+            serializable_keus = {keu_id: keu.to_dict() 
+                                 for keu_id, keu in audit_trail["keus"].items()}
+            audit_trail["keus"] = serializable_keus
         case_history["final_decision_log"] = final_decision_log
         case_history["consensus_reached"] = consensus_reached
         case_history["total_rounds"] = current_round
         case_history["processing_time"] = processing_time
+        case_history['audit_trail'] = audit_trail
 
         # MODIFICATION START: Add final state of all agent memories to the log.
         agent_final_states = {
@@ -738,7 +957,7 @@ def parse_structured_output(response_text: str) -> Dict[str, str]:
         return result
 
 
-def process_input(item, doctor_configs=None, meta_model_key="qwen-max-latest"):
+def process_input(item, doctor_configs=None, config_path=None, meta_model_key="qwen-max-latest",auditor_model_key="gemini-2.5-pro",conflict_analysis_model_key="deepseek-reasoner"):
     """
     Process a single input data item.
     """
@@ -751,6 +970,9 @@ def process_input(item, doctor_configs=None, meta_model_key="qwen-max-latest"):
         max_rounds=3,
         doctor_configs=doctor_configs,
         meta_model_key=meta_model_key,
+        auditor_model_key=auditor_model_key,
+        conflict_analysis_model_key = conflict_analysis_model_key,
+        config_path=config_path
     )
 
     result_history = mdt.run_consultation(
@@ -766,21 +988,36 @@ def main():
     parser = argparse.ArgumentParser(description="Run MDT consultation on medical datasets")
     parser.add_argument("--dataset", type=str, required=True, help="Specify dataset name,like PathVQA,VQA-RAD")
     parser.add_argument("--qa_type", type=str, choices=["mc", "ff"], default="mc", help="QA type: multiple-choice (mc) or free-form (ff)")
-    parser.add_argument("--meta_model", type=str, required=True, help="Model used for meta agent")
-    parser.add_argument("--doctor_models", nargs='+', required=True, help="Models used for doctor agents. Provide one model name per doctor.")
-    parser.add_argument("--num", type=int, required=True, help="vqa=50 ,qa=100")
+    parser.add_argument("--doctor_models", nargs='+', required=True, help="for qa, use deepseek-reasoner,for vqa,use qwen3-vl")
+    parser.add_argument("--meta_model", type=str, required=True, help="gpt-5.1/gemini-2.5-flash")
+    parser.add_argument("--auditor_model", type=str, required=True, help="gemini-3-pro-preview") # auditor model is the conflict model
+    parser.add_argument("--config_path", type=str, required=True,help="Path to the config.toml file,default = utils/config.toml")
+    parser.add_argument("--num_samples", type=int, required=True,help="Number of samples to process from the dataset")
+    parser.add_argument("--test_mode", type=bool, required=True, help="If set, log will be saved to a test-specific directory.")
     args = parser.parse_args()
 
-    # Using a timestamped method name for unique log directories
-    method = f"ColaCare_full_log_{time.strftime('%Y%m%d_%H%M%S')}"
+    test_mode = args.test_mode
+    timestamp = time.strftime("%Y%m%d_%H%M%S")
+    if test_mode:
+        print("!!! TEST MODE ENABLED: Logs will be saved to test-specific directories !!!")
+        terminal_log_dir = os.path.join("logs", "observation", "test", "terminal_log", "ColaCare", args.dataset)
+    else:
+        terminal_log_dir = os.path.join("logs", "observation", "terminal_log", "ColaCare", args.dataset)
+    os.makedirs(terminal_log_dir, exist_ok=True)
+    terminal_log_file = os.path.join(terminal_log_dir, f"{args.dataset}_{timestamp}_full_terminal.log")
+    print(f"!!! Terminal output is being captured to: {terminal_log_file} !!!")
+    sys.stdout = DualLogger(terminal_log_file, sys.stdout)
+    sys.stderr = DualLogger(terminal_log_file, sys.stderr) # 捕获报错和tqdm进度条
 
     dataset_name = args.dataset
     print(f"Dataset: {dataset_name}")
     qa_type = args.qa_type
     print(f"QA Format: {qa_type}")
 
-    qa_type_folder = "multiple_choice" if qa_type == "mc" else "free-form"
-    logs_dir = os.path.join("logs", "medqa", dataset_name, qa_type_folder, method)
+    if test_mode:
+        logs_dir = os.path.join("logs", "observation","test","ColaCare", dataset_name)
+    else:
+        logs_dir = os.path.join("logs", "observation","ColaCare", dataset_name)
     os.makedirs(logs_dir, exist_ok=True)
     print(f"Logs will be saved to: {logs_dir}")
 
@@ -806,9 +1043,9 @@ def main():
         })
 
     doctor_model_names = [config["model_key"] for config in doctor_configs]
-    print(f"Configuring {len(doctor_configs)} doctors with models: {doctor_model_names}")
+    print(f"Configuring {len(doctor_configs)} doctors with models: {doctor_model_names}") 
 
-    for item in tqdm(data[:args.num], desc=f"Running MDT consultation on {dataset_name}"):
+    for item in tqdm(data[:args.num_samples], desc=f"Running MDT consultation on {dataset_name}"): 
         qid = item["qid"]
         log_file_path = os.path.join(logs_dir, f"{qid}-result.json")
 
@@ -820,7 +1057,10 @@ def main():
             full_case_history = process_input(
                 item,
                 doctor_configs=doctor_configs,
-                meta_model_key=args.meta_model
+                config_path=args.config_path,
+                meta_model_key=args.meta_model,
+                auditor_model_key=args.auditor_model,
+                conflict_analysis_model_key=args.auditor_model
             )
 
             # MODIFICATION START: The final decision is now nested inside the log.
@@ -840,7 +1080,7 @@ def main():
                 "image_path": item.get("image_path"),
                 "ground_truth": item.get("answer"),
                 "predicted_answer": predicted_answer,
-                "case_history": full_case_history # This now contains the full, detailed log
+                "case_history": full_case_history, # This now contains the full, detailed log
             }
 
             save_json(item_result, log_file_path)
