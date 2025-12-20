@@ -15,7 +15,7 @@ from encode_image import encode_image
 from json_utils import load_json, save_json, preprocess_response_string
 AUDITOR_PROMPTS = {
 # 2.1.1
-"Role_Assignment_and_Execution_Prompts" :  """You are a medical consultant auditing a multidisciplinary team. Your task is to evaluate the specialist's contribution using two binary categories.
+"Role_Assignment_Prompts" :  """You are a medical consultant auditing a multidisciplinary team. Your task is to evaluate the specialist's contribution using two binary categories.
 
 ### Category: Role-Task Alignment
 **Definition**: Check if the assigned medical specialty is appropriate for the medical question.
@@ -256,12 +256,37 @@ class AuditorAgent(BaseAgent):
         except (json.JSONDecodeError, TypeError):
             return {}
         
-    def audit_role_assignment_and_execution (self, question: str, agent_id: str, specialty, explanation: str, image_path: str | None) -> Dict[str, Any]:
+    def audit_role_assignment(self, question: str, agent_id: str, specialty, explanation: str, image_path: str | None) -> Dict[str, Any]:
         """
-        audit failure mode 2.1.1, 2.1.2
+        audit failure mode 2.1.1
         after domain agent give their initial response, we need to audit whether their role match with the problem's field (2.1.1) and whether they activate the domain specific knowledge (2.1.2)
         """
-        print(f"Auditor Agent: Auditing Domain Agent Contribution for {agent_id}...")
+        print(f"Auditor Agent: Auditing role assignment for {agent_id}...")
+        system_message = {
+            "role": "system",
+            "content": AUDITOR_PROMPTS["Failure_to_Activate_Specialist_Knowledge_Prompts"]
+        }
+        specialty_name = specialty.value if hasattr(specialty, 'value') else specialty
+
+        user_message = {
+            "role": "user",
+            "content": f"Medical Question: \"{question}\"\n\n"
+                       f"Agent: {agent_id} (Specialty: {specialty_name})\n"
+                       f"Argument/Explanation:\n\"{explanation}\"\n\n"
+                       f"Please provide your audit in the specified JSON format."
+        }
+        response_text, _, _ = self.call_llm(system_message, user_message)
+        try:
+            return json.loads(preprocess_response_string(response_text))
+        except (json.JSONDecodeError, TypeError):
+            return {}
+
+    def audit_domain_specific_knowledge_activation(self, question: str, agent_id: str, specialty, explanation: str, image_path: str | None) -> Dict[str, Any]:
+        """
+        audit failure mode 2.1.2
+        after domain agent give their initial response, or review others' opinions, we need to audit whether they activate the domain specific knowledge (2.1.2)
+        """
+        print(f"Auditor Agent: Auditing domain specific knowledge activation for {agent_id}...")
         system_message = {
             "role": "system",
             "content": AUDITOR_PROMPTS["Role_Assignment_and_Execution_Prompts"]

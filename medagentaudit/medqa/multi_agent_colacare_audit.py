@@ -588,7 +588,7 @@ class MDTConsultation:
         consensus_reached = False
         decision_log = None # Initialize decision_log to handle cases with no rounds
         audit_trail = {
-            "keus": {},  # Dict[str, KEU] # TODO 
+            "keus": {},  # Dict[str, KEU] # TODO
             "viewpoints": {doc.agent_id: [] for doc in self.doctor_agents}, # TODO
             "collaboration_audits": {}, # TODO
             "ccps": {} # TODO
@@ -612,12 +612,17 @@ class MDTConsultation:
                 opinion_log = doctor.analyze_case(question, options, image_path)
                 parsed_output = opinion_log["parsed_output"]
                 explanation = parsed_output.get("explanation", "")
+                answer = parsed_output.get("answer", "")
+                # audit 2.1.1 role assignment
+                audit_results_of_role_assignment = self.auditor_agent.audit_role_assignment(question, image_path, doctor.agent_id, doctor.specialty, answer, explanation)
 
-                # audit 2.1.1 speciality ability dismatch and 2.1.2 failure to activate domain-specific knowledge TODO,先插入位置，之后再修改接口。
-                # for colacare, 2.1.1 and 2.1.2 need to be audited for many times, because this mas doesn't give the specific role assignment.
-                contribution_audit = self.auditor_agent.audit_role_assignment_and_execution(question, doctor.agent_id, doctor.specialty, explanation)
+                # audit 2.1.2 domain-specific knowledge activation
+                audit_results_of_domain_specific_knowledge_activation = self.auditor_agent.audit_domain_specific_knowledge_activation(question, image_path, doctor.agent_id, doctor.specialty, answer, explanation)
 
-                risk_audit = self.auditor_agent.audit_risk_and_quality(doctor.agent_id, explanation, image_path)
+                if current_round > 1:
+                    # audit 2.2.1 Repetition of Initial Views during Collaborative discussion
+                    audit_results_of_role_assignment = self.auditor_agent.audit_repetition_of_initial_views(question, image_path, doctor.agent_id, doctor.specialty, answer, explanation, discussion_context) # discussion_context includes the previous domain agents' answer and explanation
+
                 step_id = f"round_1_analysis_{doctor.agent_id}"
                 audit_trail["collaboration_audits"][step_id] = {**contribution_audit, **risk_audit}
                 doctor_opinion_parsed_outputs.append(parsed_output)
@@ -719,8 +724,35 @@ class MDTConsultation:
             round_data["synthesis"] = synthesis_log # Store the entire log
             synthesis_parsed_output = synthesis_log["parsed_output"]
             synthesis_explanation = synthesis_parsed_output.get("explanation", "")
+            synthesis_answer = synthesis_parsed_output.get("answer", "")
             print(f"Meta agent synthesis: {synthesis_parsed_output.get('answer', '')}")
 
+            # audit 2.2.2 : Unresolved Conflicts during Collaborative discussion for synthesizer
+            audit_results_of_unresolved_conflicts_during_collaboration_for_synthesizer = self.auditor_agent.audit_unresolved_conflicts_during_Collaboration(
+                question, options, synthesis_answer, synthesis_explanation, discussion_context
+            )
+
+            # audtit 3.1.1 : Suppression of Correct Minority Views by Incorrect Consensus for synthesizer
+            audit_results_of_suppression_of_correct_minority_views_by_incorrect_consensus_for_synthesizer = self.auditor_agent.audit_suppression_by_majority(
+                question, options, synthesis_answer, synthesis_explanation, discussion_context
+            ) # here the discussion_context includes all the domain agents' answers and explanations before this synthesis
+
+            # audit 3.1.2 : Reasoning Distorted by Authority Bias for synthesizer
+            audit_results_of_authority_bias_for_synthesizer = self.auditor_agent.audit_authority_bias(
+                question, options, synthesis_answer, synthesis_explanation, discussion_context
+            ) # here the discussion_context must include the role of domain agent and their answer and explanation before this synthesis
+
+            # audit 3.1.3: Neglect of Contradictions in Reasoning Process for synthesizer
+            audit_results_of_neglect_of_contradictions_in_reasoning_process_for_synthesizer = self.auditor_agent.audit_contradictions_during_decision(
+                question, options, synthesis_answer, synthesis_explanation, discussion_context
+            ) # here the discussion_context includes all the domain agents' answers and explanations before this synthesis
+
+            # audit 3.2.1: Self-Contradiction in Viewpoints Across Rounds for synthesizer
+            audit_results_of_self_contradiction_in_viewpoints_across_rounds_for_synthesizer = self.auditor_agent.audit_self_contradiction_across_rounds(
+                question, synthesis_answer, synthesis_explanation, self.meta_agent.memory
+            ) # here the meta_agent.memory includes all the previous syntheses and decisions
+
+            
             # 机制三：审计元智能体风险规避层级
             synthesis_risk_audit = self.auditor_agent.audit_risk_and_quality(self.meta_agent.agent_id, synthesis_explanation, image_path)
             step_id = f"round_{current_round}_synthesis"
@@ -753,12 +785,13 @@ class MDTConsultation:
                 cited_refs = review_parsed_output.get("cited_references", [])
 
                 # audit 2.1.2 Failure to Activate Specialist Knowledge During Role Execution during Collaborative discussion
-                contribution_audit = self.auditor_agent.audit_role_execution_specialist_knowledge(question, doctor.agent_id, doctor.specialty, review_reason)
+                contribution_audit = self.auditor_agent.audit_domain_specific_knowledge_activation(question, doctor.agent_id, doctor.specialty, review_reason)
+
                 # audit 2.2.1 Repetition of Initial Views during Collaborative discussion 
                 audit_results_repetition_of_initial_views = self.auditor_agent.audit_repetition_of_initial_views(question, doctor.agent_id, doctor.specialty, review_outcome, review_reason, collaboration_context) # collaboration_context include full discussion text before this review
                 
                 # audit 2.2.2 Unresolved Conflicts during Collaborative discussion
-                audit_results_unresolved_conflicts = self.auditor_agent.audit_unresolved_conflicts_during_Collaboration(question, options, doctor.agent_id, doctor.specialty, review_outcome, review_reason, collaboration_context) 
+                audit_results_of_unresolved_conflicts_during_collaboration_of_domain_agent = self.auditor_agent.audit_unresolved_conflicts_during_Collaboration(question, options, doctor.agent_id, doctor.specialty, review_outcome, review_reason, collaboration_context) 
                 step_id = f"round_{current_round}_review_{doctor.agent_id}"
                 audit_trail["collaboration_audits"][step_id] = {**contribution_audit, **risk_audit}
 
@@ -865,7 +898,29 @@ class MDTConsultation:
                 question, doctor_review_parsed_outputs, self.doctor_specialties,
                 synthesis_parsed_output, current_round, self.max_rounds, audit_trail, image_path = image_path, options=options
             )
-            
+            decision_explanation = decision_log['parsed_output'].get("explanation", "")
+            decision_answer = decision_log['parsed_output'].get("answer", "")
+
+            # audit 3.1.1: Suppression of Correct Minority Views by Incorrect Consensus during Decision-making for decision-maker
+            audit_results_of_suppression_of_correct_minority_views_by_incorrect_consensus_for_decision_maker = self.auditor_agent.audit_suppression_by_majority(
+                question, options, decision_answer, decision_explanation, discussion_context
+            ) # here the discussion_context includes all the domain agents' answers and explanations before this decision
+
+            # audit 3.1.2: Reasoning Distorted by Authority Bias for decision-maker
+            audit_results_of_authority_bias_for_decision_maker = self.auditor_agent.audit_authority_bias(
+                question, options, decision_answer, decision_explanation, discussion_context
+            ) # here the discussion_context must include the role of domain agent and their answer and explanation before this decision
+
+            # audit 3.1.3: Neglect of Contradictions in Reasoning Process for decision-maker
+            audit_results_of_neglect_of_contradictions_in_reasoning_process_for_decision_maker = self.auditor_agent.audit_contradictions_during_decision(
+                question, options, decision_answer, decision_explanation, discussion_context
+            ) # here the discussion_context includes all the domain agents' answers and explanations before this decision
+
+            # audit 3.2.1: Self-Contradiction in Viewpoints Across Rounds for decision-maker
+            audit_results_of_self_contradiction_in_viewpoints_across_rounds_for_decision_maker = self.auditor_agent.audit_contradictions_across_rounds(
+                question, options, decision_answer, decision_explanation, self.meta_agent.memory
+            ) # here the meta agent's memory includes all its previous decisions and syntheses!
+
             round_data["decision"] = decision_log # Store the decision log for this round
             # MODIFICATION END
             decision_explanation = decision_log.get("parsed_output", {}).get("explanation", "")
