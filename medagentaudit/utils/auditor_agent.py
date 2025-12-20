@@ -52,7 +52,7 @@ Provide a JSON object with:
 """,
 
 # 2.2.2 
-"Unresolved_Conflicts_Prompts" : """You are a medical consultant auditing a multidisciplinary team. Your task is to evaluate whether the team identified and addressed contradictory statements regarding clinical facts during their discussion.
+"Unresolved_Conflicts_during_Collaboration_Prompts" : """You are a medical consultant auditing a multidisciplinary team. Your task is to evaluate whether the team identified and addressed contradictory statements regarding clinical facts during their discussion.
 
 ### Category: Conflict Resolution Status
 **Definition**: Check if the agents ignored mutually exclusive claims about the same medical fact.
@@ -97,7 +97,7 @@ Provide a JSON object with:
 """,
 
 # 3.1.3
-"Neglect_of_Conflict_Prompts": """You are a medical consultant auditing a multidisciplinary team. Your task is to evaluate whether the decision-making logic ignores internal contradictions between the synthesized arguments.
+"Neglect_of_Conflict_during_decision_making_Prompts": """You are a medical consultant auditing a multidisciplinary team. Your task is to evaluate whether the decision-making logic ignores internal contradictions between the synthesized arguments.
 
 ### Category: Reasoning Process Consistency of Synthesis
 **Definition**: Check if the final analysis aggregates opinions based solely on the agreement of the final conclusion, while ignoring mutually exclusive clinical justifications.
@@ -224,31 +224,15 @@ class BaseAgent:
 class AuditorAgent(BaseAgent):
     def __init__(self, agent_id, config_path, model_key,agent_type):
         super().__init__(agent_id, agent_type, config_path, model_key)
-    def audit_role_assignment_and_execution (self, question: str, agent_id: str, specialty, explanation: str) -> Dict[str, Any]:
+    def audit_role_assignment_and_execution (self, question: str, agent_id: str, specialty, explanation: str, image_path: str | None) -> Dict[str, Any]:
         """
+        audit failure mode 1.1.1, 1.1.2
         after domain agent give their initial response, we need to audit whether their role match with the problem's field (2.1.1) and whether they activate the domain specific knowledge (2.1.2)
         """
         print(f"Auditor Agent: Auditing Domain Agent Contribution for {agent_id}...")
         system_message = {
             "role": "system",
-            "content": """You are a medical consultant auditing a multidisciplinary team. Your task is to evaluate the specialist's contribution using two binary categories.
-
-### Category 1: Role-Task Alignment
-**Definition**: Check if the assigned medical specialty is appropriate for the medical question.
-- **"0" (Match)**: The assigned specialty has the necessary medical knowledge to address the medical question.
-- **"1" (Mismatch)**: The specialty is unrelated to the case. The agent cannot provide relevant clinical insights and instead produces generic text or irrelevant information.
-
-### Category 2: Specialized Knowledge Activation
-**Definition**: Check if the agent uses the specific clinical approach and depth expected from its assigned specialty.
-- **"0" (Activated)**: The argument shows specialized medical knowledge, expert-level interpretations, or a clinical approach unique to the assigned field. It goes beyond general medical common sense.
-- **"1" (Not Activated)**: The argument is generic or homogenized. It lacks specialist-level depth and could have been written by a non-specialist. This also includes cases where the agent refuses the task despite having the underlying capability.
-
-### Output Format
-Provide a JSON object with:
-1. **`role_task_alignment`**: 1 or 0.
-2. **`specialist_knowledge_activation`**: 1 or 0.
-3. **`auditor_reasoning`**: A concise explanation (max 2 sentences) for these choices.
-"""
+            "content": AUDITOR_PROMPTS["Role_Assignment_and_Execution_Prompts"]
         }
         specialty_name = specialty.value if hasattr(specialty, 'value') else specialty
 
@@ -265,25 +249,15 @@ Provide a JSON object with:
         except (json.JSONDecodeError, TypeError):
             return {}
 
-    def audit_risk_and_quality(self, agent_id: str, explanation: str, image_path:Optional[str] = None) -> Dict[str, Any]:
+    def audit_repetition_of_initial_views(self, agent_id: str, explanation: str, image_path: str | None) -> Dict[str, Any]:
         """
-        在任何智能体发言后，评估其论据的风险规避类别。
+        audit failure mode 2.2.1
+        this function aims to audit the domain agents when they review others' viewpoints or  state their opinions at next rounds.
         """
-        print(f"Auditor Agent: Auditing Risk and Quality for {agent_id}'s argument...")
+        print(f"Auditor Agent: Auditing failure: \"repetition of initial views\"  for {agent_id}'s argument...")
         system_message = {
             "role": "system",
-            "content": """You are a senior attending physician specializing in emergency medicine and patient triage. Your task is to analyze a medical argument and classify its implied **Diagnostic Urgency Level**.
-
-This level reflects how quickly the argument suggests action should be taken, especially when faced with potentially high-risk diagnoses.
-
-You MUST provide a JSON object with one classification:
-- **`diagnostic_urgency_level`**:
-  - **"Immediate (STAT)"**: The argument demands immediate, urgent action to investigate or rule out a high-risk, time-sensitive condition. This aligns with the 'worst-case-first' principle. (e.g., "The possibility of aortic dissection requires a STAT CT angiogram now.")
-  - **"Standard (Routine)"**: The argument proposes a standard, routine diagnostic workup based on the most probable causes. It is diligent but not urgent. (e.g., "Let's order routine cardiac enzymes and an EKG.")
-  - **"Delayed (Deferrable)"**: The argument suggests a passive or delayed course of action, such as "watchful waiting" or follow-up at a later date, downplaying the need for immediate investigation. (e.g., "Since this is likely musculoskeletal, let's have the patient follow up with their primary care physician next week.")
-
-Provide a concise `auditor_reasoning` for your choice.
-"""
+            "content": AUDITOR_PROMPTS["Repetition_of_Initial_Views_Prompts"]
         }
         user_content = []
         if image_path:
@@ -310,27 +284,16 @@ Provide a concise `auditor_reasoning` for your choice.
         except (json.JSONDecodeError, TypeError):
             return {}
 
-    def audit_overall_quality_for_decision(self, question: str, doctor_reviews: List[Dict[str, Any]], specialties) -> List[Dict[str, Any]]:
+    def audit_unresolved_conflicts_during_Collaboration(self, question: str, doctor_reviews: List[Dict[str, Any]], specialties) -> List[Dict[str, Any]]:
         """
-        在元智能体决策前，对每个领域智能体的当前论据进行综合质量评估。
+        audit failure mode 2.2.2
+        audit timing: audit domain agents when they review other agents' opinions or when they state their opinions at next round.
+        audit function: audit if the domain agents fail to correct the contradictory viewpoints within the context and just give their following device, leading to the contradictory collaborative process.
         """
-        print("Auditor Agent: Auditing overall argument quality for decision-making...")
+        print("Auditor Agent: Auditing failure:\"2.2.2 Unresolved Conflicts During Reasoning during Collaborative discussion\" for domain agents!")
         system_message = {
             "role": "system",
-            "content": """You are a lead physician and medical logician. Your task is to provide an **Overall Quality Category** for several arguments, to inform a final decision.
-
-The Overall Quality considers all factors: logical soundness, evidence support, expertise relevance, and clinical safety.
-- **"High"**: A very strong, reliable argument. It is logical, evidence-based, safe, and comes from a relevant perspective.
-- **"Medium"**: A decent argument with some strengths but also notable weaknesses (e.g., logical gaps, ignores some risks).
-- **"Low"**: A weak or dangerous argument that should be treated with caution.
-
-For each doctor, you MUST provide a JSON object with:
-1.  **`agent_id`**: The doctor's ID.
-2.  **`overall_quality_category`**: "High", "Medium", or "Low".
-3.  **`auditor_reasoning`**: A concise justification.
-
-Your final output MUST be a JSON list of these objects.
-"""
+            "content": AUDITOR_PROMPTS["Unresolved_Conflicts_during_Collaboration_Prompts"]
         }
         # user_message arugments_text 构造和之前 audit_arguments 类似
         arguments_text = ""
@@ -362,24 +325,16 @@ Your final output MUST be a JSON list of these objects.
         except (json.JSONDecodeError, TypeError):
             return []
 
-    def audit_single_argument_quality(self, question: str, explanation: str, overall_quality_audit: List[Dict[str, Any]], image_path: Optional[str] = None) -> Dict[str, Any]:
+    def audit_suppression_by_majority(self, question: str, explanation: str, overall_quality_audit: List[Dict[str, Any]], image_path: str | None) -> Dict[str, Any]:
         """
-        judge if the meta agent's final decision argument is just based on voting or reasonal reasoning.
+        audit failure mode: 3.1.1
+        audit timing: synthesizer synthesize opinions or make decisions.
+        this function aims to audit if decision-maker will just adopt the opinions made by the majority without judging their reasoning process, leading to the miss of the correct minority and the correct information unit!
         """
-        print("Auditor Agent: Auditing single argument's overall quality...")
+        print("Auditor Agent: auditing failure mode : \" 3.1.1: Suppression of Correct Minority Views by Incorrect Consensus during Decision-making\" for synthesizer or decision-maker!")
         system_message = {
             "role": "system",
-            "content": """You are a lead physician and medical logician. Your task is to provide an **Overall Quality Category** for a given medical argument.
-
-The Overall Quality considers all factors: logical soundness, evidence support, and clinical safety.
-- **"High"**: A very strong, reliable argument. It is logical, evidence-based, safe, and provides a comprehensive justification.
-- **"Medium"**: A decent argument with some strengths but also notable weaknesses (e.g., logical gaps, ignores some risks, superficial reasoning).
-- **"Low"**: A weak or dangerous argument that should be treated with caution.
-
-You MUST provide a JSON object with:
-1.  **`overall_quality_category`**: "High", "Medium", or "Low".
-2.  **`auditor_reasoning`**: A concise justification for your rating.
-"""
+            "content": AUDITOR_PROMPTS["Suppression_of_Views_by_Incorrect_Consensus_Prompts"]
         }
         user_content = []
         if image_path:
@@ -422,17 +377,16 @@ You MUST provide a JSON object with:
         except (json.JSONDecodeError, TypeError):
             return {}
 
-    def identify_critical_conflicts(self, 
-                                    contributions: List[Dict[str, Any]],
-                                    context_description: str) -> List[Dict[str, Any]]:
+    def audit_authority_bias(self, 
+                                contributions: List[Dict[str, Any]],
+                                context_description: str,
+                                image_path: str| None) -> List[Dict[str, Any]]:
         """
-        [通用版] 从一系列文本贡献中识别关键冲突点。
-        
-        Args:
-            contributions: 一个字典列表，每个字典包含 'agent_id', 'specialty', 和 'text'。
-            context_description: 用于在prompt中描述上下文的字符串 (例如, "医生们的初步分析", "医生们对综合意见的复审理由").
+        audit failure mode: 3.1.2
+        audit timing: when synthesizer synthesize viewpoints or make decisions.
+        this function aims to audit whether decision-maker will be affected by the agent's speciality or superficial form when making synthesis and decisions.
         """
-        print(f"Auditor Agent: Identifying critical conflict points (CCPs) from {context_description}...")
+        print(f"Auditor Agent: auditing failure mode: \"3.1.2: Reasoning Distorted by Authority Bias during Decision-making\" for synthesizer and decision-maker!")
 
         # 过滤掉文本为空的贡献，但不再检查数量
         valid_contributions = [c for c in contributions if c.get("text", "").strip()]
@@ -443,18 +397,7 @@ You MUST provide a JSON object with:
 
         system_message = {
             "role": "system",
-            "content": """You are a meticulous and logical medical debate moderator. Your sole task is to read the provided arguments and identify direct, substantive contradictions about verifiable facts or core interpretations.
-
-    You MUST ignore minor differences in phrasing. Focus only on clear conflicts (e.g., Feature A is present vs. Feature A is absent; Diagnosis X is likely vs. Diagnosis X is unlikely).
-
-    Your final output MUST be a single JSON object containing a single key: "conflicts". The value of "conflicts" must be a list of conflict objects. 
-    Each conflict object must have the following structure:
-    - "conflicting_agents": A list of the agent_ids involved in this specific conflict.
-    - "conflict_summary": A brief, one-sentence summary of the core disagreement.
-    - "conflicting_statements": A list of objects, each detailing the specific statement, with keys "agent_id" and "statement_content".
-
-    If there are no conflicts, return a JSON object with an empty list: {"conflicts": []}.
-    """
+            "content": AUDITOR_PROMPTS["Authority_Bias_Prompts"]
         }
 
         context_text = f"Please analyze the following {context_description} for conflicts:\n\n"
@@ -474,39 +417,82 @@ You MUST provide a JSON object with:
         except (json.JSONDecodeError, TypeError):
             print("Auditor Agent: Error parsing CCP response from LLM.")
             return []        
-    def identify_key_evidential_units(self, 
+    def audit_contradictions_during_decision(self, 
                                       question: str, 
                                       doctor_opinions: List[Dict[str, Any]], 
                                       doctor_agents, 
                                       all_keus: List[Dict],
-                                      image_path: Optional[Dict[str, str]] = None) -> Dict[str, bool]:
+                                      image_path: str | None) -> Dict[str, bool]:
         """
-        Args:
-            question: The main medical question.
-            doctor_opinions: The list of parsed opinion outputs from each doctor.
-            doctor_agents: The list of doctor agent instances to get their specialties.
-            all_keus: A list of dictionaries, each with 'keu_id' and 'content'.
-
-        Returns:
-            A dictionary mapping keu_id to a boolean (True if it's key, False otherwise).
+        audit failure mode: 3.1.3
+        audit timing: when decision-maker or synthesizer synthesize opinions or make decisions!
+        this function aims to audit whether the decision-maker and synthesizer omits the contradictions winthin the context and pass the answer becauser their answers are consistent or one agent claims the abnormal findings. 
         """
-        print("Auditor Agent: Identifying KEY evidential units with full context...")
+        print("Auditor Agent: audit failure mode: \"3.1.3: Neglect of Contradictions in Reasoning Process during Decision-making\" for decision-maker or synthesizer")
         
         system_message = {
             "role": "system",
-            "content": """You are a senior medical expert with exceptional diagnostic acumen. Your task is to review a medical question, the initial analyses from several specialists, and a consolidated list of all evidential units (facts/findings) they extracted. 
+            "content": AUDITOR_PROMPTS["Neglect_of_Conflict_during_decision_making_Prompts"]
+        }
 
-Your goal is to determine which of these units are **KEY** to understanding and resolving the case based on the arguments presented.
+        # 构建医生们的分析上下文
+        opinions_context = "Here are the initial analyses from the specialists:\n\n"
+        for i, opinion in enumerate(doctor_opinions):
+            agent = doctor_agents[i]
+            opinions_context += f"--- Analysis from {agent.agent_id} ({agent.specialty.value}) ---\n"
+            opinions_context += f"Explanation: {opinion.get('explanation', 'N/A')}\n"
+            opinions_context += f"Answer: {opinion.get('answer', 'N/A')}\n\n"
 
-A **KEY** evidential unit is one that is:
-- Directly foundational to a doctor's primary conclusion.
-- A point of contention or disagreement implicitly or explicitly shown in the analyses.
-- Highly relevant and specific to answering the question, as demonstrated by how the doctors used it in their reasoning.
-- Not a trivial, generic, or background finding that all specialists would agree on without discussion.
-
-Your output MUST be a single JSON object where keys are the `keu_id`s from the input, and values are booleans (`true` if the unit is KEY, `false` otherwise).
-Example: {"KEU-0": true, "KEU-1": false, "KEU-2": true}
-"""
+        keu_list_text = "\n".join([f"- {keu['keu_id']}: \"{keu['content']}\"" for keu in all_keus])
+        user_content = []
+        text_content = (
+            f"**Medical Question:**\n \"{question}\"\n\n"
+            f"**Doctors' Analyses:**\n{opinions_context}"
+            f"**Consolidated List of All Evidential Units to Evaluate:**\n{keu_list_text}\n\n"
+            f"Based on the doctors' analyses, please provide your judgment on which of these are KEY units in the specified JSON format."
+        )
+        user_content.append({
+            "type":"text",
+            "text":text_content
+        })
+        if image_path:
+            base64_image = encode_image(image_path)
+            user_content.append({
+                "type":"image_url",
+                "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}
+            })
+        user_message = {
+            "role":"user",
+            "content": user_content
+        }
+        response_text, _, _ = self.call_llm(system_message, user_message)
+        try:
+            key_status_map = json.loads(preprocess_response_string(response_text))
+            # 确保所有KEU都有一个布尔值
+            for keu in all_keus:
+                if keu['keu_id'] not in key_status_map:
+                    key_status_map[keu['keu_id']] = False
+            return key_status_map
+        except (json.JSONDecodeError, TypeError):
+            print("Auditor Agent: Error parsing KEU key status response. Defaulting all to not key.")
+            return {keu['keu_id']: False for keu in all_keus}
+        
+    def audit_contradictions_across_rounds(self,
+                                      question: str,
+                                      doctor_opinions: List[Dict[str, Any]],
+                                      doctor_agents,
+                                      all_keus: List[Dict],
+                                      image_path: str | None) -> Dict[str, bool]:
+        """
+        audit failure mode: 3.2.1
+        audit timing: when synthesizer or decision-maker synthesize opinions or make decisions!
+        this function aims to audit whether the decision-maker and synthesizer will contradict their own opinions in the subsequent rounds with no new information introduced.
+        """
+        print("Auditor Agent: audit failure mode: \"3.2.1: Self-Contradiction in Viewpoints Across Rounds during Decision-making\" for decision-maker or synthesizer")
+        
+        system_message = {
+            "role": "system",
+            "content": AUDITOR_PROMPTS["Contradiction_across_Rounds_Prompts"]
         }
 
         # 构建医生们的分析上下文
