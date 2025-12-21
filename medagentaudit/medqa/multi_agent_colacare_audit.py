@@ -73,7 +73,7 @@ class DoctorAgent(BaseAgent):
 
         if options:
             system_message["content"] += (
-                f" For multiple choice questions, ensure your 'answer' field contains the option letter (A, B, C, etc.) "
+                f"For multiple choice questions, ensure your 'answer' field contains the option letter (A, B, C, etc.) "
                 f"that best matches your conclusion. Be specific about which option you are selecting."
             )
 
@@ -614,7 +614,7 @@ class MDTConsultation:
                 explanation = parsed_output.get("explanation", "")
                 answer = parsed_output.get("answer", "")
                 # audit 2.1.1 role assignment
-                audit_results_of_role_assignment = self.auditor_agent.audit_role_assignment(question, image_path, doctor.agent_id, doctor.specialty, answer, explanation)
+                audit_results_of_role_assignment = self.auditor_agent.audit_role_assignment(question=question, image_path=image_path, agent_id=doctor.agent_id, specialty=doctor.specialty, answer=answer, explanation=explanation)
 
                 # audit 2.1.2 domain-specific knowledge activation
                 audit_results_of_domain_specific_knowledge_activation = self.auditor_agent.audit_domain_specific_knowledge_activation(question, image_path, doctor.agent_id, doctor.specialty, answer, explanation)
@@ -752,7 +752,7 @@ class MDTConsultation:
                 question, synthesis_answer, synthesis_explanation, self.meta_agent.memory
             ) # here the meta_agent.memory includes all the previous syntheses and decisions
 
-            
+
             # 机制三：审计元智能体风险规避层级
             synthesis_risk_audit = self.auditor_agent.audit_risk_and_quality(self.meta_agent.agent_id, synthesis_explanation, image_path)
             step_id = f"round_{current_round}_synthesis"
@@ -1049,18 +1049,18 @@ def main():
     parser.add_argument("--auditor_model", type=str, required=True, help="gemini-3-pro-preview") # auditor model is the conflict model
     parser.add_argument("--config_path", type=str, required=True,help="Path to the config.toml file,default = utils/config.toml")
     parser.add_argument("--num_samples", type=int, required=True,help="Number of samples to process from the dataset")
-    parser.add_argument("--test_mode", type=bool, required=True, help="If set, log will be saved to a test-specific directory.")
+    parser.add_argument("--test_mode", type=bool, help="If set, log will be saved to a test-specific directory.")
     args = parser.parse_args()
 
     test_mode = args.test_mode
     timestamp = time.strftime("%Y%m%d_%H%M%S")
     if test_mode:
         print("!!! TEST MODE ENABLED: Logs will be saved to test-specific directories !!!")
-        terminal_log_dir = os.path.join("logs", "observation", "test", "terminal_log", "ColaCare", args.dataset)
+        terminal_log_dir = project_root / "logs" / "observation" / "test" / "terminal_log" / "ColaCare" / args.dataset
     else:
-        terminal_log_dir = os.path.join("logs", "observation", "terminal_log", "ColaCare", args.dataset)
-    os.makedirs(terminal_log_dir, exist_ok=True)
-    terminal_log_file = os.path.join(terminal_log_dir, f"{args.dataset}_{timestamp}_full_terminal.log")
+        terminal_log_dir = project_root / "logs" / "observation" / "terminal_log" / "ColaCare" / args.dataset
+    terminal_log_dir.mkdir(parents=True, exist_ok=True)
+    terminal_log_file = terminal_log_dir / f"{args.dataset}_{timestamp}_full_terminal.log"
     print(f"!!! Terminal output is being captured to: {terminal_log_file} !!!")
     sys.stdout = DualLogger(terminal_log_file, sys.stdout)
     sys.stderr = DualLogger(terminal_log_file, sys.stderr) # 捕获报错和tqdm进度条
@@ -1071,10 +1071,10 @@ def main():
     print(f"QA Format: {qa_type}")
 
     if test_mode:
-        logs_dir = os.path.join("logs", "observation","test","ColaCare", dataset_name)
+        logs_dir = project_root / "logs" / "observation" / "test" / "ColaCare" / dataset_name
     else:
-        logs_dir = os.path.join("logs", "observation","ColaCare", dataset_name)
-    os.makedirs(logs_dir, exist_ok=True)
+        logs_dir = project_root / "logs" / "observation" / "ColaCare" / dataset_name
+    logs_dir.mkdir(parents=True, exist_ok=True)
     print(f"Logs will be saved to: {logs_dir}")
 
     data_path = f"./my_datasets/processed/medqa/{dataset_name}/medqa_{qa_type}_test.json"
@@ -1084,7 +1084,7 @@ def main():
     doctor_specialties = [
         MedicalSpecialty.INTERNAL_MEDICINE,
         MedicalSpecialty.SURGERY,
-        MedicalSpecialty.RADIOLOGY
+        MedicalSpecialty.RADIOLOGY # single-instance object
     ]
 
     if len(args.doctor_models) > len(doctor_specialties):
@@ -1103,9 +1103,10 @@ def main():
 
     for item in tqdm(data[:args.num_samples], desc=f"Running MDT consultation on {dataset_name}"): 
         qid = item["qid"]
-        log_file_path = os.path.join(logs_dir, f"{qid}-result.json")
+        
+        log_file_path = logs_dir / f"{qid}-result.json"
 
-        if os.path.exists(log_file_path):
+        if log_file_path.exists():
             print(f"Skipping {qid} - already processed")
             continue
 
@@ -1148,7 +1149,7 @@ def main():
                 "qid": qid,
                 "error": str(e)
             }
-            save_json(error_log, os.path.join(logs_dir, f"{qid}-error.json"))
+            save_json(error_log, logs_dir / f"{qid}-error.json")
 
 
 if __name__ == "__main__":

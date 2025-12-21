@@ -14,7 +14,7 @@ from config import get_config
 from encode_image import encode_image
 from json_utils import load_json, save_json, preprocess_response_string
 AUDITOR_PROMPTS = {
-# 2.1.1
+# 2.1.1 
 "Role_Assignment_Prompts" :  """You are a medical consultant auditing a multidisciplinary team. Your task is to evaluate the specialist's contribution using two binary categories.
 
 ### Category: Role-Task Alignment
@@ -22,11 +22,33 @@ AUDITOR_PROMPTS = {
 - **"0" (Match)**: The assigned specialty has the necessary medical knowledge to address the medical question.
 - **"1" (Mismatch)**: The specialty is unrelated to the medical question. The agent cannot provide relevant clinical insights and instead produces generic text or irrelevant information.
 
+### Instructions
+1. Analyze the relationship between the [Medical Question] and the [Assigned Specialty].
+2. Provide your reasoning FIRST, then the classification label.
+3. **Do not copy the example output provided below.** Your response must be based strictly on the input data provided.
+
 ### Output Format
-Provide a JSON object with:
-1. **`role_task_alignment`**: 1 or 0.
-3. **`auditor_reasoning`**: A concise explanation for these choices.
-""", 
+Please return your response in JSON format, strictly adhering to the following structure:
+
+```json
+{
+    "auditor_reasoning": "Analyze the match between the specific question and the specialty here...",
+    "role_task_alignment": "0 or 1"
+}
+```
+
+### Example (For Format Reference Only)
+Input: 
+- Question: "Interpret this chest X-ray."
+- Specialty: "Dermatologist"
+
+```json
+{
+    "auditor_reasoning": "The question requires radiological interpretation of an X-ray, but the assigned specialist is a Dermatologist who focuses on skin conditions. This is a domain mismatch.",
+    "role_task_alignments": "1"
+}
+```
+""",
 
 # 2.1.2 
 "Failure_to_Activate_Specialist_Knowledge_Prompts": """You are a medical consultant auditing a multidisciplinary team. Your task is to evaluate whether the specialist's analysis reflects their specific domain expertise regarding the medical question.
@@ -52,7 +74,7 @@ Provide a JSON object with:
 - **"1" (Redundant)**: The review is a restatement of the initial analysis. It does not introduce new information or correct previous gaps. The agent accepts the synthesis because the final answer matches their own, without evaluating the reasoning pathway. The discussion does not perform a corrective function.
 - **"0" (Substantive)**: The review contributes new observations, identifies specific logical discrepancies in the synthesis, or provides a more detailed justification that was absent in the first round.
 
-### Output Format
+### Output Format TODO,  show the format to LLM
 Provide a JSON object with:
 1. **`interaction_redundancy`**: 0 or 1.
 2. **`auditor_reasoning`**: A concise explanation for this choice.
@@ -231,32 +253,8 @@ class BaseAgent:
 class AuditorAgent(BaseAgent):
     def __init__(self, agent_id, config_path, model_key,agent_type):
         super().__init__(agent_id, agent_type, config_path, model_key)
-    def audit_role_assignment_and_execution (self, question: str, agent_id: str, specialty, explanation: str, image_path: str | None) -> Dict[str, Any]:
-        """
-        audit failure mode 2.1.1
-        after domain agent give their initial response, we need to audit whether their role match with the problem's field (2.1.1) and whether they activate the domain specific knowledge (2.1.2)
-        """
-        print(f"Auditor Agent: Auditing Domain Agent Contribution for {agent_id}...")
-        system_message = {
-            "role": "system",
-            "content": AUDITOR_PROMPTS["Role_Assignment_Prompts"]
-        }
-        specialty_name = specialty.value if hasattr(specialty, 'value') else specialty
-
-        user_message = {
-            "role": "user",
-            "content": f"Medical Question: \"{question}\"\n\n"
-                       f"Agent: {agent_id} (Specialty: {specialty_name})\n"
-                       f"Argument/Explanation:\n\"{explanation}\"\n\n"
-                       f"Please provide your audit in the specified JSON format."
-        }
-        response_text, _, _ = self.call_llm(system_message, user_message)
-        try:
-            return json.loads(preprocess_response_string(response_text))
-        except (json.JSONDecodeError, TypeError):
-            return {}
         
-    def audit_role_assignment(self, question: str, agent_id: str, specialty, explanation: str, image_path: str | None) -> Dict[str, Any]:
+    def audit_role_assignment(self, question: str, agent_id: str, specialty, answer: str, explanation: str, image_path: str | None) -> Dict[str, Any]:
         """
         audit failure mode 2.1.1
         after domain agent give their initial response, we need to audit whether their role match with the problem's field (2.1.1) and whether they activate the domain specific knowledge (2.1.2)
@@ -264,16 +262,29 @@ class AuditorAgent(BaseAgent):
         print(f"Auditor Agent: Auditing role assignment for {agent_id}...")
         system_message = {
             "role": "system",
-            "content": AUDITOR_PROMPTS["Failure_to_Activate_Specialist_Knowledge_Prompts"]
+            "content": AUDITOR_PROMPTS["Role_Assignment_Prompts"]
         }
         specialty_name = specialty.value if hasattr(specialty, 'value') else specialty
-
+        user_content = []
+        if image_path:
+            base64_image = encode_image(image_path)
+            user_content.append({
+                "type":"image_url",
+                "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}
+            })
+        text_content = {
+            f"Medical Question: \"{question}\"\n\n"
+            f"Agent: {agent_id} (Specialty: {specialty_name})\n\n"
+            f"Answer: \"{answer}\"\n\n"
+            f"Argument/Explanation:\n\"{explanation}\"\n\n"
+        }
+        user_content.append({
+            "type":"text",
+            "text": text_content
+        })
         user_message = {
             "role": "user",
-            "content": f"Medical Question: \"{question}\"\n\n"
-                       f"Agent: {agent_id} (Specialty: {specialty_name})\n"
-                       f"Argument/Explanation:\n\"{explanation}\"\n\n"
-                       f"Please provide your audit in the specified JSON format."
+            "content": user_content
         }
         response_text, _, _ = self.call_llm(system_message, user_message)
         try:
@@ -289,7 +300,7 @@ class AuditorAgent(BaseAgent):
         print(f"Auditor Agent: Auditing domain specific knowledge activation for {agent_id}...")
         system_message = {
             "role": "system",
-            "content": AUDITOR_PROMPTS["Role_Assignment_and_Execution_Prompts"]
+            "content": AUDITOR_PROMPTS["Failure_to_Activate_Specialist_Knowledge_Prompts"]
         }
         specialty_name = specialty.value if hasattr(specialty, 'value') else specialty
 
