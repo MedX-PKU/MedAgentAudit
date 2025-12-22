@@ -666,7 +666,7 @@ class MDTConsultation:
 
             # audit 3.1.3: Neglect of Contradictions in Reasoning Process for synthesizer
             audit_results_of_neglect_of_contradictions_in_reasoning_process_for_synthesizer = self.auditor_agent.audit_contradictions_during_decision(
-                question, options, synthesis_answer, synthesis_explanation, discussion_context
+                question = question, current_agent_id = self.meta_agent.agent_id, explanation = synthesis_explanation, case_history = case_history
             ) # here the discussion_context includes all the domain agents' answers and explanations before this synthesis
 
             # audit 3.2.1: Self-Contradiction in Viewpoints Across Rounds for synthesizer
@@ -830,22 +830,22 @@ class MDTConsultation:
 
             # audit 3.1.1: Suppression of Correct Minority Views by Incorrect Consensus during Decision-making for decision-maker
             audit_results_of_suppression_of_correct_minority_views_by_incorrect_consensus_for_decision_maker = self.auditor_agent.audit_suppression_by_majority(
-                question = question, options = options, image_path = image_path, answer = decision_answer, explanation = decision_explanation, case_history = case_history
+                question = question, options = options, image_path = image_path, current_agent_id = self.meta_agent.agent_id, answer = decision_answer, explanation = decision_explanation, case_history = case_history
             ) # here the discussion_context includes all the domain agents' answers and explanations before this decision
 
             # audit 3.1.2: Reasoning Distorted by Authority Bias for decision-maker
             audit_results_of_authority_bias_for_decision_maker = self.auditor_agent.audit_authority_bias(
-                question = question, options = options, image_path = image_path, answer = decision_answer, explanation = decision_explanation, case_history = case_history
+                question = question, options = options, image_path = image_path, current_agent_id = self.meta_agent.agent_id, explanation = decision_explanation, case_history = case_history
             ) # here the discussion_context must include the role of domain agent and their answer and explanation before this decision
 
             # audit 3.1.3: Neglect of Contradictions in Reasoning Process for decision-maker
             audit_results_of_neglect_of_contradictions_in_reasoning_process_for_decision_maker = self.auditor_agent.audit_contradictions_during_decision(
-                question, options, decision_answer, decision_explanation, discussion_context
+                question = question, current_agent_id = self.meta_agent.agent_id, explanation = decision_explanation, case_history = case_history
             ) # here the discussion_context includes all the domain agents' answers and explanations before this decision
 
             # audit 3.2.1: Self-Contradiction in Viewpoints Across Rounds for decision-maker
             audit_results_of_self_contradiction_in_viewpoints_across_rounds_for_decision_maker = self.auditor_agent.audit_contradictions_across_rounds(
-                question, options, decision_answer, decision_explanation, self.meta_agent.memory
+                question = question, options = options, answer = decision_answer, current_agent_id = self.meta_agent.agent_id, explanation = decision_explanation, case_history = case_history
             ) # here the meta agent's memory includes all its previous decisions and syntheses!
 
             round_data["decision"] = decision_log # Store the decision log for this round

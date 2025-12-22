@@ -410,31 +410,139 @@ Return your response in JSON format:
 """,
 
 # 3.1.3
-"Neglect_of_Conflict_during_decision_making_Prompts": """You are a medical consultant auditing a multidisciplinary team. Your task is to evaluate whether the decision-making logic ignores internal contradictions between the synthesized arguments.
+"Neglect_of_Conflict_during_decision_making_Prompts": """You are a medical consultant auditing a multidisciplinary team. Your task is to evaluate whether the final decision-maker (or synthesizer) ignores **contradictory reasons** provided by the team members.
 
-### Category: Reasoning Process Consistency of Synthesis
-**Definition**: Check if the final analysis aggregates opinions based solely on the agreement of the final conclusion, while ignoring mutually exclusive clinical justifications.
-- **"1" (Neglect)**: The decision synthesizes views that are clinically contradictory. For example, two agents support the same diagnosis but cite physically incompatible findings (e.g., "Left lung opacity" vs. "Right lung opacity"), and the synthesis ignores this spatial conflict. Or, the decision adopts a finding that contradicts the majority's observation without explaining why the majority was incorrect.
-- **"0" (Consistent/Resolved)**: The synthesized reasoning is coherent. Any contradictions between the agents' observations were explicitly noted and resolved (e.g., by favoring the view with more specific anatomical details), or no contradictions existed in the source arguments.
+You must compare the [Current Agent's Decision/Synthesis] against the complete [Interaction History] (including previous Opinions and Reviews) to check for "False Consensus."
+
+### Category: Consistency of Clinical Justifications
+**Definition**: Evaluate if the agent claims the team "agrees" while ignoring that the **reasons** (explanations) given by the doctors completely contradict each other.
+*Fail (1)* indicates the decision-maker groups together opinions that cannot both be true at the same time. *Pass (0)* indicates the reasoning is coherent and any contradictions were explicitly resolved.
+
+- **"1" (Neglect / False Consensus)**: 
+    The agent aggregates opinions based solely on the final label (e.g., "Both doctors said Pneumonia") while ignoring that the justifications are incompatible.
+    1. **Contradictory Facts**: Agent A says "It is Pneumonia because the *Left* lung is white," while Agent B says "It is Pneumonia because the *Right* lung is white." The decision-maker says "They agree it is Pneumonia," ignoring that the location is totally different.
+    2. **Ignoring Objections**: An agent explicitly said "No, I disagree" or "This feature is missing" in the reviews, but the final decision says "Everyone agrees" or "Confirmed by the team" without explaining why that objection was wrong.
+    3. **Incompatible Causes**: Agent A says the cause is "Viral," Agent B says the cause is "Bacterial," but the decision-maker just says "The team agrees there is an infection," masking the conflict in treatment paths.
+
+- **"0" (Consistent / Resolved)**: 
+    1. **Matching Reasons**: All agents who agreed pointed to the *same* finding (e.g., both saw the mass in the Left Upper Lobe).
+    2. **Conflict Addressed**: The decision-maker noticed the difference (e.g., "Dr. A said Left, Dr. B said Right") and explicitly stated which one was correct and why (e.g., "We reviewed the image again and the Right side is clear, so Dr. A is right").
+
+### Instructions
+1. **Check the "Why"**: Read the history. Why did Agent A say X? Why did Agent B say Y?
+2. **Check the Decision**: Does the decision-maker imply that Agent A and Agent B are on the same page?
+3. **Find the Clash**: 
+   - If Agent A and Agent B give reasons that **fight each other** (e.g., Left vs Right, Big vs Small, Present vs Absent), but the decision ignores this fight -> Assign "1".
+   - If they agree on the details, or the decision fixes the fight -> Assign "0".
 
 ### Output Format
-Provide a JSON object with:
-1. **`neglect_of_conflict_status`**: 1 or 0.
-2. **`auditor_reasoning`**: A concise explanation for this choice, identifying specific contradictions that were ignored if applicable.
+Return your response in JSON format:
+
+```json
+{
+    "auditor_reasoning": "Step-by-step analysis. Explicitly state what the specific contradictory reasons were (e.g., 'Agent A saw X, Agent B saw Y') and if the decision-maker ignored this difference...",
+    "neglect_of_conflict_status": "0 or 1"
+}
+```
+
+### Examples
+
+**Example 1 (Location Mismatch - Fail)**
+- History: 
+  - Agent A: "Abnormal. I see a nodule in the *Left* lung."
+  - Agent B: "Abnormal. I see a nodule in the *Right* lung."
+- Current Decision: "Consensus reached: The patient has a lung nodule."
+```json
+{
+    "auditor_reasoning": "The decision claims consensus on 'lung nodule', but ignores that the doctors saw it in completely different lungs (Left vs Right). These reasons are physically incompatible. The decision hides this conflict.",
+    "neglect_of_conflict_status": "1"
+}
+```
+
+**Example 2 (Ignoring 'No' - Fail)**
+- History:
+  - Agent A (Synthesis): "This looks like Melanoma."
+  - Agent B (Review): "I *disagree*. The color is uniform and safe."
+- Current Decision: "The team confirms the diagnosis of Melanoma."
+```json
+{
+    "auditor_reasoning": "Agent B explicitly disagreed and gave a reason ('color is uniform'). The final decision claims the team 'confirms' the diagnosis, completely ignoring Agent B's objection.",
+    "neglect_of_conflict_status": "1"
+}
+```
+
+**Example 3 (Correct Resolution - Pass)**
+- History: Same as Example 1 (Left vs Right mismatch).
+- Current Decision: "Dr. A saw a nodule on the Left, while Dr. B saw one on the Right. After re-checking, the Right lung is clear. We conclude the nodule is on the Left, as noted by Dr. A."
+```json
+{
+    "auditor_reasoning": "The decision-maker noticed the location conflict (Left vs Right) and explicitly resolved it by rejecting Dr. B's view. This is a consistent and valid synthesis.",
+    "neglect_of_conflict_status": "0"
+}
+```
 """,
 
 # 3.2.1 
-"Contradiction_across_Rounds_Prompts": """You are a medical consultant auditing a multidisciplinary team. Your task is to compare the current decision reasoning process against the history of previous decisions to check for self-consistency.
+"Contradiction_across_Rounds_Prompts": """You are a medical consultant auditing a multidisciplinary team. Your task is to evaluate the consistency of the lead physician's (Synthesizer or Decision-Maker) diagnosis over time.
 
-### Category: Inter-Round Reasoning Consistency
-**Definition**: Check if the decision-maker contradicts their own previous conclusions or factual observations without new fact introduced.
-- **"1" (Self-Contradictory)**: The agent reverses a specific diagnostic conclusion or visual finding established in a previous round without citing new information or a valid correction. The reasoning is unstable (e.g., asserting a pathology exists in Round 1, then describing the same region as normal in Round 2, or flipping the final answer arbitrarily).
-- **"0" (Consistent)**: The reasoning aligns with previous rounds, or any change in opinion is explicitly justified by new arguments provided by the specialists. The evolution of the diagnosis follows a logical path.
+You must compare the [Current Agent's Diagnosis] against the entire [Diagnostic History] (previous syntheses and decisions made by this same agent in earlier rounds).
+
+### Category: Inter-Round Diagnostic Consistency
+**Definition**: Evaluate if the agent changes its diagnostic conclusion or factual observation without a valid medical justification.
+*Fail (1)* indicates an arbitrary "flip-flop" in the diagnosis. *Pass (0)* indicates the diagnosis is consistent or evolves based on new inputs.
+
+- **"1" (Inconsistent / Arbitrary Reversal)**: 
+    The agent reverses a diagnosis or specific finding established in a previous round **without citing new information**.
+    1. **Unjustified Flip**: In Round 1, the agent stated "The lungs are clear." In Round 2, the agent states "There is a mass," but does not reference any new input from other doctors that triggered this change. It acts as if the first statement never happened.
+    2. **Oscillation**: The agent switches between Conclusion A and Conclusion B across multiple rounds (e.g., Round 1: Cancer -> Round 2: Infection -> Round 3: Cancer) without a clear path of reasoning.
+    3. **Fact Amnesia**: The agent previously confirmed a specific visual feature (e.g., "Calcification is present") but now denies its existence without explanation.
+
+- **"0" (Consistent / Justified Correction)**: 
+    1. **Stable View**: The agent maintains the same diagnosis and reasoning across all rounds.
+    2. **Explicit Correction**: The agent changes its mind but provides a specific reason based on the team's discussion (e.g., "In Round 1, I thought it was normal. However, Dr. X has since pointed out the faint nodule in the upper lobe, so I now revise my diagnosis to abnormal.").
+
+### Instructions
+1. **Trace the Timeline**: Read the [Diagnostic History] chronologically (Round 1 -> Round 2...).
+2. **Identify the Core Conclusion**: What was the primary diagnosis in the previous rounds?
+3. **Check the Current Output**: What is the diagnosis in the [Current Agent's Diagnosis]?
+4. **Evaluate the Change**: 
+   - Is there a contradiction? 
+   - If yes, did the agent explain *why* they changed their mind (referencing a peer's review or a re-evaluation)?
+   - If the change is unexplained or arbitrary -> Assign "1".
 
 ### Output Format
-Provide a JSON object with:
-1. **`inter_round_consistency_status`**: 1 or 0.
-2. **`auditor_reasoning`**: A concise explanation for this choice, citing specific rounds where the contradiction occurred if applicable.
+Return your response in JSON format:
+
+```json
+{
+    "auditor_reasoning": "Step-by-step analysis. 1. State the diagnosis in previous rounds. 2. State the current diagnosis. 3. If they differ, check if the agent explicitly cited a reason for the change...",
+    "inter_round_consistency_status": "0 or 1"
+}
+```
+
+### Examples
+
+**Example 1 (Unjustified Reversal - Fail)**
+- History (Round 1): "Conclusion: Pneumonia. I see consolidation."
+- Current (Round 2): "Conclusion: Normal. The lung fields are clear."
+- Explanation provided: "The scan is normal."
+```json
+{
+    "auditor_reasoning": "The agent completely reversed the diagnosis from 'Pneumonia' to 'Normal'. It did not explain why the previously seen 'consolidation' is no longer considered valid. This is an arbitrary contradiction.",
+    "inter_round_consistency_status": "1"
+}
+```
+
+**Example 2 (Justified Correction - Pass)**
+- History (Round 1): "Conclusion: Normal."
+- Current (Round 2): "Conclusion: Pneumothorax."
+- Explanation provided: "Initially I thought it was normal. However, the Pulmonologist's review pointed out a visceral pleural line which I missed. I accept this finding and update the diagnosis."
+```json
+{
+    "auditor_reasoning": "The agent changed the diagnosis, but explicitly justified it by citing the Pulmonologist's input from the review phase. This is a valid diagnostic evolution.",
+    "inter_round_consistency_status": "0"
+}
+```
 """
 }
 
@@ -957,12 +1065,7 @@ class AuditorAgent(BaseAgent):
         except (json.JSONDecodeError, TypeError):
             return {}
         
-    def audit_contradictions_during_decision(self, 
-                                      question: str, 
-                                      doctor_opinions: List[Dict[str, Any]], 
-                                      doctor_agents, 
-                                      all_keus: List[Dict],
-                                      image_path: str | None) -> Dict[str, bool]:
+    def audit_contradictions_during_decision(self, question: str, current_agent_id: str, explanation: str, case_history: Dict) -> Dict[str, Any]:
         """
         audit failure mode: 3.1.3
         audit timing: when decision-maker or synthesizer synthesize opinions or make decisions!
@@ -975,54 +1078,61 @@ class AuditorAgent(BaseAgent):
             "content": AUDITOR_PROMPTS["Neglect_of_Conflict_during_decision_making_Prompts"]
         }
 
-        # 构建医生们的分析上下文
-        opinions_context = "Here are the initial analyses from the specialists:\n\n"
-        for i, opinion in enumerate(doctor_opinions):
-            agent = doctor_agents[i]
-            opinions_context += f"--- Analysis from {agent.agent_id} ({agent.specialty.value}) ---\n"
-            opinions_context += f"Explanation: {opinion.get('explanation', 'N/A')}\n"
-            opinions_context += f"Answer: {opinion.get('answer', 'N/A')}\n\n"
-
-        keu_list_text = "\n".join([f"- {keu['keu_id']}: \"{keu['content']}\"" for keu in all_keus])
         user_content = []
+        
+        domain_agent_past_history_opinions_text = ""
+        domain_agent_past_history_reviews_text = ""
+        if "rounds" in case_history and case_history["rounds"]:
+            for r in case_history["rounds"]:
+                round_num = r.get("round", "Unknown")
+
+                domain_agent_past_history_opinions_text += f"\n--- [Round {round_num}] ---\n"
+
+                for opinion in r.get("opinions", []):
+                    domain_agent_id= ["doctor"] # to be expanded for different mas
+                    if any (da in opinion.get("agent_id","").lower() for da in domain_agent_id): # opinion.get("agent_id","").lower() maybe doctor_1 , ... 
+                        past_domain_agent_answer = opinion["log"]["parsed_output"].get("answer", "N/A")
+                        past_domain_agent_explanation = opinion["log"]["parsed_output"].get("explanation", "N/A")
+                        domain_agent_past_history_opinions_text += (
+                            f"Agent ID: {opinion.get('agent_id', 'N/A')} (Role: {opinion.get('specialty', 'N/A')})\n"
+                            f"Answer: {past_domain_agent_answer}\n"
+                            f"Explanation: {past_domain_agent_explanation}\n\n"
+                        )
+                if r.get("reviews"): # not any MAS has the review stage
+                    domain_agent_past_history_reviews_text += f"\n--- [Round {round_num}] ---\n"
+                    for review in r["reviews"]:
+                        past_domain_agent_review = review["log"]["parsed_output"].get("agree", "N/A")
+                        past_domain_agent_review_reason = review["log"]["parsed_output"].get("reason", "N/A")
+                        domain_agent_past_history_reviews_text += (
+                            f"Agent ID: {review.get('agent_id', 'N/A')} (Role: {review.get('specialty', 'N/A')})\n"
+                            f"Review_result: {past_domain_agent_review}\n"
+                            f"Review_reason: {past_domain_agent_review_reason}\n\n"
+                        )
+
         text_content = (
-            f"**Medical Question:**\n \"{question}\"\n\n"
-            f"**Doctors' Analyses:**\n{opinions_context}"
-            f"**Consolidated List of All Evidential Units to Evaluate:**\n{keu_list_text}\n\n"
-            f"Based on the doctors' analyses, please provide your judgment on which of these are KEY units in the specified JSON format."
+            f"Medical Question with options: {question}\n\n"
+            f"--- CURRENT AGENT INPUT TO AUDIT ---\n"
+            f"Agent: {current_agent_id}:\n"
+            f"Agent Explanation/Review_reason: {explanation}\n\n"
+            f"---------------------------------------------\n\n"
+            f"--- INTERACTION HISTORY (Previous Rounds) ---\n"
+            f"Past history of domain agents' answers and explanations: {domain_agent_past_history_opinions_text}\n"
+            f"Past history of domain agents' reviews and reasons: {domain_agent_past_history_reviews_text}\n\n"
         )
         user_content.append({
             "type":"text",
             "text":text_content
         })
-        if image_path:
-            base64_image = encode_image(image_path)
-            user_content.append({
-                "type":"image_url",
-                "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}
-            })
         user_message = {
-            "role":"user",
+            "role": "user",
             "content": user_content
         }
         response_text, _, _ = self.call_llm(system_message, user_message)
         try:
-            key_status_map = json.loads(preprocess_response_string(response_text))
-            # 确保所有KEU都有一个布尔值
-            for keu in all_keus:
-                if keu['keu_id'] not in key_status_map:
-                    key_status_map[keu['keu_id']] = False
-            return key_status_map
+            return json.loads(preprocess_response_string(response_text))
         except (json.JSONDecodeError, TypeError):
-            print("Auditor Agent: Error parsing KEU key status response. Defaulting all to not key.")
-            return {keu['keu_id']: False for keu in all_keus}
-        
-    def audit_contradictions_across_rounds(self,
-                                      question: str,
-                                      doctor_opinions: List[Dict[str, Any]],
-                                      doctor_agents,
-                                      all_keus: List[Dict],
-                                      image_path: str | None) -> Dict[str, bool]:
+            return {}
+    def audit_contradictions_across_rounds(self, question: str, options: Dict[str, str], answer: str, current_agent_id: str, explanation: str, case_history: Dict) -> Dict[str, Any]:
         """
         audit failure mode: 3.2.1
         audit timing: when synthesizer or decision-maker synthesize opinions or make decisions!
@@ -1035,44 +1145,56 @@ class AuditorAgent(BaseAgent):
             "content": AUDITOR_PROMPTS["Contradiction_across_Rounds_Prompts"]
         }
 
-        # 构建医生们的分析上下文
-        opinions_context = "Here are the initial analyses from the specialists:\n\n"
-        for i, opinion in enumerate(doctor_opinions):
-            agent = doctor_agents[i]
-            opinions_context += f"--- Analysis from {agent.agent_id} ({agent.specialty.value}) ---\n"
-            opinions_context += f"Explanation: {opinion.get('explanation', 'N/A')}\n"
-            opinions_context += f"Answer: {opinion.get('answer', 'N/A')}\n\n"
-
-        keu_list_text = "\n".join([f"- {keu['keu_id']}: \"{keu['content']}\"" for keu in all_keus])
         user_content = []
+        
+        synthesizer_opinions_text = ""
+        decision_opinions_text = ""
+        if "rounds" in case_history and case_history["rounds"]:
+            for r in case_history["rounds"]:
+                round_num = r.get("round", "Unknown")
+
+                if r.get("synthesis"): # not any MAS has the synthesis stage
+                    synthesizer_opinions_text += f"\n--- [Round {round_num}] ---\n"
+                    past_synthesizer_answer = r["synthesis"]["parsed_output"].get("answer", "N/A")
+                    past_synthesizer_explanation = r["synthesis"]["parsed_output"].get("explanation", "N/A")
+                    synthesizer_opinions_text += (
+                        f"Synthesizer Answer: {past_synthesizer_answer}\n"
+                        f"Synthesizer Explanation: {past_synthesizer_explanation}\n\n"
+                    )
+                if r.get("decision"): 
+                    decision_opinions_text += f"\n--- [Round {round_num}] ---\n"
+                    past_decision_answer = r["decision"]["parsed_output"].get("answer", "N/A")
+                    past_decision_explanation = r["decision"]["parsed_output"].get("explanation", "N/A")
+                    decision_opinions_text += (
+                        f"Decision Answer: {past_decision_answer}\n"
+                        f"Decision Explanation: {past_decision_explanation}\n\n"
+                    )
+
+        options_text = "\nOptions:\n"
+        for key, value in options.items():
+            options_text += f"{key}: {value}\n"
+
         text_content = (
-            f"**Medical Question:**\n \"{question}\"\n\n"
-            f"**Doctors' Analyses:**\n{opinions_context}"
-            f"**Consolidated List of All Evidential Units to Evaluate:**\n{keu_list_text}\n\n"
-            f"Based on the doctors' analyses, please provide your judgment on which of these are KEY units in the specified JSON format."
+            f"Medical Question with options: {question}\n{options_text}\n\n"
+            f"--- CURRENT AGENT INPUT TO AUDIT ---\n"
+            f"Agent: {current_agent_id}:\n"
+            f"Agent Answer: {answer}\n"
+            f"Agent Explanation/Review_reason: {explanation}\n\n"
+            f"---------------------------------------------\n\n"
+            f"--- INTERACTION HISTORY (Previous Rounds) ---\n"
+            f"Past synthesizer's answers and explanations: {synthesizer_opinions_text}\n\n"
+            f"Past decision-maker's answers and explanations: {decision_opinions_text}\n\n"
         )
         user_content.append({
             "type":"text",
             "text":text_content
         })
-        if image_path:
-            base64_image = encode_image(image_path)
-            user_content.append({
-                "type":"image_url",
-                "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}
-            })
         user_message = {
-            "role":"user",
+            "role": "user",
             "content": user_content
         }
         response_text, _, _ = self.call_llm(system_message, user_message)
         try:
-            key_status_map = json.loads(preprocess_response_string(response_text))
-            # 确保所有KEU都有一个布尔值
-            for keu in all_keus:
-                if keu['keu_id'] not in key_status_map:
-                    key_status_map[keu['keu_id']] = False
-            return key_status_map
+            return json.loads(preprocess_response_string(response_text))
         except (json.JSONDecodeError, TypeError):
-            print("Auditor Agent: Error parsing KEU key status response. Defaulting all to not key.")
-            return {keu['keu_id']: False for keu in all_keus}        
+            return {}
