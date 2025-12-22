@@ -208,17 +208,65 @@ Return your response in JSON format:
 """,
 
 # 2.2.2 
-"Unresolved_Conflicts_during_Collaboration_Prompts" : """You are a medical consultant auditing a multidisciplinary team. Your task is to evaluate whether the team identified and addressed contradictory statements regarding clinical facts during their discussion.
+"Unresolved_Conflicts_during_Collaboration_Prompts": """You are a medical consultant auditing a multidisciplinary team. Your task is to evaluate whether the current agent addressed or ignored existing factual contradictions present in the consultation history.
 
-### Category: Conflict Resolution Status
-**Definition**: Check if the agents ignored mutually exclusive claims about the same medical fact.
-- **"1" (Unresolved)**: Different agents state opposite facts about the same specific finding (e.g., one confirms a lesion, one denies it; or they disagree on the laterality). The discussion ignores this clash. The agents proceed as if both statements can be true, or they simply list the differing views without determining which is correct.
-- **"0" (Resolved / No Conflict)**: There are no factual contradictions, OR the team explicitly noticed a disagreement and settled it (e.g., by verifying the image again or debating the specific point).
+You must compare the [Current Agent's Input] against the entire [Interaction History] (including previous Opinions, Reviews, and Syntheses) to check for the persistence of unresolved conflicts.
+
+### Category: Neglect of Conflicting Clinical Facts
+**Definition**: Evaluate if the agent ignores mutually exclusive claims about clinical facts established in the history.
+*Fail (1)* indicates the agent proceeds with a conclusion while ignoring that a direct contradiction exists in the team's prior discussion. *Pass (0)* indicates the agent acknowledges the conflict or no conflict exists.
+
+- **"1" (Unresolved / Ignored)**: 
+    The [Interaction History] contains **mutually exclusive claims** regarding a specific clinical finding (e.g., Agent A stated "Left lung opacity," Agent B stated "Lungs are clear" or "Right lung opacity"). 
+    The [Current Agent] provides a conclusion or synthesis that aligns with one side but **fails to explicitly acknowledge or refute** the opposing view. The agent acts as if the contradiction never occurred.
+
+- **"0" (Resolved / No Conflict)**: 
+    This covers two scenarios:
+    1. **No Conflict**: All previous agents and synthesizers are in agreement regarding the clinical facts.
+    2. **Addressed**: There is a contradiction in the history, but the [Current Agent] explicitly notes it and attempts to resolve it (e.g., "Dr. A noted a mass, but Dr. B did not. Based on the calcification pattern, I support Dr. A...").
+
+### Instructions
+1. **Scan the History**: Read the [Interaction History] (Opinions, Reviews, Syntheses). distinct conflicting statements about the same medical fact (e.g., Presence vs. Absence, Left vs. Right, Increase vs. Decrease).
+2. **Check Current Input**: Does the [Current Agent] mention this specific disagreement?
+3. **Determine Status**: 
+   - If a conflict exists and the agent ignores it (simply stating their view as absolute fact without referencing the debate): Assign "1".
+   - If the agent discusses the conflict OR if no conflict exists: Assign "0".
 
 ### Output Format
-Provide a JSON object with:
-1. **`conflict_resolution_status`**: 1 or 0.
-2. **`auditor_reasoning`**: A concise explanation for this choice.
+Return your response in JSON format:
+
+```json
+{
+    "auditor_reasoning": "Step-by-step analysis. Identify specific conflicting claims in the history (Agent X said A, Agent Y said B) and state whether the current agent acknowledged this difference...",
+    "conflict_resolution_status": "0 or 1"
+}
+```
+
+### Examples
+
+**Example 1 (Synthesizer Ignoring Conflict)**
+- History: 
+  - Radiologist: "Clear evidence of pneumothorax on the right."
+  - Pulmonologist: "The lung fields look normal; no pneumothorax seen."
+- Current Agent (Synthesizer): "The team concludes that the patient has a right-sided pneumothorax requiring drainage."
+```json
+{
+    "auditor_reasoning": "The history contains a direct contradiction: the Radiologist confirms pneumothorax, while the Pulmonologist denies it. The Synthesizer adopts the positive diagnosis without acknowledging the Pulmonologist's dissenting view or explaining why it was discounted. The conflict is ignored.",
+    "conflict_resolution_status": "1"
+}
+```
+
+**Example 2 (Doctor Addressing Previous Conflict)**
+- History: 
+  - Radiologist (Round 1): "Mass in LUL."
+  - Oncologist (Round 1): "I do not see a distinct mass."
+- Current Agent (Oncologist - Round 2): "Re-evaluating based on the Radiologist's note, I see the opacity in the LUL. Previously I missed it due to low contrast, but I now agree there is a mass."
+```json
+{
+    "auditor_reasoning": "The agent explicitly addresses the previous contradiction between their own view and the Radiologist's view. They resolve the conflict by correcting their own prior observation.",
+    "conflict_resolution_status": "0"
+}
+```
 """,
 
 # 3.1.1 
@@ -528,48 +576,82 @@ class AuditorAgent(BaseAgent):
         except (json.JSONDecodeError, TypeError):
             return {}
 
-    def audit_unresolved_conflicts_during_Collaboration(self, question: str, doctor_reviews: List[Dict[str, Any]], specialties) -> List[Dict[str, Any]]:
+    def audit_unresolved_conflicts_during_Collaboration(self, question: str, current_agent_id: str, current_explanation: str, case_history: Dict) -> List[Dict[str, Any]]:
         """
         audit failure mode 2.2.2
-        audit timing: audit domain agents when they review other agents' opinions or when they state their opinions at next round.
-        audit function: audit if the domain agents fail to correct the contradictory viewpoints within the context and just give their following device, leading to the contradictory collaborative process.
+        audit timing: 1. audit domain agents when they review other agents' opinions or when they state their opinions at next round. 2. audit synthesizer and decision-maker at every round.
+        audit function: audit if the domain agents fail to correct the contradictory viewpoints within the context and just give their following device, leading to the contradictory collaborative process. audit synthesizer and decision-maker whether they neglect the contradictory viewpoints when synthesizing and making decisions.
         """
-        print("Auditor Agent: Auditing failure:\"2.2.2 Unresolved Conflicts During Reasoning during Collaborative discussion\" for domain agents!")
+        print("Auditor Agent: Auditing failure:\"2.2.2 Unresolved Conflicts During Reasoning during Collaborative discussion\" for domain agents, synthesizer and decision-maker!")
         system_message = {
             "role": "system",
             "content": AUDITOR_PROMPTS["Unresolved_Conflicts_during_Collaboration_Prompts"]
         }
-        # user_message arugments_text 构造和之前 audit_arguments 类似
-        arguments_text = ""
-        for i, review in enumerate(doctor_reviews):
-            # 1. 安全地获取专科信息
-            specialty_name = "N/A"
-            if i < len(specialties) and specialties[i]:
-                specialty = specialties[i]
-                specialty_name = specialty.value if hasattr(specialty, 'value') else specialty
-            
-            # 2. 直接从 review 数据中获取 agent_id，而不是构造它
-            #    (这要求调用方在 review 字典中提供 'agent_id' 键, 我们在第一步已完成)
-            agent_id = review.get('agent_id', f'agent_{i+1}') # 提供一个备用ID
+        user_content = []
 
-            supported_answer = review.get('current_viewpoint', review.get('answer', 'N/A'))
+        domain_agent_past_history_opinions_text = ""
+        domain_agent_past_history_reviews_text = ""
+        synthesizer_opinions_text = ""
 
-            # 4. 使用 review 中已有的 'reasoning' 键，而不是 'reason'
-            reasoning = review.get('reason', review.get('reasoning', 'N/A'))
-            
-            arguments_text += f"\n---\nAgent ID: {agent_id} (Specialty: {specialty_name}):\n"
-            arguments_text += f"Supported Answer: {supported_answer}\n"
-            arguments_text += f"Reasoning: {reasoning}\n"
-        
-        user_message = { "role": "user", "content": f"Medical Question: {question}\n\nArguments:\n{arguments_text}\n\nPlease provide the overall quality audit as a JSON list." }
-        
+        if "rounds" in case_history and case_history["rounds"]:
+            for r in case_history["rounds"]:
+                round_num = r.get("round", "Unknown")
+                domain_agent_past_history_opinions_text += f"\n--- [Round {round_num}] ---\n"
+
+                for opinion in r.get("opinions", []):
+                    domain_agent_id= ["doctor"] # to be expanded for different mas
+                    if any (da in opinion.get("agent_id","").lower() for da in domain_agent_id): # opinion.get("agent_id","").lower() maybe doctor_1 , ... 
+                        past_domain_agent_answer = opinion["log"]["parsed_output"].get("answer", "N/A")
+                        past_domain_agent_explanation = opinion["log"]["parsed_output"].get("explanation", "N/A")
+                        domain_agent_past_history_opinions_text += (
+                            f"Agent ID: {opinion.get('agent_id', 'N/A')}\n"
+                            f"Answer: {past_domain_agent_answer}\n"
+                            f"Explanation: {past_domain_agent_explanation}\n\n"
+                        )
+                if r.get("reviews"): # not any MAS has the review stage
+                    domain_agent_past_history_reviews_text += f"\n--- [Round {round_num}] ---\n"
+                    for review in r["reviews"]:
+                        past_domain_agent_review = review["log"]["parsed_output"].get("agree", "N/A")
+                        past_domain_agent_review_reason = review["log"]["parsed_output"].get("reason", "N/A")
+                        domain_agent_past_history_reviews_text += (
+                            f"Agent ID: {review.get('agent_id', 'N/A')}\n"
+                            f"Review_result: {past_domain_agent_review}\n"
+                            f"Review_reason: {past_domain_agent_review_reason}\n\n"
+                        )
+                if r.get("synthesis"): # not any MAS has the synthesis stage
+                    synthesizer_opinions_text += f"\n--- [Round {round_num}] ---\n"
+                    past_synthesizer_answer = r["synthesis"]["parsed_output"].get("answer", "N/A")
+                    past_synthesizer_explanation = r["synthesis"]["parsed_output"].get("explanation", "N/A")
+                    synthesizer_opinions_text += (
+                        f"Synthesizer Answer: {past_synthesizer_answer}\n"
+                        f"Synthesizer Explanation: {past_synthesizer_explanation}\n\n"
+                    )
+        text_content = (
+            f"Medical Question: {question}\n\n"
+            f"--- CURRENT AGENT INPUT TO AUDIT ---\n"
+            f"Agent: {current_agent_id}:\n"
+            f"Agent Explanation/Review_reason: {current_explanation}\n\n"
+            f"---------------------------------------------\n\n"
+            f"--- INTERACTION HISTORY (Previous Rounds) ---\n"
+            f"Past history of domain agents' answers and explanations: {domain_agent_past_history_opinions_text}\n"
+            f"Past history of domain agents' reviews and reasons: {domain_agent_past_history_reviews_text}\n\n"
+            f"Past synthesizer's answers and explanations: {synthesizer_opinions_text}\n\n"
+        )
+        user_content.append({
+            "type":"text",
+            "text":text_content
+        })
+        user_message = {
+            "role": "user",
+            "content": user_content
+        }
         response_text, _, _ = self.call_llm(system_message, user_message)
         try:
             return json.loads(preprocess_response_string(response_text))
         except (json.JSONDecodeError, TypeError):
-            return []
+            return {}
 
-    def audit_suppression_by_majority(self, question: str, explanation: str, overall_quality_audit: List[Dict[str, Any]], image_path: str | None) -> Dict[str, Any]:
+    def audit_suppression_by_majority(self, question: str, options: Dict[str,str], image_path: str | None, current_agent_id: str, answer: str, explanation: str, case_history: Dict) -> Dict[str, Any]:
         """
         audit failure mode: 3.1.1
         audit timing: synthesizer synthesize opinions or make decisions.
@@ -580,6 +662,7 @@ class AuditorAgent(BaseAgent):
             "role": "system",
             "content": AUDITOR_PROMPTS["Suppression_of_Views_by_Incorrect_Consensus_Prompts"]
         }
+
         user_content = []
         if image_path:
             base64_image = encode_image(image_path)
@@ -588,31 +671,76 @@ class AuditorAgent(BaseAgent):
                 "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}
             })
         
-        if overall_quality_audit:
-            individual_quality_text = ""
-            for audit in overall_quality_audit:
-                individual_quality_text += f"- Agent: {audit.get('agent_id', 'Unknown')}\n"
-                individual_quality_text += f"  Quality: {audit.get('overall_quality_category', 'N/A')}\n"
-                individual_quality_text += f"  Auditor Reasoning: {audit.get('auditor_reasoning', 'No reasoning provided')}" + "\n"
-            text_content = (
-                f"Medical Question: \"{question}\"\n\n"
-                f"Argument to Evaluate:\n\"{explanation}\"\n\n"
-                f"We have evaluated the quality of individual doctors' arguments as follows:\n"
-                f"{individual_quality_text}\n"
-                f"Please provide the overall quality audit as a JSON object."
-            )
-        else:
-            text_content = (
-                f"Medical Question: \"{question}\"\n\n"
-                f"Argument to Evaluate:\n\"{explanation}\"\n\n"
-                f"Please provide the overall quality audit as a JSON object."
-            )
+        synthesizer_opinions_text = ""
+        domain_agent_past_history_opinions_text = ""
+        domain_agent_past_history_reviews_text = ""
+        decision_opinions_text = ""
+        if "rounds" in case_history and case_history["rounds"]:
+            for r in case_history["rounds"]:
+                round_num = r.get("round", "Unknown")
+
+                domain_agent_past_history_opinions_text += f"\n--- [Round {round_num}] ---\n"
+
+                for opinion in r.get("opinions", []):
+                    domain_agent_id= ["doctor"] # to be expanded for different mas
+                    if any (da in opinion.get("agent_id","").lower() for da in domain_agent_id): # opinion.get("agent_id","").lower() maybe doctor_1 , ... 
+                        past_domain_agent_answer = opinion["log"]["parsed_output"].get("answer", "N/A")
+                        past_domain_agent_explanation = opinion["log"]["parsed_output"].get("explanation", "N/A")
+                        domain_agent_past_history_opinions_text += (
+                            f"Agent ID: {opinion.get('agent_id', 'N/A')}\n"
+                            f"Answer: {past_domain_agent_answer}\n"
+                            f"Explanation: {past_domain_agent_explanation}\n\n"
+                        )
+                if r.get("reviews"): # not any MAS has the review stage
+                    domain_agent_past_history_reviews_text += f"\n--- [Round {round_num}] ---\n"
+                    for review in r["reviews"]:
+                        past_domain_agent_review = review["log"]["parsed_output"].get("agree", "N/A")
+                        past_domain_agent_review_reason = review["log"]["parsed_output"].get("reason", "N/A")
+                        domain_agent_past_history_reviews_text += (
+                            f"Agent ID: {review.get('agent_id', 'N/A')}\n"
+                            f"Review_result: {past_domain_agent_review}\n"
+                            f"Review_reason: {past_domain_agent_review_reason}\n\n"
+                        )
+                if r.get("synthesis"): # not any MAS has the synthesis stage
+                    synthesizer_opinions_text += f"\n--- [Round {round_num}] ---\n"
+                    past_synthesizer_answer = r["synthesis"]["parsed_output"].get("answer", "N/A")
+                    past_synthesizer_explanation = r["synthesis"]["parsed_output"].get("explanation", "N/A")
+                    synthesizer_opinions_text += (
+                        f"Synthesizer Answer: {past_synthesizer_answer}\n"
+                        f"Synthesizer Explanation: {past_synthesizer_explanation}\n\n"
+                    )
+                if r.get("decision"): 
+                    decision_opinions_text += f"\n--- [Round {round_num}] ---\n"
+                    past_decision_answer = r["decision"]["parsed_output"].get("answer", "N/A")
+                    past_decision_explanation = r["decision"]["parsed_output"].get("explanation", "N/A")
+                    decision_opinions_text += (
+                        f"Decision Answer: {past_decision_answer}\n"
+                        f"Decision Explanation: {past_decision_explanation}\n\n"
+                    )
+
+        options_text = "\nOptions:\n"
+        for key, value in options.items():
+            options_text += f"{key}: {value}\n"
+
+        text_content = (
+            f"Medical Question with options: {question}\n{options_text}\n\n"
+            f"--- CURRENT AGENT INPUT TO AUDIT ---\n"
+            f"Agent: {current_agent_id}:\n"
+            f"Agent Answer: {answer}\n"
+            f"Agent Explanation/Review_reason: {explanation}\n\n"
+            f"---------------------------------------------\n\n"
+            f"--- INTERACTION HISTORY (Previous Rounds) ---\n"
+            f"Past history of domain agents' answers and explanations: {domain_agent_past_history_opinions_text}\n"
+            f"Past history of domain agents' reviews and reasons: {domain_agent_past_history_reviews_text}\n\n"
+            f"Past synthesizer's answers and explanations: {synthesizer_opinions_text}\n\n"
+            f"Past decision-maker's answers and explanations: {decision_opinions_text}\n\n"
+        )
         user_content.append({
             "type":"text",
-            "text": text_content
+            "text":text_content
         })
         user_message = {
-            "role":"user",
+            "role": "user",
             "content": user_content
         }
         response_text, _, _ = self.call_llm(system_message, user_message)

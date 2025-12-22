@@ -622,6 +622,8 @@ class MDTConsultation:
                 if current_round > 1:
                     # audit 2.2.1 Repetition of Initial Views during Collaborative discussion
                     audit_results_of_role_assignment = self.auditor_agent.audit_repetition_of_initial_views(question = question, image_path=image_path, current_agent_id=doctor.agent_id, current_explanation=explanation, case_history=case_history) 
+                    # audit 2.2.2 Unresolved Conflicts during Collaborative discussion
+                    audit_results_of_unresolved_conflicts_during_Collaboration = self.auditor_agent.audit_unresolved_conflicts_during_Collaboration(question = question, current_agent_id=doctor.agent_id, current_explanation=explanation, case_history=case_history) 
 
                 round_data["opinions"].append({
                     "doctor_id": doctor.agent_id,
@@ -633,87 +635,8 @@ class MDTConsultation:
                 audit_trail["collaboration_audits"][step_id] = {**contribution_audit, **risk_audit}
                 doctor_opinion_parsed_outputs.append(parsed_output)
 
-                # 机制二：在 analyze_case 后立即记录初始观点
-                if current_round == 1:
-                    initial_viewpoint_entry = {
-                        "step": f"round_{current_round}_analysis",
-                        "viewpoint": parsed_output.get("answer"),
-                        "viewpoint_changed": False,
-                        "justification_type": "initial_analysis",
-                        # 在初始分析中，引用的就是自己找到的KEU
-                        "cited_references": [f"KEU-{idx}" for idx, content in enumerate(parsed_output.get("keus", []))]
-                    }
-                    audit_trail["viewpoints"][doctor.agent_id].append(initial_viewpoint_entry)
-                # 机制一：提取出关键证据单元
-                if current_round == 1 and "keus" in parsed_output:
-                    for keu_content in parsed_output["keus"]:
-                        keu_id = f"KEU-{keu_counter}"
-                        # 每个证据注册一个KEU对象
-                        new_keu = KEU(
-                            keu_id=keu_id,
-                            content=keu_content,
-                            source_agent=doctor.agent_id,
-                            round_introduced=current_round
-                        )
-                        audit_trail["keus"][keu_id] = new_keu
-                        keu_counter += 1
-                    # 调用审计员代理来识别哪些KEU是关键的
-                    all_keus_for_audit = [{"keu_id": k, "content": v.content} for k, v in audit_trail["keus"].items()]
-                    if all_keus_for_audit:
-                        # 传入医生们的观点 (doctor_opinion_parsed_outputs) 作为额外上下文
-                        key_status_map = self.auditor_agent.identify_key_evidential_units(
-                            question, 
-                            doctor_opinion_parsed_outputs, 
-                            self.doctor_agents, 
-                            all_keus_for_audit,
-                            image_path=image_path
-                        )
-                        for keu_id, is_key in key_status_map.items():
-                            if keu_id in audit_trail["keus"]:
-                                audit_trail["keus"][keu_id].is_key = is_key
 
                 print(f"Doctor {i+1} opinion: {opinion_log['parsed_output'].get('answer', '')}")
-            
-            # 机制四：在初始分析后鉴别出关键冲突点
-            if current_round == 1: # 通常只在第一轮后识别初始冲突
-
-                initial_contributions = []
-                for i, opinion in enumerate(doctor_opinion_parsed_outputs):
-                    agent = self.doctor_agents[i]
-                    # 将 explanation 和 keus 合并作为完整的观点文本
-                    full_text = opinion.get('explanation', '')
-                    keus = opinion.get('keus', [])
-                    if keus:
-                        full_text += "\nKey Evidential Units:\n- " + "\n- ".join(keus)
-                    
-                    initial_contributions.append({
-                        'agent_id': agent.agent_id,
-                        'specialty': agent.specialty.value,
-                        'text': full_text
-                    })
-
-                initial_ccps = self.auditor_agent.identify_critical_conflicts(
-                    initial_contributions,
-                    context_description="doctors' initial analyses"
-                )
-                audit_trail["ccps"][current_round] = []
-                for ccp in initial_ccps:
-                    ccp['ccp_id'] = f"CCP-{ccp_counter}" # 分配唯一ID
-                    ccp['round_identified'] = 1
-                    ccp['status'] = 'unresolved'
-                    ccp['round_resolved'] = None
-                    audit_trail["ccps"][current_round].append(ccp)
-                    ccp_counter += 1
-                all_unresolved_ccps.extend(audit_trail["ccps"][current_round])
-
-            ccp_text_for_prompt = ""
-            if all_unresolved_ccps:
-                ccp_text_for_prompt += "\n\n[ATTENTION] The following Critical Conflict Points (CCPs) from previous rounds remain UNRESOLVED and MUST be addressed:\n"
-                for ccp in all_unresolved_ccps:
-                    ccp_text_for_prompt += f"- CCP ID: {ccp['ccp_id']} (Identified in Round {ccp['round_identified']})\n"
-                    ccp_text_for_prompt += f"  Conflict: {ccp['conflict_summary']}\n"
-                    ccp_text_for_prompt += f"  Involved Agents: {', '.join(ccp['conflicting_agents'])}\n"
-
 
             # Step 2: Meta agent synthesizes opinions
             print("Meta agent synthesizing opinions")
@@ -721,7 +644,6 @@ class MDTConsultation:
                 question, doctor_opinion_parsed_outputs, self.doctor_specialties,
                 audit_trail=audit_trail, ccp_text=ccp_text_for_prompt, current_round=current_round, options=options
             )
-            round_data["synthesis"] = synthesis_log # Store the entire log
             synthesis_parsed_output = synthesis_log["parsed_output"]
             synthesis_explanation = synthesis_parsed_output.get("explanation", "")
             synthesis_answer = synthesis_parsed_output.get("answer", "")
@@ -729,12 +651,12 @@ class MDTConsultation:
 
             # audit 2.2.2 : Unresolved Conflicts during Collaborative discussion for synthesizer
             audit_results_of_unresolved_conflicts_during_collaboration_for_synthesizer = self.auditor_agent.audit_unresolved_conflicts_during_Collaboration(
-                question, options, synthesis_answer, synthesis_explanation, discussion_context
+                question=question, current_agent_id=self.meta_agent.agent_id, current_explanation=synthesis_explanation, case_history=case_history
             )
 
             # audtit 3.1.1 : Suppression of Correct Minority Views by Incorrect Consensus for synthesizer
             audit_results_of_suppression_of_correct_minority_views_by_incorrect_consensus_for_synthesizer = self.auditor_agent.audit_suppression_by_majority(
-                question, options, synthesis_answer, synthesis_explanation, discussion_context
+                question = question, options = options, image_path = image_path, current_agent_id = self.meta_agent.agent_id, synthesis_answer = synthesis_answer, synthesis_explanation = synthesis_explanation, case_history = case_history
             ) # here the discussion_context includes all the domain agents' answers and explanations before this synthesis
 
             # audit 3.1.2 : Reasoning Distorted by Authority Bias for synthesizer
@@ -751,6 +673,8 @@ class MDTConsultation:
             audit_results_of_self_contradiction_in_viewpoints_across_rounds_for_synthesizer = self.auditor_agent.audit_self_contradiction_across_rounds(
                 question, synthesis_answer, synthesis_explanation, self.meta_agent.memory
             ) # here the meta_agent.memory includes all the previous syntheses and decisions
+
+            round_data["synthesis"] = synthesis_log # after synthesizer then log, in case repetition
 
 
             # 机制三：审计元智能体风险规避层级
@@ -791,12 +715,12 @@ class MDTConsultation:
                 audit_results_repetition_of_initial_views = self.auditor_agent.audit_repetition_of_initial_views(question=question, image_path = image_path, current_agent_id=doctor.agent_id, current_explanation=review_reason, case_history=case_history)
                 
                 # audit 2.2.2 Unresolved Conflicts during Collaborative discussion
-                audit_results_of_unresolved_conflicts_during_collaboration_of_domain_agent = self.auditor_agent.audit_unresolved_conflicts_during_Collaboration(question, options, doctor.agent_id, doctor.specialty, review_outcome, review_reason, collaboration_context) 
+                audit_results_of_unresolved_conflicts_during_review = self.auditor_agent.audit_unresolved_conflicts_during_Collaboration(question=question, current_agent_id=doctor.agent_id, current_explanation=review_reason, case_history=case_history) 
 
                 round_data["reviews"].append({
                     "doctor_id": doctor.agent_id,
                     "specialty": doctor.specialty.value,
-                    "log": review_log # Store the entire log
+                    "log": review_log 
                 })
 
                 step_id = f"round_{current_round}_review_{doctor.agent_id}"
@@ -906,7 +830,7 @@ class MDTConsultation:
 
             # audit 3.1.1: Suppression of Correct Minority Views by Incorrect Consensus during Decision-making for decision-maker
             audit_results_of_suppression_of_correct_minority_views_by_incorrect_consensus_for_decision_maker = self.auditor_agent.audit_suppression_by_majority(
-                question, options, decision_answer, decision_explanation, discussion_context
+                question = question, options = options, image_path = image_path, answer = decision_answer, explanation = decision_explanation, case_history = case_history
             ) # here the discussion_context includes all the domain agents' answers and explanations before this decision
 
             # audit 3.1.2: Reasoning Distorted by Authority Bias for decision-maker
@@ -925,13 +849,9 @@ class MDTConsultation:
             ) # here the meta agent's memory includes all its previous decisions and syntheses!
 
             round_data["decision"] = decision_log # Store the decision log for this round
-            # MODIFICATION END
+
             decision_explanation = decision_log.get("parsed_output", {}).get("explanation", "")
             
-            #机制三：审计元智能体是否是投票决策
-            decision_quality_audit = self.auditor_agent.audit_single_argument_quality(question, decision_explanation, overall_quality_audit, image_path)
-            #机制三：审计元智能体风险规避类别
-            decision_risk_audit = self.auditor_agent.audit_risk_and_quality(self.meta_agent.agent_id, decision_explanation, image_path)
             step_id = f"round_{current_round}_decision"
             audit_trail["collaboration_audits"][step_id] = {**decision_risk_audit, **decision_quality_audit}
 
