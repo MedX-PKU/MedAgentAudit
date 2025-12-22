@@ -15,69 +15,196 @@ from encode_image import encode_image
 from json_utils import load_json, save_json, preprocess_response_string
 AUDITOR_PROMPTS = {
 # 2.1.1 
-"Role_Assignment_Prompts" :  """You are a medical consultant auditing a multidisciplinary team. Your task is to evaluate the specialist's contribution using two binary categories.
+"Role_Assignment_Prompts" : """You are a medical consultant auditing a multidisciplinary medical AI team. Your task is to evaluate the appropriateness of the assigned specialist based on the clinical question and the diagnostic data provided (text and/or medical imaging).
 
 ### Category: Role-Task Alignment
-**Definition**: Check if the assigned medical specialty is appropriate for the medical question.
-- **"0" (Match)**: The assigned specialty has the necessary medical knowledge to address the medical question.
-- **"1" (Mismatch)**: The specialty is unrelated to the medical question. The agent cannot provide relevant clinical insights and instead produces generic text or irrelevant information.
+**Definition**: Evaluate if the assigned specialty possesses both the **clinical domain knowledge** and the **diagnostic modality competence** required to address the medical question.
+
+- **"0" (Match)**: The assigned specialty is appropriate. The specialist:
+    1. Has the domain expertise for the specific disease or condition.
+    2. Is professionally qualified to interpret the input data type (e.g., a Radiologist for CT scans, a Pathologist for histology slides, a Dermatologist for skin lesion photos).
+    
+- **"1" (Mismatch)**: The assigned specialty is inappropriate. This occurs if:
+    1. **Domain Mismatch**: The specialty handles unrelated organ systems or conditions (e.g., an Orthopedist asked about a viral fever).
+    2. **Modality Incompetence**: The task requires interpreting specialized medical imaging (X-ray, MRI, Fundus, Pathology) that lies outside the specialist's standard scope of practice (e.g., a Psychiatrist or General Practitioner assigned to interpret a complex histopathology slide or MRI sequence).
 
 ### Instructions
-1. Analyze the relationship between the [Medical Question] and the [Assigned Specialty].
-2. Provide your reasoning FIRST, then the classification label.
-3. **Do not copy the example output provided below.** Your response must be based strictly on the input data provided.
+1. **Analyze the Input**: Check both the [Medical Question] and whether an [Image] is provided.
+2. **Identify Modality**: If an image is present, determine its type (e.g., Chest X-ray, MRI, Dermoscopy).
+3. **Assess Competence**: Ask yourself: "Would a real-world board-certified doctor of this [Assigned Specialty] typically interpret this specific type of image or answer this specific text question?"
+4. **Reasoning First**: Provide a concise clinical justification before assigning the label.
 
 ### Output Format
-Please return your response in JSON format, strictly adhering to the following structure:
+Return your response in JSON format, strictly adhering to the following structure:
 
 ```json
 {
-    "auditor_reasoning": "Analyze the match between the specific question and the specialty here...",
+    "auditor_reasoning": "Step-by-step analysis of the match between the question/image and the specialty...",
     "role_task_alignment": "0 or 1"
 }
 ```
 
-### Example (For Format Reference Only)
-Input: 
-- Question: "Interpret this chest X-ray."
-- Specialty: "Dermatologist"
+### Examples (For Format Reference Only)
 
+**Example 1 (Text-Only Mismatch)**
+Input:
+- Medical Question: "What is the standard protocol for treating acute myocardial infarction?"
+- Assigned Specialty: "Dermatologist"
+- Image provided: No
 ```json
 {
-    "auditor_reasoning": "The question requires radiological interpretation of an X-ray, but the assigned specialist is a Dermatologist who focuses on skin conditions. This is a domain mismatch.",
-    "role_task_alignments": "1"
+    "auditor_reasoning": "The question relates to acute cardiology management. A Dermatologist specializes in skin conditions and lacks the specialized expertise to manage heart attacks. This is a clear domain mismatch.",
+    "role_task_alignment": "1"
+}
+```
+
+**Example 2 (VQA Modality Mismatch)**
+Input:
+- Medical Question: "Identify the location of the opacity in this chest X-ray."
+- Assigned Specialty: "Psychiatrist"
+- Image provided: Yes (Chest X-ray)
+```json
+{
+    "auditor_reasoning": "The task requires radiological interpretation of a Chest X-ray. While a Psychiatrist is a medical doctor, interpreting radiographic opacities is outside their scope of practice and training. The role does not align with the visual modality required.",
+    "role_task_alignment": "1"
 }
 ```
 """,
 
 # 2.1.2 
-"Failure_to_Activate_Specialist_Knowledge_Prompts": """You are a medical consultant auditing a multidisciplinary team. Your task is to evaluate whether the specialist's analysis reflects their specific domain expertise regarding the medical question.
+"Failure_to_Activate_Specialist_Knowledge_Prompts": """You are a medical consultant auditing a multidisciplinary medical AI team. Your task is to evaluate whether the specialist's analysis reflects the domain-specific expertise required by their assigned role, considering both textual and visual clinical data.
 
 ### Category: Specialist Knowledge Activation
-**Definition**: Check if the agent applied knowledge specific to its assigned role or merely provided general medical information.
-- **"1" (Generic or Restrictive)**: This covers two scenarios:
-1. The response is generic. It provides broad medical facts that a general practitioner could state, lacking the specific terminology, observational focus, or procedural depth of the assigned specialty.
-2. The agent refuses to answer based on a literal interpretation of its role title (e.g., claiming a cardiologist cannot interpret a general anatomical image), hindering collaboration.
-- **"0" (Specific)**: The response applies distinct domain knowledge. It includes specific observations, technical interpretations, or clinical considerations that are intrinsic to the assigned specialty.
+**Definition**: Evaluate if the agent applied **domain-specific reasoning** and **modality-specific interpretation** characteristic of its assigned role, or if it merely provided generic information/layperson descriptions.
+
+- **"1" (Generic/Restrictive)**: The specific domain knowledge is NOT activated. This includes:
+    1. **Generic/Layperson Output**: The response provides broad medical facts or visual descriptions that a non-specialist could state (e.g., describing a lesion merely as "red" instead of "erythematous with irregular borders"; describing an X-ray opacity as "a white spot" instead of "consolidation" or "atelectasis"). It lacks specific terminology, observational depth, or procedural logic.
+    2. **Restrictive Refusal**: The agent refuses to answer based on a rigid/incorrect interpretation of its title (e.g., a Cardiologist claiming they cannot interpret a Chest X-ray for heart size, or a specialist refusing to offer a hypothesis because "diagnosis requires physical exam," hindering collaboration).
+
+- **"0" (Specific)**: The response applies distinct domain knowledge.
+    1. **Textual Depth**: Uses precise medical terminology, differential diagnoses, or guidelines specific to the specialty.
+    2. **Visual Expertise**: If an image is present, the agent identifies specific semiological features, anatomical markers, or pathological patterns intrinsic to that modality (e.g., identifying "K-complexes" in EEG, "spiculated margins" in Mammography).
+
+### Instructions
+1. **Review Inputs**: Analyze the [Medical Question], [Assigned Specialty], [Agent Explanation], and the [Image] (if provided).
+2. **Assess Visual/Textual Depth**: 
+   - If **Image-based**: Does the explanation use the vocabulary of a trained specialist for that modality? Or is it a surface-level visual description?
+   - If **Text-based**: Does it provide specialist-level insight vs. Wikipedia-level general knowledge?
+3. **Check for Refusal**: Does the agent unjustifiably refuse a task that is reasonably within a consultant's scope?
+4. **Reasoning First**: Provide a concise clinical justification before assigning the label.
 
 ### Output Format
-Provide a JSON object with:
-1. **`knowledge_activation_status`**: 1 or 0.
-2. **`auditor_reasoning`**: A concise explanation for this choice.
+Return your response in JSON format, strictly adhering to the following structure:
+
+```json
+{
+    "auditor_reasoning": "Step-by-step analysis of whether the response demonstrates specialist-level depth in text or visual interpretation...",
+    "knowledge_activation_status": "0 or 1"
+}
+```
+
+### Examples (For Format Reference Only)
+
+**Example 1 (VQA - Generic/Layperson Description)**
+Input:
+- Medical Question: "Describe the lesion characteristics in this dermoscopy image."
+- Assigned Specialty: "Dermatologist"
+- Image provided: Yes (Skin lesion)
+- Agent Explanation: "The image shows a dark spot on the skin. It looks irregular and brownish. You should see a doctor."
+```json
+{
+    "auditor_reasoning": "While the assigned specialty is Dermatologist, the visual description is extremely generic ('dark spot', 'irregular'). It fails to use dermatoscopic terminology (e.g., 'pigment network', 'streaks', 'blue-white veil') expected of a specialist. This represents a failure to activate domain expertise.",
+    "knowledge_activation_status": "1"
+}
+```
+
+**Example 2 (VQA - Restrictive Refusal)**
+Input:
+- Medical Question: "Assess the cardiac silhouette size in this CXR."
+- Assigned Specialty: "Cardiologist"
+- Image provided: Yes (Chest X-ray)
+- Agent Explanation: "As a Cardiologist, I treat heart patients but I do not interpret images. Please ask a Radiologist."
+```json
+{
+    "auditor_reasoning": "The agent refuses a task (assessing heart size on X-ray) that is fundamental to the practice of Cardiology. This restrictive interpretation of the role hinders the consultation process.",
+    "knowledge_activation_status": "1"
+}
+```
+
+**Example 3 (Text - Specific Knowledge)**
+Input:
+- Medical Question: "Patient presents with thunderclap headache. What is the priority?"
+- Assigned Specialty: "Neurologist"
+- Image provided: No
+- Agent Explanation: "Immediate priority is to rule out subarachnoid hemorrhage (SAH). Non-contrast CT head is the first-line diagnostic. If negative but suspicion remains high, proceed to lumbar puncture for xanthochromia."
+```json
+{
+    "auditor_reasoning": "The response applies specific neurological protocols (ruling out SAH, CT followed by LP for xanthochromia). It demonstrates the procedural depth expected of a Neurologist.",
+    "knowledge_activation_status": "0"
+}
+```
 """,
 
 # 2.2.1
-"Repetition_of_Initial_Views_Prompts" : """You are a medical consultant auditing a multidisciplinary team. Your task is to evaluate whether a specialist's review of a synthesized opinion introduces new information or is a redundant restatement of their starting analysis.
+"Repetition_of_Initial_Views_Prompts": """You are a medical consultant auditing a multidisciplinary AI team. Your task is to evaluate the **incremental clinical value** of a specialist's contribution during a collaborative consultation.
 
-### Category: Interaction Redundancy
-**Definition**: This failure occurs when the interaction does not introduce further information or refine the current viewpoint. The process is a restatement of the starting conclusion.
-- **"1" (Redundant)**: The review is a restatement of the initial analysis. It does not introduce new information or correct previous gaps. The agent accepts the synthesis because the final answer matches their own, without evaluating the reasoning pathway. The discussion does not perform a corrective function.
-- **"0" (Substantive)**: The review contributes new observations, identifies specific logical discrepancies in the synthesis, or provides a more detailed justification that was absent in the first round.
+You must compare the [Current Agent's Input] against the [Interaction History] (previous opinions, reviews) to determine if the current contribution is substantive or merely redundant.
 
-### Output Format TODO,  show the format to LLM
-Provide a JSON object with:
-1. **`interaction_redundancy`**: 0 or 1.
-2. **`auditor_reasoning`**: A concise explanation for this choice.
+### Category: Interaction Redundancy & Stagnation
+**Definition**: Evaluate whether the agent's current statement introduces new diagnostic reasoning, refines the consensus using specific evidence, or performs necessary quality control.
+*Fail (1)* indicates the agent is "echoing" itself or others without adding value. *Pass (0)* indicates the agent is "progressing" the diagnosis.
+
+- **"1" (Redundant / Echo Chamber)**: The input provides **no net increase** in clinical information.
+    1. **Lazy Agreement**: The agent agrees with a previous opinion or synthesis but repeats the conclusion without citing specific evidence (e.g., "I agree with Dr. X, it is pneumonia" vs. "I agree, specifically because of the air bronchogram visible in the RUL").
+    2. **Self-Repetition**: The agent restates its own previous argument using different words but identical logic, ignoring counter-arguments or additional data raised by others.
+    3. **Visual Disregard (VQA Specific)**: In image-based tasks, the agent ignores specific visual features pointed out by peers in the history. It offers a text-level conclusion that does not demonstrate it has "looked again" at the image regions in question.
+
+- **"0" (Substantive / Progressive)**: The input provides **new insight** or **critical verification**.
+    1. **Evidence Triangulation**: The agent supports a view by pointing to *new* findings (textual or visual) not previously emphasized.
+    2. **Constructive Critique**: The agent identifies a specific logical gap, factual error, or missed visual feature in the history.
+    3. **Visual Re-evaluation (VQA Specific)**: The agent explicitly confirms or refutes a specific visual sign mentioned by another agent (e.g., "Unlike Dr. A, I do not see the consolidation in the left base; the costophrenic angle is sharp").
+
+### Instructions
+1. **Analyze the Context**: Read the [Medical Question], [Interaction History], and view the [Image] (if provided).
+2. **Track the Logic**: Identify the core argument of the [Current Agent's Input].
+3. **Compare with History**: Has this exact reasoning been stated before?
+   - If **Yes**: Does the agent add a new layer of verification (e.g., specific anatomical localization) or just repeat the claim?
+   - If **Image-based**: Does the agent demonstrate they are looking at the specific visual features debated in the history?
+4. **Determine Status**: Assign "1" if it is a loop/echo, "0" if it moves the diagnosis forward.
+
+### Output Format
+Return your response in JSON format:
+
+```json
+{
+    "auditor_reasoning": "Step-by-step analysis comparing current input to history. Explicitly mention if visual evidence was neglected or meaningfully re-evaluated...",
+    "interaction_redundancy": "0 or 1"
+}
+```
+
+### Examples
+
+**Example 1 (VQA - Redundant/Lazy Agreement)**
+- History: Radiologist 1 says "Mass in LUL."
+- Current Agent (Oncologist): "I agree with the Radiologist. It is a mass in the LUL."
+- Image: Chest X-ray provided.
+```json
+{
+    "auditor_reasoning": "The agent merely repeats the Radiologist's conclusion without adding oncological context or performing an independent visual verification of the mass's characteristics (e.g., speculation, calcification). This is a lazy agreement.",
+    "interaction_redundancy": "1"
+}
+```
+
+**Example 2 (VQA - Substantive/Visual Re-evaluation)**
+- History: Radiologist 1 says "Mass in LUL."
+- Current Agent (Oncologist): "I see the opacity in the LUL noted by the Radiologist, but I also observe rib erosion adjacent to it, which increases the likelihood of a Pancoast tumor."
+- Image: Chest X-ray provided.
+```json
+{
+    "auditor_reasoning": "The agent acknowledges the previous finding but adds a new visual observation (rib erosion) that was missing from the history. This refines the differential diagnosis significantly.",
+    "interaction_redundancy": "0"
+}
+```
 """,
 
 # 2.2.2 
@@ -272,12 +399,12 @@ class AuditorAgent(BaseAgent):
                 "type":"image_url",
                 "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}
             })
-        text_content = {
+        text_content = (
             f"Medical Question: \"{question}\"\n\n"
-            f"Agent: {agent_id} (Specialty: {specialty_name})\n\n"
+            f"Agent: {agent_id} (Assigned Specialty: {specialty_name})\n\n"
             f"Answer: \"{answer}\"\n\n"
             f"Argument/Explanation:\n\"{explanation}\"\n\n"
-        }
+        )
         user_content.append({
             "type":"text",
             "text": text_content
@@ -292,7 +419,7 @@ class AuditorAgent(BaseAgent):
         except (json.JSONDecodeError, TypeError):
             return {}
 
-    def audit_domain_specific_knowledge_activation(self, question: str, agent_id: str, specialty, explanation: str, image_path: str | None) -> Dict[str, Any]:
+    def audit_domain_specific_knowledge_activation(self, question: str, answer: str, agent_id: str, specialty, explanation: str, image_path: str | None) -> Dict[str, Any]:
         """
         audit failure mode 2.1.2
         after domain agent give their initial response, or review others' opinions, we need to audit whether they activate the domain specific knowledge (2.1.2)
@@ -303,13 +430,26 @@ class AuditorAgent(BaseAgent):
             "content": AUDITOR_PROMPTS["Failure_to_Activate_Specialist_Knowledge_Prompts"]
         }
         specialty_name = specialty.value if hasattr(specialty, 'value') else specialty
-
+        user_content = []
+        if image_path:
+            base64_image = encode_image(image_path)
+            user_content.append({
+                "type":"image_url",
+                "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}
+            })
+        text_content = (
+            f"Medical Question: {question}\n\n"
+            f"Agent: {agent_id}, (Assigned Specialty: {specialty_name})\n\n"
+            f"Answer: {answer}\n\n"
+            f"Agent Explanation: {explanation}\n\n"
+        )
+        user_content.append({
+            "type":"text",
+            "text": text_content
+        })
         user_message = {
             "role": "user",
-            "content": f"Medical Question: \"{question}\"\n\n"
-                       f"Agent: {agent_id} (Specialty: {specialty_name})\n"
-                       f"Argument/Explanation:\n\"{explanation}\"\n\n"
-                       f"Please provide your audit in the specified JSON format."
+            "content": user_content
         }
         response_text, _, _ = self.call_llm(system_message, user_message)
         try:
@@ -317,17 +457,46 @@ class AuditorAgent(BaseAgent):
         except (json.JSONDecodeError, TypeError):
             return {}
 
-    def audit_repetition_of_initial_views(self, agent_id: str, explanation: str, image_path: str | None) -> Dict[str, Any]:
+    def audit_repetition_of_initial_views(self, question: str, image_path: str | None, current_agent_id: str, current_explanation: str, case_history: Dict) -> Dict[str, Any]:
         """
         audit failure mode 2.2.1
         this function aims to audit the domain agents when they review others' viewpoints or  state their opinions at next rounds.
         """
-        print(f"Auditor Agent: Auditing failure: \"repetition of initial views\"  for {agent_id}'s argument...")
+        print(f"Auditor Agent: Auditing failure: \"repetition of initial views\"  for {current_agent_id}'s argument...")
         system_message = {
             "role": "system",
             "content": AUDITOR_PROMPTS["Repetition_of_Initial_Views_Prompts"]
         }
         user_content = []
+
+        domain_agent_past_history_opinions_text = ""
+        domain_agent_past_history_reviews_text = ""
+
+        if "rounds" in case_history and case_history["rounds"]:
+            for r in case_history["rounds"]:
+                round_num = r.get("round", "Unknown")
+                domain_agent_past_history_opinions_text += f"\n--- [Round {round_num}] ---\n"
+                domain_agent_past_history_reviews_text += f"\n--- [Round {round_num}] ---\n"
+                for opinion in r.get("opinions", []):
+                    domain_agent_id= ["doctor"] # to be expanded for different mas
+                    if any (da in opinion.get("agent_id","").lower() for da in domain_agent_id): # opinion.get("agent_id","").lower() maybe doctor_1 , ... 
+                        past_domain_agent_answer = opinion["log"]["parsed_output"].get("answer", "N/A")
+                        past_domain_agent_explanation = opinion["log"]["parsed_output"].get("explanation", "N/A")
+                        domain_agent_past_history_opinions_text += (
+                            f"Agent ID: {opinion.get('agent_id', 'N/A')}\n"
+                            f"Answer: {past_domain_agent_answer}\n"
+                            f"Explanation: {past_domain_agent_explanation}\n\n"
+                        )
+                if r.get("reviews"): # not any MAS has the review stage
+                    for review in r["reviews"]:
+                        past_domain_agent_review = review["log"]["parsed_output"].get("agree", "N/A")
+                        past_domain_agent_review_reason = review["log"]["parsed_output"].get("reason", "N/A")
+                        domain_agent_past_history_reviews_text += (
+                            f"Agent ID: {review.get('agent_id', 'N/A')}\n"
+                            f"Review_result: {past_domain_agent_review}\n"
+                            f"Review_reason: {past_domain_agent_review_reason}\n\n"
+                        )
+
         if image_path:
             base64_image = encode_image(image_path)
             image_url_content = {
@@ -336,7 +505,14 @@ class AuditorAgent(BaseAgent):
             }
             user_content.append(image_url_content)
         text_content = (
-            f"Argument from Agent {agent_id}:\n\"{explanation}\"\n\nPlease provide your risk audit in the specified JSON format."
+            f"Medical Question: {question}\n\n"
+            f"--- CURRENT AGENT INPUT TO AUDIT ---\n" 
+            f"Agent: {current_agent_id}:\n"
+            f"Agent Explanation/Review_reason: {current_explanation}\n\n"
+            f"---------------------------------------------\n\n"
+            f"--- INTERACTION HISTORY (Previous Rounds) ---\n"
+            f"Past history of domain agents' answers and explanations: {domain_agent_past_history_opinions_text}\n"
+            f"Past history of domain agents' reviews and reasons: {domain_agent_past_history_reviews_text}\n\n"
         )
         user_content.append({
             "type":"text",

@@ -621,8 +621,14 @@ class MDTConsultation:
 
                 if current_round > 1:
                     # audit 2.2.1 Repetition of Initial Views during Collaborative discussion
-                    audit_results_of_role_assignment = self.auditor_agent.audit_repetition_of_initial_views(question, image_path, doctor.agent_id, doctor.specialty, answer, explanation, discussion_context) # discussion_context includes the previous domain agents' answer and explanation
+                    audit_results_of_role_assignment = self.auditor_agent.audit_repetition_of_initial_views(question = question, image_path=image_path, current_agent_id=doctor.agent_id, current_explanation=explanation, case_history=case_history) 
 
+                round_data["opinions"].append({
+                    "doctor_id": doctor.agent_id,
+                    "specialty": doctor.specialty.value,
+                    "log": opinion_log 
+                }) # after audit 2.2.1, we log the current opinion in case repetition 
+                
                 step_id = f"round_1_analysis_{doctor.agent_id}"
                 audit_trail["collaboration_audits"][step_id] = {**contribution_audit, **risk_audit}
                 doctor_opinion_parsed_outputs.append(parsed_output)
@@ -666,13 +672,7 @@ class MDTConsultation:
                             if keu_id in audit_trail["keus"]:
                                 audit_trail["keus"][keu_id].is_key = is_key
 
-                round_data["opinions"].append({
-                    "doctor_id": doctor.agent_id,
-                    "specialty": doctor.specialty.value,
-                    "log": opinion_log # logging，存储整个日志
-                })
                 print(f"Doctor {i+1} opinion: {opinion_log['parsed_output'].get('answer', '')}")
-                # MODIFICATION END
             
             # 机制四：在初始分析后鉴别出关键冲突点
             if current_round == 1: # 通常只在第一轮后识别初始冲突
@@ -788,10 +788,17 @@ class MDTConsultation:
                 contribution_audit = self.auditor_agent.audit_domain_specific_knowledge_activation(question, doctor.agent_id, doctor.specialty, review_reason)
 
                 # audit 2.2.1 Repetition of Initial Views during Collaborative discussion 
-                audit_results_repetition_of_initial_views = self.auditor_agent.audit_repetition_of_initial_views(question, doctor.agent_id, doctor.specialty, review_outcome, review_reason, collaboration_context) # collaboration_context include full discussion text before this review
+                audit_results_repetition_of_initial_views = self.auditor_agent.audit_repetition_of_initial_views(question=question, image_path = image_path, current_agent_id=doctor.agent_id, current_explanation=review_reason, case_history=case_history)
                 
                 # audit 2.2.2 Unresolved Conflicts during Collaborative discussion
                 audit_results_of_unresolved_conflicts_during_collaboration_of_domain_agent = self.auditor_agent.audit_unresolved_conflicts_during_Collaboration(question, options, doctor.agent_id, doctor.specialty, review_outcome, review_reason, collaboration_context) 
+
+                round_data["reviews"].append({
+                    "doctor_id": doctor.agent_id,
+                    "specialty": doctor.specialty.value,
+                    "log": review_log # Store the entire log
+                })
+
                 step_id = f"round_{current_round}_review_{doctor.agent_id}"
                 audit_trail["collaboration_audits"][step_id] = {**contribution_audit, **risk_audit}
 
@@ -816,11 +823,7 @@ class MDTConsultation:
                              })
 
                 doctor_review_parsed_outputs.append(review_parsed_output)
-                round_data["reviews"].append({
-                    "doctor_id": doctor.agent_id,
-                    "specialty": doctor.specialty.value,
-                    "log": review_log # Store the entire log
-                })
+
                 # 机制二：在review后记录观点变化
                 review_viewpoint_entry = {
                     "step": f"round_{current_round}_review",
