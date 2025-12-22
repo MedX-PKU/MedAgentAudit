@@ -661,7 +661,7 @@ class MDTConsultation:
 
             # audit 3.1.2 : Reasoning Distorted by Authority Bias for synthesizer
             audit_results_of_authority_bias_for_synthesizer = self.auditor_agent.audit_authority_bias(
-                question, options, synthesis_answer, synthesis_explanation, discussion_context
+                question = question, options = options, image_path = image_path, current_agent_id = self.meta_agent.agent_id, synthesis_answer = synthesis_answer, synthesis_explanation = synthesis_explanation, case_history = case_history
             ) # here the discussion_context must include the role of domain agent and their answer and explanation before this synthesis
 
             # audit 3.1.3: Neglect of Contradictions in Reasoning Process for synthesizer
@@ -835,7 +835,7 @@ class MDTConsultation:
 
             # audit 3.1.2: Reasoning Distorted by Authority Bias for decision-maker
             audit_results_of_authority_bias_for_decision_maker = self.auditor_agent.audit_authority_bias(
-                question, options, decision_answer, decision_explanation, discussion_context
+                question = question, options = options, image_path = image_path, answer = decision_answer, explanation = decision_explanation, case_history = case_history
             ) # here the discussion_context must include the role of domain agent and their answer and explanation before this decision
 
             # audit 3.1.3: Neglect of Contradictions in Reasoning Process for decision-maker

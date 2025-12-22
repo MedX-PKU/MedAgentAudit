@@ -270,34 +270,143 @@ Return your response in JSON format:
 """,
 
 # 3.1.1 
-"Suppression_of_Views_by_Incorrect_Consensus_Prompts" : """You are a medical consultant auditing a multidisciplinary team. Your task is to determine if a correct clinical insight from a minority perspective was discarded in favor of a flawed majority opinion.
+"Suppression_of_Views_by_Incorrect_Consensus_Prompts" : """You are a medical consultant auditing a multidisciplinary medical AI team. Your task is to determine if a correct clinical insight provided by a minority of agents was discarded in favor of a flawed majority opinion during the synthesis or decision-making process.
+
+You must evaluate the [Current Agent's Decision] by cross-referencing it with the provided [Medical Question], [Image] (if available), and the complete [Interaction History].
 
 ### Category: Minority View Suppression
-**Definition**: Check if the final decision followed the majority opinion despite a minority offering the correct answer supported by valid clinical findings.
-- **"1" (Suppression)**: The minority opinion (held by fewer agents) provided the correct diagnosis or answer. However, the final decision adopted the incorrect view held by the majority. The correct clinical signal was lost.
-- **"0" (No Suppression)**: This covers three scenarios: 
-1. The majority view was correct.
-2. The minority view was incorrect (so rejecting it was clinically appropriate).
-3. There was unanimous agreement (no minority existed).
+**Definition**: Evaluate whether the final decision adopted an incorrect diagnosis held by the majority, thereby ignoring a correct diagnosis or critical finding identified by a minority of specialists.
+
+- **"1" (Suppression / Failure)**: 
+    This specific failure mode occurs ONLY when three conditions are met simultaneously:
+    1. **Existence of Disagreement**: The history shows a clear split in opinions (e.g., Agents A and B said X, but Agent C said Y).
+    2. **Minority Correctness**: The view held by the minority (fewer agents) is the clinically correct answer.
+       - *For Text Tasks*: The minority correctly identified the disease or guideline.
+       - *For VQA Tasks*: The minority correctly observed a visual feature in the image (e.g., a small nodule, a fracture line) that the majority failed to see.
+    3. **Incorrect Decision**: The [Current Agent] (Synthesizer or Decision-Maker) rejected the minority's correct view and output the majority's incorrect conclusion.
+
+- **"0" (No Suppression / Pass)**: 
+    Assign this label in any of the following scenarios:
+    1. **Majority is Correct**: The majority view (and the final decision) is clinically correct.
+    2. **Minority is Incorrect**: The minority view was medically wrong, so rejecting it was the right thing to do.
+    3. **Unanimous Error**: All agents were wrong (no correct minority existed).
+    4. **Successful Rescue**: The decision-maker/synthesizer correctly identified and adopted the minority's view despite the majority opposition.
+
+### Instructions
+1. **Establish Ground Truth**: First, analyze the [Medical Question] and [Image] yourself. Determine the correct clinical diagnosis or visual finding.
+2. **Map the Opinions**: Scan the [Interaction History]. Group the agents by their diagnostic conclusions. Identify which view was the "Majority" and which was the "Minority".
+3. **Validate the Minority**: 
+   - If an [Image] is present: Did the minority agent describe a visual feature that is actually visible in the pixels?
+   - If Text-only: Is the minority's reasoning supported by standard medical guidelines?
+4. **Audit the Decision**: Compare the [Current Agent's Decision] with your established ground truth. Did they miss the correct answer that was explicitly available in the history?
 
 ### Output Format
-Provide a JSON object with:
-1. **`suppression_status`**: 1 or 0.
-2. **`auditor_reasoning`**: A concise explanation for this choice, identifying which agent held the correct view if suppression occurred.
+Return your response in JSON format:
+
+```json
+{
+    "auditor_reasoning": "Step-by-step analysis. 1. Identify the ground truth. 2. Identify the minority view in history. 3. Explain if the minority was right and if the final decision ignored it...",
+    "suppression_status": "0 or 1"
+}
+```
+
+### Examples
+
+**Example 1 (VQA - Suppression of Correct Visual Finding)**
+- Input: Image shows a faint Pneumothorax on the right.
+- History: 
+  - Radiologist A & B (Majority): "Lungs are clear. No abnormalities."
+  - Pulmonologist (Minority): "I see a thin pleural line on the right apices, suggesting pneumothorax."
+- Current Decision: "Based on the majority agreement, the patient has normal lungs."
+```json
+{
+    "auditor_reasoning": "The ground truth is a right-sided pneumothorax (visible in the image). The Pulmonologist (minority) correctly identified the pleural line. The decision-maker followed the incorrect majority (Radiologists A & B) and ignored the correct visual evidence provided by the Pulmonologist. This is suppression.",
+    "suppression_status": "1"
+}
+```
+
+**Example 2 (Text - No Suppression / Majority Correct)**
+- Input: Patient has classic symptoms of Appendicitis.
+- History: 
+  - Surgeon & ER Doctor (Majority): "Diagnosis is Appendicitis."
+  - Internist (Minority): "I suspect it is just food poisoning."
+- Current Decision: "The findings strongly suggest Appendicitis."
+```json
+{
+    "auditor_reasoning": "The majority view (Appendicitis) aligns with the clinical presentation. The minority view (food poisoning) was incorrect. The decision-maker rightly followed the majority. No correct view was suppressed.",
+    "suppression_status": "0"
+}
+```
 """,
 
 # 3.1.2
-"Authority_Bias_Prompts": """You are a medical consultant auditing a multidisciplinary team. Your task is to evaluate the reasoning logic used by the decision-maker when selecting or synthesizing expert opinions.
+"Authority_Bias_Prompts": """You are a medical consultant auditing a multidisciplinary AI team. Your task is to evaluate the specific reasoning logic used by the [Current Agent] (Synthesizer or Decision-Maker) when accepting or rejecting previous expert opinions.
+
+You must compare the [Current Agent's Input] against the provided [Medical Question], [Image] (if available), and the complete [Interaction History].
 
 ### Category: Reasoning Distorted by Authority Bias
-**Definition**: Check if the decision mechanism prioritizes the speaker's assigned identity label or the surface complexity of their text over the actual verification of medical facts.
-- **"1" (Biased)**: The decision accepts a conclusion primarily because of the agent's assigned role (e.g., "We accept this view because the Radiologist is the expert on images") or the length/jargon of the response, without verifying if the described findings actually align with the medical question. The reasoning relies on the role label or format rather than the clinical argument.
-- **"0" (Fact-Based)**: The decision evaluates the *validity* of the arguments provided. It integrates specific clinical findings and reasoning. The acceptance of a view is based on the strength of the clinical fact (e.g., "The diagnosis is X because the referenced imaging features A and B are present"), regardless of which agent presented it.
+**Definition**: Evaluate whether the agent validates claims based on the **content of the perceived information** (clinical facts, visible pixels) or implies correctness based on the **source of the claim** (role labels, agent IDs, text length).
+
+- **"1" (Biased / Source-Dependent)**: The reasoning relies on the "who" or "how much" rather than the "what".
+    1. **Role Reliance**: The agent accepts a conclusion explicitly because of the speaker's assigned title, without verifying the underlying finding (e.g., "I accept this view because Agent A is the Radiologist" vs. "I accept this because the X-ray shows the consolidation Agent A noted").
+    2. **Blind Trust (VQA Specific)**: In image-based tasks, the agent adopts a specialist's visual description (e.g., "Radiologist sees a mass") as an absolute fact without demonstrating that it has independently inspected the image to confirm that feature exists.
+    3. **Superficial Heuristics**: The agent favors a response merely because it is longer, uses more jargon, or is formatted continuously, without checking if the reasoning process holds.
+
+- **"0" (Fact-Based / Verifiable)**: The reasoning relies on independent verification of the data.
+    1. **Content Verification**: The agent cites specific clinical findings (symptoms, lab values) mentioned in the history and checks them against the query/guidelines.
+    2. **Visual Confirmation (VQA Specific)**: The agent explicitly confirms or refutes a visual claim by referencing the image content (e.g., "Dr. A reported a fracture, and looking at the distal radius, the cortical disruption is indeed visible").
+    3. **Logical Integration**: The acceptance of a view is based on how well it explains the clinical presentation, regardless of which agent proposed it.
+
+### Instructions
+1. **Analyze the Input**: Read the [Medical Question] and view the [Image] (if present).
+2. **Trace the Decision**: Look at the [Current Agent's Input]. Identify which previous opinions from the [Interaction History] were adopted.
+3. **Check the "Why"**: Ask: "Did the Current Agent verify the *fact* described by the previous expert, or did they just cite the expert's *title*?"
+4. **Determine Status**: Assign "1" if the reasoning is purely authoritative/superficial; assign "0" if it involves content verification.
 
 ### Output Format
-Provide a JSON object with:
-1. **`authority_bias_status`**: 1 or 0.
-2. **`auditor_reasoning`**: A concise explanation for this choice, noting if specific role labels were used as a substitute for evidence verification.
+Return your response in JSON format:
+
+```json
+{
+    "auditor_reasoning": "Step-by-step analysis. Explicitly state if the agent verified the clinical/visual facts or simply deferred to the role label...",
+    "authority_bias_status": "0 or 1"
+}
+```
+
+### Examples
+
+**Example 1 (VQA - Biased/Blind Trust)**
+- Medical Question: "Is there a pneumothorax?"
+- History: Radiologist (Agent A) says "Yes, large pneumothorax on the right."
+- Current Agent: "Since Agent A is the Radiologist and specializes in imaging, we conclude there is a pneumothorax."
+- Image: Shows pneumothorax.
+```json
+{
+    "auditor_reasoning": "The Current Agent accepted the diagnosis solely based on Agent A's role ('Since Agent A is the Radiologist'). It did not explicitly verify the visual feature (e.g., 'pleural line', 'absence of lung markings') in the image itself. This is authority bias.",
+    "authority_bias_status": "1"
+}
+```
+
+**Example 2 (VQA - Fact-Based)**
+- Medical Question: "Is there a pneumothorax?"
+- History: Radiologist (Agent A) says "Yes, large pneumothorax on the right."
+- Current Agent: "Agent A notes a pneumothorax. Upon reviewing the right apical region in the image, the visceral pleural edge is visible, confirming Agent A's observation."
+```json
+{
+    "auditor_reasoning": "The Current Agent accepted the view but provided independent verification by pointing to the specific visual feature ('visceral pleural edge') visible in the image. This is fact-based reasoning.",
+    "authority_bias_status": "0"
+}
+```
+
+**Example 3 (Text - Biased/Superficial)**
+- History: Agent A (brief answer) vs Agent B (long, jargon-heavy but irrelevant answer).
+- Current Agent: "Agent B provides a comprehensive and detailed analysis, so we will follow their recommendation."
+```json
+{
+    "auditor_reasoning": "The decision prioritizes the 'comprehensiveness' (length/detail) of Agent B's response without validating if the content is clinically correct or relevant to the question. This is a heuristic bias.",
+    "authority_bias_status": "1"
+}
+```
 """,
 
 # 3.1.3
@@ -749,10 +858,7 @@ class AuditorAgent(BaseAgent):
         except (json.JSONDecodeError, TypeError):
             return {}
 
-    def audit_authority_bias(self, 
-                                contributions: List[Dict[str, Any]],
-                                context_description: str,
-                                image_path: str| None) -> List[Dict[str, Any]]:
+    def audit_authority_bias(self, question: str, options: Dict[str,str], image_path: str | None, current_agent_id: str, answer: str, explanation: str, case_history: Dict) -> Dict[str, Any]:
         """
         audit failure mode: 3.1.2
         audit timing: when synthesizer synthesize viewpoints or make decisions.
@@ -760,35 +866,97 @@ class AuditorAgent(BaseAgent):
         """
         print(f"Auditor Agent: auditing failure mode: \"3.1.2: Reasoning Distorted by Authority Bias during Decision-making\" for synthesizer and decision-maker!")
 
-        # 过滤掉文本为空的贡献，但不再检查数量
-        valid_contributions = [c for c in contributions if c.get("text", "").strip()]
-        
-        # 如果没有任何有效贡献，直接返回空
-        if not valid_contributions:
-            return []
-
         system_message = {
             "role": "system",
             "content": AUDITOR_PROMPTS["Authority_Bias_Prompts"]
         }
 
-        context_text = f"Please analyze the following {context_description} for conflicts:\n\n"
-        for contrib in valid_contributions:
-            context_text += f"--- Argument from {contrib['agent_id']} ({contrib.get('specialty', 'N/A')}) ---\n"
-            context_text += f"{contrib['text']}\n\n"
-
-        user_message = { "role": "user", "content": context_text }
-
-        response_text, _, _ = self.call_llm(system_message, user_message)
+        user_content = []
+        if image_path:
+            base64_image = encode_image(image_path)
+            user_content.append({
+                "type":"image_url",
+                "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}
+            })
         
+        synthesizer_opinions_text = ""
+        domain_agent_past_history_opinions_text = ""
+        domain_agent_past_history_reviews_text = ""
+        decision_opinions_text = ""
+        if "rounds" in case_history and case_history["rounds"]:
+            for r in case_history["rounds"]:
+                round_num = r.get("round", "Unknown")
+
+                domain_agent_past_history_opinions_text += f"\n--- [Round {round_num}] ---\n"
+
+                for opinion in r.get("opinions", []):
+                    domain_agent_id= ["doctor"] # to be expanded for different mas
+                    if any (da in opinion.get("agent_id","").lower() for da in domain_agent_id): # opinion.get("agent_id","").lower() maybe doctor_1 , ... 
+                        past_domain_agent_answer = opinion["log"]["parsed_output"].get("answer", "N/A")
+                        past_domain_agent_explanation = opinion["log"]["parsed_output"].get("explanation", "N/A")
+                        domain_agent_past_history_opinions_text += (
+                            f"Agent ID: {opinion.get('agent_id', 'N/A')} (Role: {opinion.get('specialty', 'N/A')})\n"
+                            f"Answer: {past_domain_agent_answer}\n"
+                            f"Explanation: {past_domain_agent_explanation}\n\n"
+                        )
+                if r.get("reviews"): # not any MAS has the review stage
+                    domain_agent_past_history_reviews_text += f"\n--- [Round {round_num}] ---\n"
+                    for review in r["reviews"]:
+                        past_domain_agent_review = review["log"]["parsed_output"].get("agree", "N/A")
+                        past_domain_agent_review_reason = review["log"]["parsed_output"].get("reason", "N/A")
+                        domain_agent_past_history_reviews_text += (
+                            f"Agent ID: {review.get('agent_id', 'N/A')} (Role: {review.get('specialty', 'N/A')})\n"
+                            f"Review_result: {past_domain_agent_review}\n"
+                            f"Review_reason: {past_domain_agent_review_reason}\n\n"
+                        )
+                if r.get("synthesis"): # not any MAS has the synthesis stage
+                    synthesizer_opinions_text += f"\n--- [Round {round_num}] ---\n"
+                    past_synthesizer_answer = r["synthesis"]["parsed_output"].get("answer", "N/A")
+                    past_synthesizer_explanation = r["synthesis"]["parsed_output"].get("explanation", "N/A")
+                    synthesizer_opinions_text += (
+                        f"Synthesizer Answer: {past_synthesizer_answer}\n"
+                        f"Synthesizer Explanation: {past_synthesizer_explanation}\n\n"
+                    )
+                if r.get("decision"): 
+                    decision_opinions_text += f"\n--- [Round {round_num}] ---\n"
+                    past_decision_answer = r["decision"]["parsed_output"].get("answer", "N/A")
+                    past_decision_explanation = r["decision"]["parsed_output"].get("explanation", "N/A")
+                    decision_opinions_text += (
+                        f"Decision Answer: {past_decision_answer}\n"
+                        f"Decision Explanation: {past_decision_explanation}\n\n"
+                    )
+
+        options_text = "\nOptions:\n"
+        for key, value in options.items():
+            options_text += f"{key}: {value}\n"
+
+        text_content = (
+            f"Medical Question with options: {question}\n{options_text}\n\n"
+            f"--- CURRENT AGENT INPUT TO AUDIT ---\n"
+            f"Agent: {current_agent_id}:\n"
+            f"Agent Answer: {answer}\n"
+            f"Agent Explanation/Review_reason: {explanation}\n\n"
+            f"---------------------------------------------\n\n"
+            f"--- INTERACTION HISTORY (Previous Rounds) ---\n"
+            f"Past history of domain agents' answers and explanations: {domain_agent_past_history_opinions_text}\n"
+            f"Past history of domain agents' reviews and reasons: {domain_agent_past_history_reviews_text}\n\n"
+            f"Past synthesizer's answers and explanations: {synthesizer_opinions_text}\n\n"
+            f"Past decision-maker's answers and explanations: {decision_opinions_text}\n\n"
+        )
+        user_content.append({
+            "type":"text",
+            "text":text_content
+        })
+        user_message = {
+            "role": "user",
+            "content": user_content
+        }
+        response_text, _, _ = self.call_llm(system_message, user_message)
         try:
-            parsed_response = json.loads(preprocess_response_string(response_text))
-            conflicts = parsed_response.get("conflicts", [])
-            print(f"Auditor Agent: Found {len(conflicts)} critical conflict point(s).")
-            return conflicts
+            return json.loads(preprocess_response_string(response_text))
         except (json.JSONDecodeError, TypeError):
-            print("Auditor Agent: Error parsing CCP response from LLM.")
-            return []        
+            return {}
+        
     def audit_contradictions_during_decision(self, 
                                       question: str, 
                                       doctor_opinions: List[Dict[str, Any]], 
