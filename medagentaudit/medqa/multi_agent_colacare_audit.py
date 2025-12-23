@@ -14,30 +14,18 @@ from pathlib import Path
 
 # Ensure project root is in path
 current_file_path = Path(__file__).resolve()
+current_file_name = Path(__file__).stem
 utils_root = current_file_path.parents[1] / "utils"
 project_root = current_file_path.parents[2]
 sys.path.extend([str(utils_root), str(project_root)])
-from config import get_config
 from dual_logger import DualLogger
 from encode_image import encode_image
 from json_utils import load_json, save_json, preprocess_response_string
-from keu import KEU
-from analysishelper import AnalysisHelperLLM
 from auditor_agent import AuditorAgent
 from BaseAgent import BaseAgent
-class MedicalSpecialty(Enum):
-    """Medical specialty enumeration."""
-    INTERNAL_MEDICINE = "Internal Medicine"
-    SURGERY = "Surgery"
-    RADIOLOGY = "Radiology"
-
-
-class AgentType(Enum):
-    """Agent type enumeration."""
-    DOCTOR = "Doctor"
-    META = "Coordinator"
-    AUDITOR = "Auditor"
-
+from agent_type import AgentType
+from medical_specialty import MedicalSpecialty
+from parse_structured_output import parse_structured_output
 class DoctorAgent(BaseAgent):
     """Doctor agent with a medical specialty."""
 
@@ -49,7 +37,7 @@ class DoctorAgent(BaseAgent):
         """
         Initialize a doctor agent.
         """
-        super().__init__(agent_id=agent_id, agent_type=AgentType.DOCTOR, config_path=config_path, model_key=model_key)
+        super().__init__(agent_id=agent_id, agent_type=AgentType.DOMAIN, config_path=config_path, model_key=model_key)
         self.specialty = specialty
         print(f"Initializing {specialty.value} doctor agent, ID: {agent_id}, Model: {model_key}")
 
@@ -273,14 +261,12 @@ class MetaAgent(BaseAgent):
         super().__init__(agent_id=agent_id, agent_type=AgentType.META, config_path=config_path, model_key = model_key)
         print(f"Initializing meta agent, ID: {agent_id}, Model: {model_key}")
 
-    # MODIFICATION START: Changed return type to a dictionary for comprehensive logging.
     def synthesize_opinions(self,
                             question: str,
                             doctor_opinions: List[Dict[str, Any]],
                             doctor_specialties: List[MedicalSpecialty],
                             current_round: int = 1,
                             options: Optional[Dict[str, str]] = None) -> Dict[str, Any]:
-        # MODIFICATION END
         """
         Synthesize multiple doctors' opinions.
         Returns:
@@ -366,10 +352,8 @@ class MetaAgent(BaseAgent):
                             current_synthesis: Dict[str, Any],
                             current_round: int,
                             max_rounds: int,
-                            audit_trail: Dict[str, Any],
                             image_path:Optional[str] = None,
                             options: Optional[Dict[str, str]] = None) -> Dict[str, Any]:
-    # MODIFICATION END
         """
         Make a final decision based on doctor reviews.
         Returns:
@@ -442,9 +426,6 @@ class MetaAgent(BaseAgent):
 
         previous_syntheses_text = "\n\n".join(previous_syntheses) if previous_syntheses else "No previous syntheses available."
 
-        keu_list_text = "\n\nKey Evidential Units (KEUs) proposed so far:\n"
-        for keu_id, keu_obj in audit_trail["keus"].items():
-            keu_list_text += f"- {keu_id}: '{keu_obj.content}' (from {keu_obj.source_agent})\n"
             
         user_content =[]
         if image_path:
@@ -454,14 +435,12 @@ class MetaAgent(BaseAgent):
                 "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}
             })
         text_content = (
-            f"Question: {question_with_options}\n\n"
-            f"{current_synthesis_text}\n\n"
-            f"Doctor Reviews on this synthesis:\n{reviews_text}\n\n"
-            f"{keu_list_text}\n\n"
-            f"**CRITICAL INSTRUCTION:** Your reasoning in the 'explanation' field must demonstrate synthesis, not just summarization. To do this, you **MUST selectively cite only the most pivotal KEU-IDs** that form the core basis of your conclusion. **DO NOT list or repeat all available KEUs.** Your task is to build an argument using the strongest evidence. (e.g., 'Based on the critical findings in KEU-1 and KEU-3, I conclude...').\n\n"
-            f"History of Previous Rounds:\n{previous_syntheses_text}\n\n"
-            f"Based on ALL available information presented above, provide your {decision_type} decision. Your explanation should be grounded in the evidence and reasoning from the synthesis and reviews. "
-            f"Your response must be in JSON format, including 'explanation' and 'answer' fields."
+            f"Question: {question_with_options}\n\n" 
+            f"{current_synthesis_text}\n\n" 
+            f"Doctor Reviews:\n{reviews_text}\n\n" 
+            f"Previous Rounds:\n{previous_syntheses_text}\n\n"
+            f"Please provide your {decision_type} decision, "
+            f"in JSON format, including 'explanation' and 'answer' fields."
         )
         user_content.append({
             "type":"text",
@@ -495,7 +474,7 @@ class MetaAgent(BaseAgent):
                 "user_message": user_msg
             }
         }
-        return decision_log # logging，返回了完整的系统和用户消息。
+        return decision_log 
 
 class MDTConsultation:
     """Multi-disciplinary team consultation coordinator."""
@@ -529,8 +508,6 @@ class MDTConsultation:
         self.meta_agent = MetaAgent(agent_id="meta",config_path=config_path, model_key=meta_model_key)
         self.auditor_agent = AuditorAgent(agent_id="auditor", config_path = config_path, model_key= auditor_model_key)
 
-        # 初始化 AnalysisHelperLLM，使其在整个咨询流程中可用
-        self.analysis_llm = AnalysisHelperLLM(config_path=config_path, model_key=conflict_analysis_model_key)
 
         self.doctor_specialties = [doctor.specialty for doctor in self.doctor_agents]
 
@@ -563,7 +540,6 @@ class MDTConsultation:
         final_decision_log = None
         consensus_reached = False
         decision_log = None # Initialize decision_log to handle cases with no rounds
-        audit_trail = {"rounds": []}
         while current_round < self.max_rounds and not consensus_reached:
             current_round += 1
             print(f"Starting round {current_round}")
@@ -742,7 +718,7 @@ class MDTConsultation:
             # MODIFICATION START: Capture the full log from the agent.
             decision_log = self.meta_agent.make_final_decision(
                 question, doctor_review_parsed_outputs, self.doctor_specialties,
-                synthesis_parsed_output, current_round, self.max_rounds, audit_trail, image_path = image_path, options=options
+                synthesis_parsed_output, current_round, self.max_rounds, image_path = image_path, options=options
             )
             decision_explanation = decision_log['parsed_output'].get("explanation", "")
             decision_answer = decision_log['parsed_output'].get("answer", "")
@@ -833,32 +809,6 @@ class MDTConsultation:
 
         return case_history
 
-
-def parse_structured_output(response_text: str) -> Dict[str, str]:
-    """
-    Parse LLM response to extract structured output as a fallback.
-    """
-    try:
-        parsed = json.loads(preprocess_response_string(response_text))
-        return parsed
-    except json.JSONDecodeError:
-        lines = response_text.strip().split('\n')
-        result = {}
-        for line in lines:
-            if ":" in line:
-                key, value = line.split(":", 1)
-                key = key.strip().lower().replace("'", "").replace('"', '')
-                value = value.strip()
-                result[key] = value
-
-        if "explanation" not in result:
-            result["explanation"] = "No structured explanation found in response"
-        if "answer" not in result:
-            result["answer"] = "No structured answer found in response"
-
-        return result
-
-
 def process_input(item, doctor_configs=None, config_path=None, meta_model_key="qwen-max-latest",auditor_model_key="gemini-2.5-pro",conflict_analysis_model_key="deepseek-reasoner"):
     """
     Process a single input data item.
@@ -895,31 +845,26 @@ def main():
     parser.add_argument("--auditor_model", type=str, required=True, help="gemini-3-pro-preview") # auditor model is the conflict model
     parser.add_argument("--config_path", type=str, required=True,help="Path to the config.toml file,default = utils/config.toml")
     parser.add_argument("--num_samples", type=int, required=True,help="Number of samples to process from the dataset")
-    parser.add_argument("--test_mode", type=bool, help="If set, log will be saved to a test-specific directory.")
+    parser.add_argument("--time_stamp", type=str, required=True, help="Timestamp for logging purposes")
     args = parser.parse_args()
 
-    test_mode = args.test_mode
-    timestamp = time.strftime("%Y%m%d_%H%M%S")
-    if test_mode:
-        print("!!! TEST MODE ENABLED: Logs will be saved to test-specific directories !!!")
-        terminal_log_dir = project_root / "logs" / "observation" / "test" / "terminal_log" / "ColaCare" / args.dataset
-    else:
-        terminal_log_dir = project_root / "logs" / "observation" / "terminal_log" / "ColaCare" / args.dataset
+    dataset_name = args.dataset
+    print(f"Dataset: {dataset_name}")
+
+    qa_type = args.qa_type
+    print(f"QA Format: {qa_type}")
+
+    timestamp = args.time_stamp
+    current_model_name = current_file_name.split("_")[2]
+
+    terminal_log_dir = project_root / "logs" / "observation" / timestamp / current_model_name / dataset_name / "terminal_log"
     terminal_log_dir.mkdir(parents=True, exist_ok=True)
-    terminal_log_file = terminal_log_dir / f"{args.dataset}_{timestamp}_full_terminal.log"
+    terminal_log_file = terminal_log_dir / f"{dataset_name}_full_terminal.log"
     print(f"!!! Terminal output is being captured to: {terminal_log_file} !!!")
     sys.stdout = DualLogger(terminal_log_file, sys.stdout)
     sys.stderr = DualLogger(terminal_log_file, sys.stderr) # 捕获报错和tqdm进度条
 
-    dataset_name = args.dataset
-    print(f"Dataset: {dataset_name}")
-    qa_type = args.qa_type
-    print(f"QA Format: {qa_type}")
-
-    if test_mode:
-        logs_dir = project_root / "logs" / "observation" / "test" / "ColaCare" / dataset_name
-    else:
-        logs_dir = project_root / "logs" / "observation" / "ColaCare" / dataset_name
+    logs_dir = project_root / "logs" / "observation" / timestamp / current_model_name / dataset_name
     logs_dir.mkdir(parents=True, exist_ok=True)
     print(f"Logs will be saved to: {logs_dir}")
 

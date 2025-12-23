@@ -31,7 +31,6 @@ class BaseAgent:
             timeout = self.llm.timeout, # if time out then atonomously report error
         )
         self.model_name = self.llm.model_name
-    # MODIFICATION START: Adjusted return type to include prompts for logging.
     def call_llm(self,
                  system_message: Dict[str, str],
                  user_message: Dict[str, Any],

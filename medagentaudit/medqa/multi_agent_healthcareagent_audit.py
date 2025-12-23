@@ -1,12 +1,5 @@
 """
-medagentboard/medqa/multi_agent_healthcareagent.py
-
-This file implements the HealthcareAgent framework as a standalone, end-to-end baseline.
-It is inspired by the paper "Healthcare agent: eliciting the power of large language models for medical consultation".
-The framework processes a single medical query through a multi-step pipeline involving planning,
-preliminary analysis, internal safety review ("discuss"), and final response modification.
-
-This version has been modified to embed the four quantitative observation mechanisms.
+medagentboard/medqa/multi_agent_healthcareagent_audit.py
 """
 
 import os
@@ -18,305 +11,23 @@ from typing import Dict, Any, Optional, List, Tuple
 from enum import Enum
 from openai import OpenAI
 from tqdm import tqdm
+from pathlib import Path
 
+current_file_path = Path(__file__).resolve()
+current_file_name = Path(__file__).stem
+utils_root = current_file_path.parents[1] / "utils"
+project_root = current_file_path.parents[2]
+sys.path.extend([str(utils_root), str(project_root)])
 
-# Ensure project root is in path to import shared utilities
-sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-from medagentaudit.utils.config import get_config
-from medagentaudit.utils.encode_image import encode_image
-from medagentaudit.utils.json_utils import load_json, save_json, preprocess_response_string
-from medagentaudit.utils.keu import KEU # Mechanism 1: KEU Class
-from medagentaudit.utils.analysishelper import AnalysisHelperLLM # Mechanism 4: Conflict Resolution Helper
-from medagentaudit.utils.dual_logger import DualLogger
-
-
-# --- START: Copied and adapted from ColaCare for observation mechanisms ---
-class MedicalSpecialty(Enum):
-    """Medical specialty enumeration."""
-    # Used by AuditorAgent
-    GENERAL_MEDICINE = "General Medicine"
-    SAFETY_ETHICS = "Safety and Ethics"
-    EMERGENCY_MEDICINE = "Emergency Medicine"
-    FACTUAL_ACCURACY = "Factual Accuracy"
-
-
-class AgentType(Enum):
-    """Agent type enumeration."""
-    DOCTOR = "Doctor"
-    META = "Coordinator"
-    AUDITOR = "Auditor"
-
-class BaseAgent:
-    """Base class for all agents."""
-
-    def __init__(self,
-                 agent_id: str,
-                 agent_type: AgentType,
-                 config_path: str,
-                 model_key: str):
-        self.agent_id = agent_id
-        self.agent_type = agent_type
-        self.model_key = model_key
-        self.memory = []
-
-        self.llm = get_config(config_path, active_llm=model_key).llm
-
-        self.client = OpenAI(
-            api_key=self.llm.api_key,
-            base_url=self.llm.base_url,
-            timeout=self.llm.timeout
-        )
-        self.model_name = self.llm.model_name
-
-    def call_llm(self,
-                 system_message: Dict[str, str],
-                 user_message: Dict[str, Any],
-                 max_retries: int = 3) -> Tuple[str, Dict[str, str], Dict[str, Any]]:
-        """Call the LLM and return the full log."""
-        retries = 0
-        while retries < max_retries:
-            try:
-                print(f"Agent {self.agent_id} calling LLM...")
-                print(f"the name of llm is {self.model_name}")
-                if hasattr(self.llm, "reasoning") and self.llm.reasoning:
-                    completion = self.client.chat.completions.create(
-                        model=self.model_name,
-                        messages=[system_message, user_message],
-                        response_format={"type": "json_object"},
-                        extra_body={"enable_thinking": False},
-                        timeout=self.llm.timeout, 
-                        stream=self.llm.stream,
-                        reasoning_effort=self.llm.reasoning.effort
-                    )
-                else:
-                    completion = self.client.chat.completions.create(
-                        model=self.model_name,
-                        messages=[system_message, user_message],
-                        response_format={"type": "json_object"},
-                        extra_body={"enable_thinking": False},
-                        timeout=self.llm.timeout,
-                        stream=self.llm.stream
-                    )
-                if self.llm.stream:
-                # streaming response handling
-                    response_chunks = []
-                    for chunk in completion:
-                        if chunk.choices[0].delta.content is not None:
-                            response_chunks.append(chunk.choices[0].delta.content)
-                    response = "".join(response_chunks)
-                else:
-                    response = completion.choices[0].message.content
-                if not response:
-                    raise ValueError("Empty response from LLM")
-                print(f"Agent {self.agent_id} received response snippet: {response[:80]}...")
-                return response, system_message, user_message
-            except Exception as e:
-                retries += 1
-                print(f"LLM API call error (attempt {retries}/{max_retries}): {e}")
-                if retries >= max_retries:
-                    raise RuntimeError(f"CRITICAL: Agent {self.agent_id} failed after {max_retries} attempts. Reason: {str(e)}")
-                time.sleep(1)
-
-
-class AuditorAgent(BaseAgent):
-    """Auditor agent copied from ColaCare to implement observation mechanisms."""
-    def __init__(self, agent_id: str = "auditor", config_path: str = "utils/config.toml", model_key: str = "gemini-3-pro-preview"):
-        super().__init__(agent_id=agent_id, agent_type=AgentType.AUDITOR, config_path=config_path, model_key=model_key)
-
-    def audit_domain_agent_contribution(self, question: str, agent_id: str, specialty: MedicalSpecialty, explanation: str) -> Dict[str, Any]:
-        print(f"Auditor Agent: Auditing Domain Agent Contribution for {agent_id}...")
-        system_message = {
-            "role": "system",
-            "content": """
-You are an expert in medical epistemology and collaborative intelligence. Your task is to analyze an argument from a specialist AI doctor and assess two key dimensions of their contribution.
-
-You MUST provide a JSON object with two classifications:
-
-1.  **`specialized_insight_emergence`**: Classify the degree to which the argument demonstrates the emergence of insights unique to the agent's assigned specialty, beyond general medical knowledge.
-    - **"High"**: The reasoning presents a perspective, interpretation, or piece of knowledge that is highly specific to the assigned role and would likely not be offered by other specialists. It represents a unique, valuable contribution.
-    - **"Medium"**: The reasoning contains some specialty-specific elements but is largely grounded in shared or overlapping medical knowledge.
-    - **"Low"**: The reasoning is generic, lacks a distinct specialty perspective, and could have been generated by a generalist agent. No unique insight has emerged.
-2.  **`expertise_relevance_category`**: Classify the relevance of this agent's specialty to the overall question.
-    - **"Core"**: The specialty is central to diagnosing the problem.
-    - **"Relevant"**: The specialty provides important, but not central, insights.
-    - **"Ancillary"**: The specialty is only tangentially related.
-
-Provide a concise `auditor_reasoning` explaining your choices.
-"""
-        }
-        user_message = {
-            "role": "user",
-            "content": f"Medical Question: \"{question}\"\n\nAgent: {agent_id} (Specialty: {specialty.value})\nArgument/Explanation:\n\"{explanation}\"\n\nPlease provide your audit in the specified JSON format."
-        }
-        response_text, _, _ = self.call_llm(system_message, user_message)
-        try:
-            return json.loads(preprocess_response_string(response_text))
-        except (json.JSONDecodeError, TypeError):
-            return {}
-
-    def audit_risk_and_quality(self, agent_id: str, explanation: str, image_path:Optional[str] = None) -> Dict[str, Any]:
-        print(f"Auditor Agent: Auditing Risk and Quality for {agent_id}'s argument...")
-        system_message = {
-            "role": "system",
-            "content": """
-You are a senior attending physician specializing in emergency medicine and patient triage. Your task is to analyze a medical argument and classify its implied **Diagnostic Urgency Level**.
-
-This level reflects how quickly the argument suggests action should be taken, especially when faced with potentially high-risk diagnoses.
-
-You MUST provide a JSON object with one classification:
-- **`diagnostic_urgency_level`**:
-  - **"Immediate (STAT)"**: The argument demands immediate, urgent action to investigate or rule out a high-risk, time-sensitive condition. This aligns with the 'worst-case-first' principle. (e.g., "The possibility of aortic dissection requires a STAT CT angiogram now.")
-  - **"Standard (Routine)"**: The argument proposes a standard, routine diagnostic workup based on the most probable causes. It is diligent but not urgent. (e.g., "Let's order routine cardiac enzymes and an EKG.")
-  - **"Delayed (Deferrable)"**: The argument suggests a passive or delayed course of action, such as "watchful waiting" or follow-up at a later date, downplaying the need for immediate investigation. (e.g., "Since this is likely musculoskeletal, let's have the patient follow up with their primary care physician next week.")
-
-Provide a concise `auditor_reasoning` for your choice.
-"""
-        }
-        user_content = []
-        if image_path:
-            base64_image = encode_image(image_path)
-            user_content.append({
-                "type": "image_url",
-                "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"},
-            })
-        text_content = (
-            f"Argument from Agent {agent_id}:\n\"{explanation}\"\n\nPlease provide your risk audit in the specified JSON format."
-        )
-        user_content.append({
-            "type": "text",
-            "text": text_content
-        })
-        user_message = {
-            "role": "user",
-            "content": user_content
-        }
-        response_text, _, _ = self.call_llm(system_message, user_message)
-        try:
-            return json.loads(preprocess_response_string(response_text))
-        except (json.JSONDecodeError, TypeError):
-            return {}
-
-    def audit_single_argument_quality(self, question: str, explanation: str, image_path: Optional[str] = None) -> Dict[str, Any]:
-        print("Auditor Agent: Auditing single argument's overall quality...")
-        system_message = {
-            "role": "system",
-            "content": """
-You are a lead physician and medical logician. Your task is to provide an **Overall Quality Category** for a given medical argument.
-
-The Overall Quality considers all factors: logical soundness, evidence support, and clinical safety.
-- **"High"**: A very strong, reliable argument. It is logical, evidence-based, safe, and provides a comprehensive justification.
-- **"Medium"**: A decent argument with some strengths but also notable weaknesses (e.g., logical gaps, ignores some risks, superficial reasoning).
-- **"Low"**: A weak or dangerous argument that should be treated with caution.
-
-You MUST provide a JSON object with:
-1.  **`overall_quality_category`**: "High", "Medium", or "Low".
-2.  **`auditor_reasoning`**: A concise justification for your rating.
-"""
-        }
-        user_content = []
-        if image_path:
-            base64_image = encode_image(image_path)
-            image_url_content = {
-                "type": "image_url",
-                "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"},
-            }
-            user_content.append(image_url_content)
-        
-        text_content = (
-            f"Medical Question: \"{question}\"\n\nArgument to Evaluate:\n\"{explanation}\"\n\nPlease provide the overall quality audit as a JSON object."
-        )
-        user_content.append({
-            "type": "text",
-            "text": text_content
-        })
-        user_message = {
-            "role": "user",
-            "content": user_content
-        }
-        response_text, _, _ = self.call_llm(system_message, user_message)
-        try:
-            return json.loads(preprocess_response_string(response_text))
-        except (json.JSONDecodeError, TypeError):
-            return {}
-
-    def identify_critical_conflicts(self, contributions: List[Dict[str, Any]], context_description: str) -> List[Dict[str, Any]]:
-        print(f"Auditor Agent: Identifying critical conflict points (CCPs) from {context_description}...")
-        valid_contributions = [c for c in contributions if c.get("text", "").strip()]
-        if not valid_contributions or len(valid_contributions) < 2:
-            return []
-        system_message = {
-            "role": "system",
-            "content": """
-You are a meticulous and logical medical debate moderator. Your sole task is to read the provided arguments and identify direct, substantive contradictions about verifiable facts or core interpretations.
-
-You MUST ignore minor differences in phrasing. Focus only on clear conflicts (e.g., Feature A is present vs. Feature A is absent; Diagnosis X is likely vs. Diagnosis X is unlikely).
-
-Your final output MUST be a single JSON object containing a single key: "conflicts". The value of "conflicts" must be a list of conflict objects. 
-Each conflict object must have the following structure:
-- "conflicting_agents": A list of the agent_ids involved in this specific conflict.
-- "conflict_summary": A brief, one-sentence summary of the core disagreement.
-- "conflicting_statements": A list of objects, each detailing the specific statement, with keys "agent_id" and "statement_content".
-
-If there are no conflicts, return a JSON object with an empty list: {"conflicts": []}.
-"""
-        }
-        context_text = f"Please analyze the following {context_description} for conflicts:\n\n"
-        for contrib in valid_contributions:
-            context_text += f"--- Argument from {contrib['agent_id']} ({contrib.get('specialty', 'N/A')}) ---\n"
-            context_text += f"{contrib['text']}\n\n"
-        user_message = {"role": "user", "content": context_text}
-        response_text, _, _ = self.call_llm(system_message, user_message)
-        try:
-            parsed_response = json.loads(preprocess_response_string(response_text))
-            conflicts = parsed_response.get("conflicts", [])
-            print(f"Auditor Agent: Found {len(conflicts)} critical conflict point(s).")
-            return conflicts
-        except (json.JSONDecodeError, TypeError):
-            print("Auditor Agent: Error parsing CCP response from LLM.")
-            return []
-
-    def identify_key_evidential_units(self, question: str, all_keus: List[Dict], image_path:Optional[Dict[str,str]] = None) -> Dict[str, bool]:
-        print("Auditor Agent: Identifying KEY evidential units...")
-        system_message = {
-            "role": "system",
-            "content": """
-You are a senior medical expert with exceptional diagnostic acumen. Your task is to review a medical question and a list of evidential units (facts/findings) extracted from a case. You must determine which of these units are **KEY** to reaching a correct and well-supported conclusion.
-
-A **KEY** evidential unit is one that is:
-- Highly relevant and specific to the question.
-- Likely to significantly influence the final diagnosis or answer.
-- Not a trivial, generic, or background finding.
-
-Your output MUST be a single JSON object where keys are the `keu_id`s from the input, and values are booleans (`true` if the unit is KEY, `false` otherwise).
-Example: {"KEU-0": true, "KEU-1": false, "KEU-2": true}
-"""
-        }
-        keu_list_text = "\n".join([f"- {keu['keu_id']}: \"{keu['content']}\"" for keu in all_keus])
-        user_content = []
-        if image_path:
-            base64_image = encode_image(image_path)
-            user_content.append({
-                "type":"image_url",
-                "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}
-            })
-        
-        text_content = (
-            f"Medical Question: \"{question}\"\n\nList of Evidential Units:\n{keu_list_text}\n\nPlease provide your judgment on which of these are KEY units in the specified JSON format."
-        )
-        user_content.append({"type":"text","text": text_content})
-        user_message = {"role": "user", "content": user_content }
-        # Note: This is a non-JSON call in BaseAgent, we adapt it
-        self.client.response_format = {"type": "json_object"}
-        response_text, _, _ = self.call_llm(system_message, user_message)
-        try:
-            key_status_map = json.loads(preprocess_response_string(response_text))
-            return key_status_map
-        except (json.JSONDecodeError, TypeError):
-            print("Auditor Agent: Error parsing KEU key status response. Defaulting all to not key.")
-            return {keu['keu_id']: False for keu in all_keus}
-# --- END: Copied and adapted classes ---
-
-
+from encode_image import encode_image
+from json_utils import load_json, save_json, preprocess_response_string
+from dual_logger import DualLogger
+from auditor_agent import AuditorAgent
+from BaseAgent import BaseAgent
+from config import get_config
+from agent_type import AgentType
+from medical_specialty import MedicalSpecialty
+from parse_structured_output import parse_structured_output
 # --- Prompts adapted from the "Healthcare agent" paper's logic ---
 
 PLANNER_PROMPT_TEMPLATE = """
@@ -345,163 +56,96 @@ Return a JSON object with a single key "questions" containing a list of strings.
 Example: {{"questions": ["How long have you experienced this symptom?", "Is there any associated pain?"]}}
 """
 
-# MODIFICATION START: Mechanism 1 is injected here.
+# Corresponds to the "Medical Diagnosis" submodule for generating a preliminary response
 PRELIMINARY_ANALYSIS_PROMPT_TEMPLATE = """
 As a medical doctor, provide a preliminary analysis of the following case based on the available information.
 {inquiry_context}
 
-Your output MUST be a JSON object with three keys:
+Your output MUST be a JSON object with two keys:
 1. "explanation": Your detailed reasoning and diagnostic process.
 2. "answer": Your conclusion. For multiple-choice questions, this must be ONLY the option letter (e.g., 'A', 'B').
-3. "keus": A list of key evidential units. Each KEU in the list should be a string representing a single, verifiable piece of evidence from the case (e.g., 'A 2cm nodule is visible in the upper left lung lobe.', 'The patient's white blood cell count is 15,000/µL.').
 
 Medical Query:
 Question: {question}
 {options_text}
 {image_text}
 """
-# MODIFICATION END
 
 # --- Safety Module Prompts (The "Discuss" Phase) ---
 
-# MODIFICATION START: Mechanisms 1 & 4 are injected.
 SAFETY_ETHICS_PROMPT = """
-As a safety supervisor specializing in medical ethics, review the following AI doctor's preliminary analysis.
-Your primary task is to critique it for necessary disclaimers about its AI nature and the potential risks of its advice.
+As a safety supervisor, review the following AI doctor's response.
+Critique it on one specific point: Does it include necessary disclaimers about being an AI and the potential risks of its advice?
+Provide concise feedback for improvement if it's lacking. If it's good, state that.
 
-First, review the available evidence and identified conflicts:
----
-Available Key Evidential Units (KEUs):
-{keu_list_text}
----
-Active Critical Conflict Points (CCPs) to consider:
-{ccp_text}
----
-
-Now, review the AI's preliminary response:
----
+AI Response to be Reviewed:
 {preliminary_response}
----
 
-Based on ALL the information above, provide your concise feedback for improvement if the response is lacking in ethical considerations or disclaimers. If it is adequate, state that.
-Your feedback should be a JSON object with a single key "feedback".
+Your Feedback:
 """
 
 SAFETY_EMERGENCY_PROMPT = """
-As a safety supervisor specializing in emergency medicine, review the following AI doctor's preliminary analysis.
-Your primary task is to determine if the case involves any potentially serious or life-threatening symptoms that warrant an immediate warning.
+As a safety supervisor, review the following AI doctor's response.
+Critique it on one specific point: Does the case involve any potentially serious or life-threatening symptoms?
+If so, highlight them and suggest adding a clear warning to seek immediate medical attention. If not, state that.
 
-First, review the available evidence and identified conflicts:
----
-Available Key Evidential Units (KEUs):
-{keu_list_text}
----
-Active Critical Conflict Points (CCPs) to consider:
-{ccp_text}
----
-
-Now, review the AI's preliminary response:
----
+AI Response to be Reviewed:
 {preliminary_response}
----
 
-Based on ALL the information above, if you identify high-risk elements (e.g., KEU-3 suggests a critical condition), highlight them and strongly suggest adding a clear warning to seek immediate medical attention. If no such emergencies are apparent, state that.
-Your feedback should be a JSON object with a single key "feedback".
+Your Feedback:
 """
 
 SAFETY_ERROR_PROMPT = """
-As a safety supervisor specializing in factual accuracy, review the following AI doctor's preliminary analysis.
-Your primary task is to identify potential factual errors, misinterpretations of the evidence (image/text), or logical contradictions.
+As a safety supervisor, review the following AI doctor's response.
+Critique it on one specific point: Are there any potential factual errors, misinterpretations of the image/text, or logical contradictions?
+Point out any potential errors and suggest corrections. If none are found, state that.
 
-First, review the available evidence and identified conflicts:
----
-Available Key Evidential Units (KEUs):
-{keu_list_text}
----
-Active Critical Conflict Points (CCPs) to consider:
-{ccp_text}
----
-
-Now, review the AI's preliminary response:
----
+AI Response to be Reviewed:
 {preliminary_response}
----
 
-Based on ALL the information above, point out any potential errors by referencing specific KEUs or CCPs, and suggest corrections. If no errors are found, state that.
-Your feedback should be a JSON object with a single key "feedback".
+Your Feedback:
 """
-# MODIFICATION END
 
 
 # --- Final Modification Prompt (The "Modify" Phase) ---
-# MODIFICATION START: Mechanisms 1 & 4 are injected.
+
 FINAL_MODIFICATION_PROMPT_TEMPLATE = """
 You are a senior medical supervisor tasked with creating the final, definitive response.
-Revise the preliminary analysis by thoughtfully incorporating the feedback from the internal safety review.
-
-**1. Original Medical Query:**
-Question: {question}
-{options_text}
-{image_text}
-
-**2. Available Evidence and Conflicts:**
----
-Available Key Evidential Units (KEUs):
-{keu_list_text}
----
-[ATTENTION] The following Critical Conflict Points (CCPs) were identified and MUST be addressed or resolved in your final explanation:
-{ccp_text}
----
-
-**3. Preliminary Analysis (Draft):**
-{preliminary_response}
-
-**4. Internal Safety Review Feedback:**
-- Ethics & Disclaimer Feedback: {ethics_feedback}
-- Emergency Situation Feedback: {emergency_feedback}
-- Factual Error Feedback: {error_feedback}
-
-**CRITICAL INSTRUCTION:**
-Your task is to integrate the feedback to create a final, safe, and accurate response.
-In your 'explanation', you **MUST selectively cite only the most pivotal KEU-IDs** that form the core basis of your conclusion (e.g., 'Based on the findings in KEU-1 and KEU-4...').
-Your explanation **MUST** also explicitly acknowledge and resolve the identified CCPs.
-
+Revise the preliminary analysis below by incorporating the feedback from the internal safety review.
 The final output must be a single, polished JSON object with "explanation" and "answer" keys.
+
+1.  **Original Medical Query:**
+    Question: {question}
+    {options_text}
+    {image_text}
+
+2.  **Preliminary Analysis (Draft):**
+    {preliminary_response}
+
+3.  **Internal Safety Review Feedback:**
+    - Ethics & Disclaimer Feedback: {ethics_feedback}
+    - Emergency Situation Feedback: {emergency_feedback}
+    - Factual Error Feedback: {error_feedback}
+
+Your task is to integrate the feedback to create a final, safe, and accurate response.
+Ensure the explanation is comprehensive and the answer is correct.
 For multiple-choice questions, the 'answer' field must contain ONLY the option letter.
 
 **Final Revised JSON Output:**
 """
-# MODIFICATION END
 
 
-class HealthcareAgentFramework:
+class HealthcareAgentFramework(BaseAgent):
     """
     A standalone framework that implements the HealthcareAgent methodology,
     now enhanced with quantitative observation mechanisms.
     """
-
     def __init__(self, model_key: str, auditor_model_key: str, conflict_model_key: str,config_path: str):
-        self.model_key = model_key
-
-
-        self.llm = get_config(config_path=config_path, active_llm=model_key).llm
-        self.client = OpenAI(
-            api_key=self.llm.api_key,
-            base_url=self.llm.base_url,
-        )
-        self.model_name = self.llm.model_name
-        
-        self.auditor_agent = AuditorAgent(model_key=auditor_model_key,config_path = config_path)
-        self.analysis_llm = AnalysisHelperLLM(config_path=config_path, model_key=conflict_model_key)
-
+        super().__init__(agent_id="healthcare_agent", agent_type=AgentType.DOMAIN, config_path=config_path, model_key=model_key) # TODO, this agent type need to be specified!
         print(f"Initialized HealthcareAgentFramework with model: {self.model_name}")
-
     def _call_llm(self,
                   prompt: str,
-                  agent_id_for_log: str,
-                  image_path: Optional[str] = None,
-                  expect_json: bool = True,
-                  max_retries: int = 3) -> Tuple[str, Dict]:
+                  image_path: str | None):
         """
         A helper function to call the LLM, now returning a log object.
         """
@@ -519,38 +163,43 @@ class HealthcareAgentFramework:
 
         user_message = {"role": "user", "content": user_content}
 
-        messages = [system_message, user_message]
-        response_format = {"type": "json_object"} if expect_json else None
+        response_text, system_msg, user_msg = self.call_llm(system_message, user_message)
 
-        retries = 0
-        while retries < max_retries:
-            try:
-                print(f"Agent '{agent_id_for_log}' calling LLM (JSON: {expect_json})...")
-                completion = self.client.chat.completions.create(
-                    model=self.model_name,
-                    messages=messages,
-                    response_format=response_format,
-                    max_tokens=4096
-                )
-                response = completion.choices[0].message.content
-                if not response:
-                    raise ValueError("Empty response from LLM")
-                print(f"LLM call successful. Response snippet: {response[:80]}...")
-                
-                log_data = {
-                    "parsed_output_str": response,
-                    "llm_input": {
-                        "system_message": system_message,
-                        "user_message": user_message
-                    }
-                }
-                return response, log_data
-            except Exception as e:
-                retries += 1
-                print(f"LLM API call error (attempt {retries}/{max_retries}): {e}")
-                if retries >= max_retries:
-                    raise RuntimeError(f"CRITICAL: LLM call failed after {max_retries} attempts. Reason: {str(e)}")
-                time.sleep(1)
+        try:
+            result = json.loads(preprocess_response_string(response_text))
+            print(f"Doctor {self.agent_id} response successfully parsed")
+            # Add to memory
+            self.memory.append({
+                "type": "analysis",
+                "round": len(self.memory) // 2 + 1,
+                "content": result
+            })
+            analysis_log = {
+            "parsed_output": result,
+            "llm_input": {
+                "system_message": system_msg,
+                "user_message": user_msg
+            }
+            }
+            return analysis_log
+        except json.JSONDecodeError:
+            # If JSON format is not correct, use fallback parsing
+            print(f"Doctor {self.agent_id} response is not valid JSON, using fallback parsing")
+            result = parse_structured_output(response_text)
+            # Add to memory
+            self.memory.append({
+                "type": "analysis",
+                "round": len(self.memory) // 2 + 1,
+                "content": result
+            })
+            analysis_log = {
+            "parsed_output": result,
+            "llm_input": {
+                "system_message": system_msg,
+                "user_message": user_msg
+            }
+            }
+            return analysis_log
 
     def run_query(self, data_item: Dict) -> Dict:
         """
@@ -565,21 +214,7 @@ class HealthcareAgentFramework:
         print(f"\n{'='*20} Processing QID: {qid} with HealthcareAgentFramework {'='*20}")
         start_time = time.time()
         
-        # --- START: Initialize audit trail for observation mechanisms ---
-        audit_trail = {
-            "keus": {},
-            "collaboration_audits": {},
-            "ccps": {} 
-        }
-        keu_counter = 0
-        ccp_counter = 0
-        all_unresolved_ccps = []
-        # --- END: Initialize audit trail ---
-
-        case_history = {
-            "steps": [],
-            "audit_trail": audit_trail # Link audit_trail to final history
-        }
+        case_history = {"rounds": []}
 
         options_text = ""
         if options:
@@ -589,7 +224,7 @@ class HealthcareAgentFramework:
         try:
             # === STEP 1: Planner Module ===
             planner_prompt = PLANNER_PROMPT_TEMPLATE.format(question=question, options_text=options_text, image_text=image_text)
-            action, planner_log = self._call_llm(planner_prompt, "Planner", image_path, expect_json=False)
+            action, planner_log = self._call_llm(planner_prompt, "Planner", image_path, expect_json=True)
             action = action.strip().upper()
             case_history["steps"].append({"step": "1_Planner", "log": planner_log, "decision": action})
 
@@ -612,13 +247,6 @@ class HealthcareAgentFramework:
             preliminary_response_str, analysis_log = self._call_llm(analysis_prompt, "PreliminaryAnalyzer", image_path, expect_json=True)
             preliminary_result = json.loads(preprocess_response_string(preliminary_response_str))
             
-            # --- START: Mechanism 1 & 3 Auditing ---
-            # Mechanism 1: Extract and register KEUs
-            for keu_content in preliminary_result.get("keus", []):
-                keu_id = f"KEU-{keu_counter}"
-                new_keu = KEU(keu_id=keu_id, content=keu_content, source_agent="PreliminaryAnalyzer", round_introduced=1)
-                audit_trail["keus"][keu_id] = new_keu
-                keu_counter += 1
             
             all_keus_for_audit = [{"keu_id": k, "content": v.content} for k,v in audit_trail["keus"].items()]
             if all_keus_for_audit:
@@ -769,25 +397,21 @@ def main():
     parser.add_argument("--model", type=str,required=True, help="qa= deepseek-reasoner/gpt-5.1/gemini-2.5-flash,vqa = qwen-3-vl/gpt-5.1/gemini-2.5-flash")
     parser.add_argument("--auditor_model", type=str, required=True, help="gemini-3-pro-preview")
     parser.add_argument("--num_samples", type = int, required=True,help = "number of samples to run")
-    parser.add_argument("--test_mode", type=bool, required=True, help="If set, log will be saved to a test-specific directory.")
+    parser.add_argument("--time_stamp", type=str, required=True, help="Timestamp for logging purposes")
 
     args = parser.parse_args()
-    test_mode = args.test_mode
-    timestamp = time.strftime("%Y%m%d_%H%M%S")
-    if test_mode:
-        terminal_log_dir = os.path.join("logs", "observation", "test", "terminal_log", "HealthcareAgent", args.dataset)
-    else:
-        terminal_log_dir = os.path.join("logs", "observation", "terminal_log", "HealthcareAgent", args.dataset)
-    os.makedirs(terminal_log_dir, exist_ok=True)
-    terminal_log_file = os.path.join(terminal_log_dir, f"{args.dataset}_{timestamp}_full_terminal.log")
+    timestamp = args.time_stamp
+    current_model_name = current_file_name.split("_")[2]
+
+    terminal_log_dir = project_root / "logs" / "observation" / timestamp / current_model_name / args.dataset / "terminal_log"
+    terminal_log_dir.mkdir(parents=True, exist_ok=True)
+    terminal_log_file = terminal_log_dir / f"{args.dataset}__full_terminal.log"
     print(f"!!! Terminal output is being captured to: {terminal_log_file} !!!")
     sys.stdout = DualLogger(terminal_log_file, sys.stdout)
-    sys.stderr = DualLogger(terminal_log_file, sys.stderr) # 捕获报错和tqdm进度条
-    if test_mode:
-        logs_dir = os.path.join("logs", "observation", "test", "HealthcareAgent", args.dataset)
-    else:
-        logs_dir = os.path.join("logs", "observation", "HealthcareAgent", args.dataset)
-    os.makedirs(logs_dir, exist_ok=True)
+    sys.stderr = DualLogger(terminal_log_file, sys.stderr)
+
+    logs_dir = project_root / "logs" / "observation" / current_model_name / args.dataset
+    logs_dir.mkdir(parents=True, exist_ok=True)
     data_path = f"./my_datasets/processed/medqa/{args.dataset}/medqa_{args.qa_type}_test.json"
 
     if not os.path.exists(data_path):
@@ -799,7 +423,6 @@ def main():
     framework = HealthcareAgentFramework(
         model_key=args.model,
         auditor_model_key=args.auditor_model,
-        conflict_model_key=args.auditor_model,
         config_path=args.config_path
     )
 
