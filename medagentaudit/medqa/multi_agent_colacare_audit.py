@@ -106,7 +106,7 @@ class DoctorAgent(BaseAgent):
             # Add to memory
             self.memory.append({
                 "type": "analysis",
-                "round": len(self.memory) // 2 + 1, # 每轮包含分析和复审，所以要这样操作
+                "round": len(self.memory) // 2 + 1,
                 "content": result
             })
             analysis_log = {
@@ -118,7 +118,6 @@ class DoctorAgent(BaseAgent):
             }
             return analysis_log
         except json.JSONDecodeError:
-            # If JSON format is not correct, use fallback parsing
             print(f"Doctor {self.agent_id} response is not valid JSON, using fallback parsing")
             result = parse_structured_output(response_text)
             # Add to memory
@@ -343,7 +342,7 @@ class MetaAgent(BaseAgent):
                 "user_message": user_msg
             }
         }
-        return synthesis_log # logging，返回了完整的系统和用户消息。
+        return synthesis_log
 
     def make_final_decision(self,
                             question: str,
@@ -557,7 +556,7 @@ class MDTConsultation:
                 "3_2_1_self_contradiction_when_decision": []
             }
             round_data = {"round": current_round, "opinions": [], "synthesis": None, "reviews": [], "decision": None}
-
+            case_history["rounds"].append(round_data)
             # Step 1: Each doctor analyzes the case
             doctor_opinion_parsed_outputs = []
 
@@ -607,7 +606,7 @@ class MDTConsultation:
 
                 doctor_opinion_parsed_outputs.append(parsed_output)
 
-                round_data["opinions"].append({
+                case_history["rounds"][-1]["opinions"].append({
                     "doctor_id": doctor.agent_id,
                     "specialty": doctor.specialty.value,
                     "log": opinion_log 
@@ -633,12 +632,12 @@ class MDTConsultation:
 
             # audtit 3.1.1 : Suppression of Correct Minority Views by Incorrect Consensus for synthesizer
             audit_results_of_suppression_of_correct_minority_views_by_incorrect_consensus_for_synthesizer = self.auditor_agent.audit_suppression_by_majority(
-                question = question, options = options, image_path = image_path, current_agent_id = self.meta_agent.agent_id, synthesis_answer = synthesis_answer, synthesis_explanation = synthesis_explanation, case_history = case_history
+                question = question, options = options, image_path = image_path, current_agent_id = self.meta_agent.agent_id, answer = synthesis_answer, explanation = synthesis_explanation, case_history = case_history
             ) # here the discussion_context includes all the domain agents' answers and explanations before this synthesis
 
             # audit 3.1.2 : Reasoning Distorted by Authority Bias for synthesizer
             audit_results_of_authority_bias_for_synthesizer = self.auditor_agent.audit_authority_bias(
-                question = question, options = options, image_path = image_path, current_agent_id = self.meta_agent.agent_id, synthesis_answer = synthesis_answer, synthesis_explanation = synthesis_explanation, case_history = case_history
+                question = question, options = options, image_path = image_path, current_agent_id = self.meta_agent.agent_id, answer = synthesis_answer, explanation = synthesis_explanation, case_history = case_history
             ) # here the discussion_context must include the role of domain agent and their answer and explanation before this synthesis
 
             # audit 3.1.3: Neglect of Contradictions in Reasoning Process for synthesizer
@@ -648,7 +647,7 @@ class MDTConsultation:
 
             # audit 3.2.1: Self-Contradiction in Viewpoints Across Rounds for synthesizer
             audit_results_of_self_contradiction_in_viewpoints_across_rounds_for_synthesizer = self.auditor_agent.audit_self_contradiction_across_rounds(
-                question, synthesis_answer, synthesis_explanation, self.meta_agent.memory
+                question = question, answer = synthesis_answer, explanation = synthesis_explanation, case_history = case_history
             ) # here the meta_agent.memory includes all the previous syntheses and decisions
 
             audit_round_data["2_2_2_unresolved_conflicts"].append({ 
@@ -681,7 +680,7 @@ class MDTConsultation:
                 "step": "synthesis",
                 "audit_result": audit_results_of_self_contradiction_in_viewpoints_across_rounds_for_synthesizer
             })
-            round_data["synthesis"] = synthesis_log # after synthesizer then log, in case repetition
+            case_history["rounds"][-1]["synthesis"] = synthesis_log # after synthesizer then log, in case repetition
 
             # Step 3: Doctors review synthesis
             doctor_review_parsed_outputs = []
@@ -702,7 +701,7 @@ class MDTConsultation:
                 # audit 2.2.2 Unresolved Conflicts during Collaborative discussion
                 audit_results_of_unresolved_conflicts_during_review = self.auditor_agent.audit_unresolved_conflicts_during_Collaboration(question=question, current_agent_id=doctor.agent_id, current_answer = review_outcome, current_explanation=review_reason, case_history=case_history) 
 
-                round_data["reviews"].append({
+                case_history["rounds"][-1]["reviews"].append({
                     "doctor_id": doctor.agent_id,
                     "specialty": doctor.specialty.value,
                     "log": review_log 
@@ -768,9 +767,7 @@ class MDTConsultation:
                 "audit_result": audit_results_of_self_contradiction_in_viewpoints_across_rounds_for_decision_maker
             })
 
-            round_data["decision"] = decision_log # Store the decision log for this round
-
-            case_history["rounds"].append(round_data)
+            case_history["rounds"][-1]["decision"] = decision_log
 
             if all_agree:
                 consensus_reached = True
@@ -911,14 +908,12 @@ def main():
                 conflict_analysis_model_key=args.auditor_model
             )
 
-            # MODIFICATION START: The final decision is now nested inside the log.
             final_decision_log = full_case_history.get("final_decision_log", {})
             print("Final decision log:", final_decision_log)  # Debugging line
             final_decision_parsed = final_decision_log.get("parsed_output", {})
             print("Final decision parsed:", final_decision_parsed)  # Debugging line
             predicted_answer = final_decision_parsed.get("answer", "Error: No answer found")
             print(f"Predicted answer for {qid}: {predicted_answer}")
-            # MODIFICATION END
 
             item_result = {
                 "qid": qid,

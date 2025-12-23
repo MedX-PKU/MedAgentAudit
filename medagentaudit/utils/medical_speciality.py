@@ -1,4 +1,6 @@
-from enum import Enum
+from enum import Enum, unique
+
+@unique
 class MedicalSpecialty(Enum):
     """Medical specialty enumeration."""
     INTERNAL_MEDICINE = "Internal Medicine"

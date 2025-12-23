@@ -6,3 +6,4 @@ class AgentType(Enum):
     DECISION_MAKER = "DecisionMaker"
     META = "Synthesizer and DecisionMaker"
     AUDITOR = "Auditor"
+    HEALTHCARE = "HealthcareAgent"
