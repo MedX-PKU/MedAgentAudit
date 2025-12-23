@@ -722,7 +722,7 @@ class AuditorAgent(BaseAgent):
         except (json.JSONDecodeError, TypeError):
             return {}
 
-    def audit_repetition_of_initial_views(self, question: str, image_path: str | None, current_agent_id: str, current_explanation: str, case_history: Dict) -> Dict[str, Any]:
+    def audit_repetition_of_initial_views(self, question: str, image_path: str | None, current_agent_id: str, current_answer:str, current_explanation: str, case_history: Dict) -> Dict[str, Any]:
         """
         audit failure mode 2.2.1
         this function aims to audit the domain agents when they review others' viewpoints or  state their opinions at next rounds.
@@ -773,6 +773,7 @@ class AuditorAgent(BaseAgent):
             f"Medical Question: {question}\n\n"
             f"--- CURRENT AGENT INPUT TO AUDIT ---\n" 
             f"Agent: {current_agent_id}:\n"
+            f"Agent Answer: {current_answer}\n"
             f"Agent Explanation/Review_reason: {current_explanation}\n\n"
             f"---------------------------------------------\n\n"
             f"--- INTERACTION HISTORY (Previous Rounds) ---\n"
@@ -793,7 +794,7 @@ class AuditorAgent(BaseAgent):
         except (json.JSONDecodeError, TypeError):
             return {}
 
-    def audit_unresolved_conflicts_during_Collaboration(self, question: str, current_agent_id: str, current_explanation: str, case_history: Dict) -> List[Dict[str, Any]]:
+    def audit_unresolved_conflicts_during_Collaboration(self, question: str, current_agent_id: str, current_answer: str, current_explanation: str, case_history: Dict) -> List[Dict[str, Any]]:
         """
         audit failure mode 2.2.2
         audit timing: 1. audit domain agents when they review other agents' opinions or when they state their opinions at next round. 2. audit synthesizer and decision-maker at every round.
@@ -847,6 +848,7 @@ class AuditorAgent(BaseAgent):
             f"Medical Question: {question}\n\n"
             f"--- CURRENT AGENT INPUT TO AUDIT ---\n"
             f"Agent: {current_agent_id}:\n"
+            f"Agent Answer: {current_answer}\n"
             f"Agent Explanation/Review_reason: {current_explanation}\n\n"
             f"---------------------------------------------\n\n"
             f"--- INTERACTION HISTORY (Previous Rounds) ---\n"

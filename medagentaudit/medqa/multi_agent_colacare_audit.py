@@ -1,6 +1,5 @@
-# multi_agent_colacare_full_log.py
 """
-medagentaudit/medqa/multi_agent_colacare.py
+medagentaudit/medqa/multi_agent_colacare_audit.py
 """
 
 from openai import OpenAI
@@ -129,7 +128,7 @@ class DoctorAgent(BaseAgent):
                 "user_message": user_msg
             }
             }
-            return analysis_log # logging，返回了完整的系统和用户消息。
+            return analysis_log
         except json.JSONDecodeError:
             # If JSON format is not correct, use fallback parsing
             print(f"Doctor {self.agent_id} response is not valid JSON, using fallback parsing")
@@ -147,15 +146,12 @@ class DoctorAgent(BaseAgent):
                 "user_message": user_msg
             }
             }
-            return analysis_log # logging，返回了完整的系统和用户消息。
+            return analysis_log
 
 
-    # MODIFICATION START: Changed return type to a dictionary for comprehensive logging.
     def review_synthesis(self,
                          question: str,
                          synthesis: Dict[str, Any],
-                         audit_trail: Dict[str, Any],
-                         ccp_text: str = "",
                          options: Optional[Dict[str, str]] = None,
                          image_path: Optional[str] = None) -> Dict[str, Any]:
         """
@@ -175,15 +171,10 @@ class DoctorAgent(BaseAgent):
         system_message = {
             "role": "system",
             "content": f"You are a doctor specializing in {self.specialty.value}, participating in round {current_round} of a multidisciplinary team consultation. "
-                    f"Review the synthesis of multiple doctors' opinions and determine if you agree with the conclusion. "
-                    f"Consider your previous analysis and the MetaAgent's synthesized opinion to decide whether to agree or provide a different perspective. "
-                    f"Your output must be a JSON object, including:"
-                    f"1. 'agree': boolean (true/false)."
-                    f"2. 'current_viewpoint': Your current final answer after this review (e.g., 'A', 'B')."
-                    f"3. 'viewpoint_changed': boolean, true if your 'current_viewpoint' is different from your initial analysis's answer."
-                    f"4. 'justification_type': A string, must be one of ['evidence_based', 'consensus_based']. Choose 'evidence_based' if your decision is primarily driven by specific KEU facts. Choose 'consensus_based' if your decision is primarily to align with the synthesized opinion or majority view."
-                    f"5. 'cited_references': A list of strings containing the KEU-IDs or Agent-IDs that influenced your decision."
-                    f"6. 'reason': Your detailed textual explanation for your decision."
+                      f"Review the synthesis of multiple doctors' opinions and determine if you agree with the conclusion. "
+                      f"Consider your previous analysis and the MetaAgent's synthesized opinion to decide whether to agree or provide a different perspective. "
+                      f"Your output should be in JSON format, including 'agree' (boolean or 'yes'/'no'), 'reason' (rationale for your decision), "
+                      f"and 'answer' (your suggested answer if you disagree; if you agree, you can repeat the synthesized answer) fields."
         }
 
         user_content = []
@@ -211,30 +202,24 @@ class DoctorAgent(BaseAgent):
         synthesis_text = f"Synthesized explanation: {synthesis.get('explanation', '')}\n"
         synthesis_text += f"Suggested answer: {synthesis.get('answer', '')}"
 
-        keu_list_text = "\n\nKey Evidential Units (KEUs) proposed so far:\n"
-        for keu_id, keu_obj in audit_trail["keus"].items():
-            keu_list_text += f"- {keu_id}: '{keu_obj.content}' (from {keu_obj.source_agent})\n"
 
-        text_content = {
+        user_content.append({
             "type": "text",
             "text": f"Original question: {question_with_options}\n\n"
-                    f"{own_analysis_text}"
-                    f"Synthesized Opinion for Review:\n{synthesis_text}\n\n"
-                    f"Available Key Evidential Units (KEUs):\n{keu_list_text}\n\n"
-                    f"Available Critical Consensus Points (CCPs):\n{ccp_text}\n\n" 
-                    f"Pay attention to the potential conflicts (CCPs) listed above, as addressing them in your 'reason' field will strengthen your argument. "
-                    f"Please provide your comprehensive review.\nYour 'reason' field MUST reference the KEU-IDs that support your decision. \n"
-                    f"Your response MUST be a single JSON object, strictly adhering to the 6-field structure defined in your system instructions. "
-                    f"Pay close attention to correctly populating 'viewpoints_changed', 'justification_type', and 'cited_references'."
-        }
-        user_content.append(text_content)
+                  f"{own_analysis_text}"
+                  f"{synthesis_text}\n\n"
+                  f"Do you agree with this synthesized result? Please provide your response in JSON format, including:\n"
+                  f"1. 'agree': 'yes'/'no'\n"
+                  f"2. 'reason': Your rationale for agreeing or disagreeing\n"
+                  f"3. 'answer': Your supported answer (can be the synthesized answer if you agree, or your own suggested answer if you disagree)"
+        })
 
         user_message = {
             "role": "user",
             "content": user_content,
         }
 
-        response_text, system_msg, user_msg = self.call_llm(system_message, user_message) # logging,获取了完善的系统和用户消息
+        response_text, system_msg, user_msg = self.call_llm(system_message, user_message) 
 
         try:
             result = json.loads(preprocess_response_string(response_text))
@@ -275,7 +260,7 @@ class DoctorAgent(BaseAgent):
                 "user_message": user_msg
             }
         }
-        return review_log # logging,记录了完整的系统和用户消息
+        return review_log 
 
 
 class MetaAgent(BaseAgent):
@@ -293,8 +278,6 @@ class MetaAgent(BaseAgent):
                             question: str,
                             doctor_opinions: List[Dict[str, Any]],
                             doctor_specialties: List[MedicalSpecialty],
-                            audit_trail: Dict[str, Any],
-                            ccp_text: str = "",
                             current_round: int = 1,
                             options: Optional[Dict[str, str]] = None) -> Dict[str, Any]:
         # MODIFICATION END
@@ -336,19 +319,12 @@ class MetaAgent(BaseAgent):
         else:
             question_with_options = question
 
-        keu_list_text = "\n\nKey Evidential Units (KEUs) proposed so far:\n"
-        for keu_id, keu_obj in audit_trail["keus"].items():
-            keu_list_text += f"- {keu_id}: '{keu_obj.content}' (from {keu_obj.source_agent})\n"
-
         user_content = []
         text_content = (
             f"Question: {question_with_options}\n\n"
             f"Round {current_round} Doctors' Opinions:\n{opinions_text}\n\n"
-            f"Available KEUs (Key Evidential Units):\n{keu_list_text}\n"
-            f"Available CCPs (Critical Consensus Points):\n{ccp_text}\n\n"
-            f"Note that potential conflicts (CCPs) have been identified; a robust synthesis must acknowledge or resolve these points.\n\n"
-            f"**CRITICAL INSTRUCTION:** Your task is to synthesize these diverse opinions into a single, coherent analysis. In your 'explanation', you **MUST selectively cite only the most important KEU-IDs** that support your synthesized view. **DO NOT simply list all available KEUs.** Your goal is to demonstrate a deep understanding by building a new, consolidated argument from the strongest evidence (e.g., 'Synthesizing the specialists' views, the consensus leans towards X, primarily supported by the crucial findings in KEU-2 and KEU-5...').\n\n"
-            f"Provide your synthesis in JSON format, including 'explanation' (comprehensive reasoning) and 'answer' (clear conclusion) fields."
+            f"Please synthesize these opinions into a consensus view. Provide your synthesis in JSON format, including "
+            f"'explanation' (comprehensive reasoning) and 'answer' (clear conclusion) fields."
         )
         user_content.append({
             "type":"text",
@@ -554,7 +530,7 @@ class MDTConsultation:
         self.auditor_agent = AuditorAgent(agent_id="auditor", config_path = config_path, model_key= auditor_model_key)
 
         # 初始化 AnalysisHelperLLM，使其在整个咨询流程中可用
-        self.analysis_llm = AnalysisHelperLLM(config_path=config_path, model_key=conflict_analysis_model_key) 
+        self.analysis_llm = AnalysisHelperLLM(config_path=config_path, model_key=conflict_analysis_model_key)
 
         self.doctor_specialties = [doctor.specialty for doctor in self.doctor_agents]
 
@@ -587,25 +563,27 @@ class MDTConsultation:
         final_decision_log = None
         consensus_reached = False
         decision_log = None # Initialize decision_log to handle cases with no rounds
-        audit_trail = {
-            "keus": {},  # Dict[str, KEU] # TODO
-            "viewpoints": {doc.agent_id: [] for doc in self.doctor_agents}, # TODO
-            "collaboration_audits": {}, # TODO
-            "ccps": {} # TODO
-        }
-        all_unresolved_ccps = []
-        ccp_counter = 0
+        audit_trail = {"rounds": []}
         while current_round < self.max_rounds and not consensus_reached:
             current_round += 1
             print(f"Starting round {current_round}")
-
-            round_data = {"round": current_round, "opinions": [], "synthesis": None, "reviews": [], "decision": None} 
+            audit_round_data = {
+                "round": current_round,
+                "2_1_1_role_assignment": [], 
+                "2_1_2_domain_specific_knowledge_activation": [], 
+                
+                "2_2_1_repetition_of_initial_views": [], 
+                "2_2_2_unresolved_conflicts": [],
+                
+                "3_1_1_suppression_of_minority_views": [],
+                "3_1_2_authority_bias": [],
+                "3_1_3_neglect_of_contradictions": [],
+                "3_2_1_self_contradiction_when_decision": []
+            }
+            round_data = {"round": current_round, "opinions": [], "synthesis": None, "reviews": [], "decision": None}
 
             # Step 1: Each doctor analyzes the case
             doctor_opinion_parsed_outputs = []
-
-            if current_round == 1:
-                keu_counter = 0 # TODO
 
             for i, doctor in enumerate(self.doctor_agents):
                 print(f"Doctor {i+1} ({doctor.specialty.value}) analyzing case")
@@ -621,9 +599,37 @@ class MDTConsultation:
 
                 if current_round > 1:
                     # audit 2.2.1 Repetition of Initial Views during Collaborative discussion
-                    audit_results_of_role_assignment = self.auditor_agent.audit_repetition_of_initial_views(question = question, image_path=image_path, current_agent_id=doctor.agent_id, current_explanation=explanation, case_history=case_history) 
+                    audit_results_of_repetition_of_initial_views = self.auditor_agent.audit_repetition_of_initial_views(question = question, image_path=image_path, current_agent_id=doctor.agent_id, current_answer = answer, current_explanation=explanation, case_history=case_history) 
                     # audit 2.2.2 Unresolved Conflicts during Collaborative discussion
-                    audit_results_of_unresolved_conflicts_during_Collaboration = self.auditor_agent.audit_unresolved_conflicts_during_Collaboration(question = question, current_agent_id=doctor.agent_id, current_explanation=explanation, case_history=case_history) 
+                    audit_results_of_unresolved_conflicts_during_Collaboration = self.auditor_agent.audit_unresolved_conflicts_during_Collaboration(question = question, current_agent_id=doctor.agent_id, current_answer = answer, current_explanation=explanation, case_history=case_history) 
+
+                    audit_round_data["2_2_1_repetition_of_initial_views"].append({
+                        "doctor_id": doctor.agent_id,
+                        "specialty": doctor.specialty.value,
+                        "step": "analysis",
+                        "audit_result": audit_results_of_repetition_of_initial_views
+                    })
+                    audit_round_data["2_2_2_unresolved_conflicts"].append({ 
+                        "doctor_id": doctor.agent_id,
+                        "specialty": doctor.specialty.value,
+                        "step": "analysis",
+                        "audit_result": audit_results_of_unresolved_conflicts_during_Collaboration
+                    })
+                
+                audit_round_data["2_1_1_role_assignment"].append({
+                    "doctor_id": doctor.agent_id,
+                    "specialty": doctor.specialty.value,
+                    "step": "analysis",
+                    "audit_result": audit_results_of_role_assignment
+                })
+                audit_round_data["2_1_2_domain_specific_knowledge_activation"].append({
+                    "doctor_id": doctor.agent_id,
+                    "specialty": doctor.specialty.value,
+                    "step": "analysis",
+                    "audit_result": audit_results_of_domain_specific_knowledge_activation
+                })
+
+                doctor_opinion_parsed_outputs.append(parsed_output)
 
                 round_data["opinions"].append({
                     "doctor_id": doctor.agent_id,
@@ -631,18 +637,13 @@ class MDTConsultation:
                     "log": opinion_log 
                 }) # after audit 2.2.1, we log the current opinion in case repetition 
                 
-                step_id = f"round_1_analysis_{doctor.agent_id}"
-                audit_trail["collaboration_audits"][step_id] = {**contribution_audit, **risk_audit}
-                doctor_opinion_parsed_outputs.append(parsed_output)
-
-
                 print(f"Doctor {i+1} opinion: {opinion_log['parsed_output'].get('answer', '')}")
 
             # Step 2: Meta agent synthesizes opinions
             print("Meta agent synthesizing opinions")
             synthesis_log = self.meta_agent.synthesize_opinions(
                 question, doctor_opinion_parsed_outputs, self.doctor_specialties,
-                audit_trail=audit_trail, ccp_text=ccp_text_for_prompt, current_round=current_round, options=options
+                current_round=current_round, options=options
             )
             synthesis_parsed_output = synthesis_log["parsed_output"]
             synthesis_explanation = synthesis_parsed_output.get("explanation", "")
@@ -674,48 +675,56 @@ class MDTConsultation:
                 question, synthesis_answer, synthesis_explanation, self.meta_agent.memory
             ) # here the meta_agent.memory includes all the previous syntheses and decisions
 
+            audit_round_data["2_2_2_unresolved_conflicts"].append({ 
+                "doctor_id": self.meta_agent.agent_id,
+                "specialty": self.meta_agent.specialty.value,
+                "step": "synthesis",
+                "audit_result": audit_results_of_unresolved_conflicts_during_collaboration_for_synthesizer
+            })
+            audit_round_data["3_1_1_suppression_of_minority_views"].append({
+                "doctor_id": self.meta_agent.agent_id,
+                "specialty": self.meta_agent.specialty.value,
+                "step": "synthesis",
+                "audit_result": audit_results_of_suppression_of_correct_minority_views_by_incorrect_consensus_for_synthesizer
+            })
+            audit_round_data["3_1_2_authority_bias"].append({
+                "doctor_id": self.meta_agent.agent_id,
+                "specialty": self.meta_agent.specialty.value,
+                "step": "synthesis",
+                "audit_result": audit_results_of_authority_bias_for_synthesizer
+            })
+            audit_round_data["3_1_3_neglect_of_contradictions"].append({
+                "doctor_id": self.meta_agent.agent_id,
+                "specialty": self.meta_agent.specialty.value,
+                "step": "synthesis",
+                "audit_result": audit_results_of_neglect_of_contradictions_in_reasoning_process_for_synthesizer
+            })
+            audit_round_data["3_2_1_self_contradiction_when_decision"].append({
+                "doctor_id": self.meta_agent.agent_id,
+                "specialty": self.meta_agent.specialty.value,
+                "step": "synthesis",
+                "audit_result": audit_results_of_self_contradiction_in_viewpoints_across_rounds_for_synthesizer
+            })
             round_data["synthesis"] = synthesis_log # after synthesizer then log, in case repetition
 
-
-            # 机制三：审计元智能体风险规避层级
-            synthesis_risk_audit = self.auditor_agent.audit_risk_and_quality(self.meta_agent.agent_id, synthesis_explanation, image_path)
-            step_id = f"round_{current_round}_synthesis"
-            audit_trail["collaboration_audits"][step_id] = synthesis_risk_audit
-
-
-            # 机制一：记录keu在synthesis中的出现和引用情况。
-            for keu_id, keu in audit_trail["keus"].items():
-                if keu_id in synthesis_explanation or keu.content in synthesis_explanation:
-                    keu.present_in_synthesis[current_round] = True
-                    keu.cited_by.append({
-                        "agent_id": self.meta_agent.agent_id,
-                        "round": current_round,
-                        "action": "synthesis"
-                    })
-                else:
-                    keu.present_in_synthesis[current_round] = False
             # Step 3: Doctors review synthesis
             doctor_review_parsed_outputs = []
-            # 机制2修改：初始化观点追踪器，确保每个医生的观点都有记录
-            if "viewpoints" not in audit_trail:
-                audit_trail["viewpoints"] = {doc.agent_id: [] for doc in self.doctor_agents}
             all_agree = True
             for i, doctor in enumerate(self.doctor_agents):
                 print(f"Doctor {i+1} ({doctor.specialty.value}) reviewing synthesis")
-                review_log = doctor.review_synthesis(question, synthesis_parsed_output, audit_trail=audit_trail, ccp_text=ccp_text_for_prompt, options=options, image_path=image_path)
+                review_log = doctor.review_synthesis(question, synthesis_parsed_output, options=options, image_path=image_path)
                 review_parsed_output = review_log["parsed_output"]
                 review_reason = review_parsed_output.get("reason", "")
                 review_outcome = "agrees" if review_parsed_output.get("agree", False) else "disagrees"
-                cited_refs = review_parsed_output.get("cited_references", [])
 
                 # audit 2.1.2 Failure to Activate Specialist Knowledge During Role Execution during Collaborative discussion
                 contribution_audit = self.auditor_agent.audit_domain_specific_knowledge_activation(question, doctor.agent_id, doctor.specialty, review_reason)
 
                 # audit 2.2.1 Repetition of Initial Views during Collaborative discussion 
-                audit_results_repetition_of_initial_views = self.auditor_agent.audit_repetition_of_initial_views(question=question, image_path = image_path, current_agent_id=doctor.agent_id, current_explanation=review_reason, case_history=case_history)
+                audit_results_repetition_of_initial_views = self.auditor_agent.audit_repetition_of_initial_views(question=question, image_path = image_path, current_agent_id=doctor.agent_id, current_answer = review_outcome, current_explanation=review_reason, case_history=case_history)
                 
                 # audit 2.2.2 Unresolved Conflicts during Collaborative discussion
-                audit_results_of_unresolved_conflicts_during_review = self.auditor_agent.audit_unresolved_conflicts_during_Collaboration(question=question, current_agent_id=doctor.agent_id, current_explanation=review_reason, case_history=case_history) 
+                audit_results_of_unresolved_conflicts_during_review = self.auditor_agent.audit_unresolved_conflicts_during_Collaboration(question=question, current_agent_id=doctor.agent_id, current_answer = review_outcome, current_explanation=review_reason, case_history=case_history) 
 
                 round_data["reviews"].append({
                     "doctor_id": doctor.agent_id,
@@ -723,101 +732,11 @@ class MDTConsultation:
                     "log": review_log 
                 })
 
-                step_id = f"round_{current_round}_review_{doctor.agent_id}"
-                audit_trail["collaboration_audits"][step_id] = {**contribution_audit, **risk_audit}
-
-                # 检查机制1在review过程中的引用和反驳情况
-                for keu_id, keu in audit_trail["keus"].items():
-                    # 检查是否被引用
-                    if keu_id in cited_refs or keu_id in review_reason or keu.content in review_reason:
-                        keu.cited_by.append({
-                            "agent_id": doctor.agent_id,
-                            "round": current_round,
-                            "action": "review"
-                        })
-                    # 检查是否被反驳 (这里用一个简单的关键词启发式，精确判断在后分析阶段)
-                    # 我们将主要的反驳判断逻辑放在 analyze_failures.py 中
-                    if not review_parsed_output.get("agree", True):
-                        # 如果医生不同意synthesis，且在他的理由中提到了某个KEU，我们初步标记为潜在反驳
-                        if keu_id in review_reason or keu.content in review_reason:
-                             keu.rebuttals.append({
-                                 "agent_id": doctor.agent_id,
-                                 "round": current_round,
-                                 "reason": review_reason
-                             })
-
                 doctor_review_parsed_outputs.append(review_parsed_output)
 
-                # 机制二：在review后记录观点变化
-                review_viewpoint_entry = {
-                    "step": f"round_{current_round}_review",
-                    "viewpoint": review_parsed_output.get("current_viewpoint"),
-                    "viewpoint_changed": review_parsed_output.get("viewpoint_changed", False),
-                    "justification_type": review_parsed_output.get("justification_type", "unknown"),
-                    "cited_references": review_parsed_output.get("cited_references", []),
-                }
-                audit_trail["viewpoints"][doctor.agent_id].append(review_viewpoint_entry)
                 agrees = review_parsed_output.get('agree', False)
                 all_agree = all_agree and agrees
                 print(f"Doctor {i+1} agrees: {'Yes' if agrees else 'No'}")
-
-            
-            # 机制三：在元智能体决策前，审计论据综合质量得分
-            overall_quality_audit = self.auditor_agent.audit_overall_quality_for_decision(
-                question, doctor_review_parsed_outputs, self.doctor_specialties
-            )
-            audit_trail["collaboration_audits"][f"round_{current_round}_pre_decision_quality"] = overall_quality_audit
-
-
-            # 机制四：每轮复审结束后，更新和发现冲突
-            # 收集本轮的所有讨论文本
-            round_discussion_text = round_data["synthesis"]["parsed_output"]["explanation"]
-            for review in round_data["reviews"]:
-                round_discussion_text += "\n" + review["log"]["parsed_output"].get("reason", "")
-            
-            # 判断遗留的冲突是否被解决
-            resolved_this_round_log = []
-            still_unresolved = []
-            for ccp in all_unresolved_ccps:
-                was_addressed, resolution_reasoning = self.analysis_llm.check_if_conflict_was_addressed(ccp, round_discussion_text)
-                if was_addressed:
-                    ccp['status'] = 'resolved'
-                    ccp['round_resolved'] = current_round
-                    ccp['resolution_reasoning'] = resolution_reasoning  # Store the reasoning
-                    resolved_this_round_log.append(ccp)
-                else:
-                    still_unresolved.append(ccp)
-            all_unresolved_ccps = still_unresolved
-            print(f"Round {current_round}: {len(resolved_this_round_log)} CCP(s) were resolved.")
-            # 基于本轮复审的文本，发现新冲突
-            # 注意：这里的输入应该是 review 的文本，因为新的冲突往往产生于对 synthesis 的异议
-            review_contributions = []
-            for review_log in round_data["reviews"]:
-                review_contributions.append({
-                    'agent_id': review_log["doctor_id"],
-                    'specialty': review_log["specialty"],
-                    'text': review_log["log"]["parsed_output"].get("reason", "")
-                })
-
-            # 无条件调用冲突识别
-            new_ccps = self.auditor_agent.identify_critical_conflicts(
-                review_contributions,
-                context_description="doctors' review reasons"
-            )
-
-            # 4. 将新发现的冲突加入追踪列表
-            if current_round not in audit_trail["ccps"]:
-                audit_trail["ccps"][current_round] = []
-                
-            for ccp in new_ccps:
-                ccp['ccp_id'] = f"CCP-{ccp_counter}" # 分配唯一ID
-                ccp['round_identified'] = current_round
-                ccp['status'] = 'unresolved'
-                ccp['round_resolved'] = None
-                audit_trail["ccps"][current_round].append(ccp)
-                ccp_counter += 1
-
-            all_unresolved_ccps.extend(new_ccps)
 
             # Step 4: Meta agent makes decision based on reviews
             # MODIFICATION START: Capture the full log from the agent.
@@ -848,12 +767,32 @@ class MDTConsultation:
                 question = question, options = options, answer = decision_answer, current_agent_id = self.meta_agent.agent_id, explanation = decision_explanation, case_history = case_history
             ) # here the meta agent's memory includes all its previous decisions and syntheses!
 
-            round_data["decision"] = decision_log # Store the decision log for this round
+            audit_round_data["3_1_1_suppression_of_minority_views"].append({
+                "doctor_id": self.meta_agent.agent_id,
+                "specialty": self.meta_agent.specialty.value,
+                "step": "decision",
+                "audit_result": audit_results_of_suppression_of_correct_minority_views_by_incorrect_consensus_for_decision_maker
+            })
+            audit_round_data["3_1_2_authority_bias"].append({
+                "doctor_id": self.meta_agent.agent_id,
+                "specialty": self.meta_agent.specialty.value,
+                "step": "decision",
+                "audit_result": audit_results_of_authority_bias_for_decision_maker
+            })
+            audit_round_data["3_1_3_neglect_of_contradictions"].append({
+                "doctor_id": self.meta_agent.agent_id,
+                "specialty": self.meta_agent.specialty.value,
+                "step": "decision",
+                "audit_result": audit_results_of_neglect_of_contradictions_in_reasoning_process_for_decision_maker
+            })
+            audit_round_data["3_2_1_self_contradiction_when_decision"].append({
+                "doctor_id": self.meta_agent.agent_id,
+                "specialty": self.meta_agent.specialty.value,
+                "step": "decision",
+                "audit_result": audit_results_of_self_contradiction_in_viewpoints_across_rounds_for_decision_maker
+            })
 
-            decision_explanation = decision_log.get("parsed_output", {}).get("explanation", "")
-            
-            step_id = f"round_{current_round}_decision"
-            audit_trail["collaboration_audits"][step_id] = {**decision_risk_audit, **decision_quality_audit}
+            round_data["decision"] = decision_log # Store the decision log for this round
 
             case_history["rounds"].append(round_data)
 
@@ -865,33 +804,18 @@ class MDTConsultation:
                 print("No consensus reached, continuing to next round")
                 if current_round == self.max_rounds:
                     final_decision_log = decision_log
-
         if not final_decision_log:
             final_decision_log = decision_log
 
-        # 机制1:记录keu在最终决策中的出现情况
-        if final_decision_log:
-            final_explanation = final_decision_log.get("parsed_output", {}).get("explanation", "")
-            # --- 机制一升级：记录KEU在最终决策中的出现情况 ---
-            for keu_id, keu in audit_trail["keus"].items():
-                if keu_id in final_explanation or keu.content in final_explanation:
-                    keu.present_in_final_decision = True
-                    
         final_decision_parsed = final_decision_log['parsed_output'] if final_decision_log else {}
         print(f"Final decision: {final_decision_parsed.get('answer', 'N/A')}")
 
         processing_time = time.time() - start_time
-        if "keus" in audit_trail and audit_trail["keus"]:
-            serializable_keus = {keu_id: keu.to_dict() 
-                                 for keu_id, keu in audit_trail["keus"].items()}
-            audit_trail["keus"] = serializable_keus
         case_history["final_decision_log"] = final_decision_log
         case_history["consensus_reached"] = consensus_reached
         case_history["total_rounds"] = current_round
         case_history["processing_time"] = processing_time
-        case_history['audit_trail'] = audit_trail
 
-        # MODIFICATION START: Add final state of all agent memories to the log.
         agent_final_states = {
             "meta_agent": {
                 "id": self.meta_agent.agent_id,
@@ -906,7 +830,6 @@ class MDTConsultation:
             ]
         }
         case_history["agent_final_states"] = agent_final_states
-        # MODIFICATION END
 
         return case_history
 
@@ -1073,7 +996,6 @@ def main():
                 "error": str(e)
             }
             save_json(error_log, logs_dir / f"{qid}-error.json")
-
 
 if __name__ == "__main__":
     main()
