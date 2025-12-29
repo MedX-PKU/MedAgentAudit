@@ -220,7 +220,7 @@ class HealthcareAgentFramework(BaseAgent):
         start_time = time.time()
         
         case_history = {"rounds": []}
-        
+        audit = {"rounds": []}
         audit_round_data = {
             "round": 1,
             "2_1_1_role_assignment": [], 
@@ -321,6 +321,26 @@ class HealthcareAgentFramework(BaseAgent):
                                                                                                                                             current_answer = ethics_feedback, 
                                                                                                                                             current_explanation="", 
                                                                                                                                             case_history=case_history) 
+            audit_round_data["2_1_2_domain_specific_knowledge_activation"].append({
+                    "agent_id": "SafetyEthicsAgent",
+                    "specialty": MedicalSpecialty.SAFETY_ETHICS.value,
+                    "step": "review",
+                    "audit_result": audit_results_of_domain_specific_knowledge_activation
+                })
+
+            audit_round_data["2_2_1_repetition_of_initial_views"].append({
+                "agent_id": "SafetyEthicsAgent",
+                "specialty": MedicalSpecialty.SAFETY_ETHICS.value,
+                "step": "review",
+                "audit_result": audit_results_of_repetition_of_initial_views
+            })
+            audit_round_data["2_2_2_unresolved_conflicts"].append({ 
+                "agent_id": "SafetyEthicsAgent",
+                "specialty": MedicalSpecialty.SAFETY_ETHICS.value,
+                "step": "review",
+                "audit_result": audit_results_of_unresolved_conflicts_during_Collaboration
+            })
+
             case_history["rounds"][-1]["reviews"].append({
                 "agent_id": "SafetyEthicsAgent",
                 "specialty": MedicalSpecialty.SAFETY_ETHICS.value,
