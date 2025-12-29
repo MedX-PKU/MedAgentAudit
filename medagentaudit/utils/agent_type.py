@@ -7,3 +7,5 @@ class AgentType(Enum):
     META = "Synthesizer and DecisionMaker"
     AUDITOR = "Auditor"
     HEALTHCARE = "HealthcareAgent"
+    DOCTOR = "Doctor"
+    SUPERVISOR = "Supervisor"

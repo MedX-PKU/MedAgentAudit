@@ -579,26 +579,26 @@ class MDTConsultation:
                     audit_results_of_unresolved_conflicts_during_Collaboration = self.auditor_agent.audit_unresolved_conflicts_during_Collaboration(question = question, current_agent_id=doctor.agent_id, current_answer = answer, current_explanation=explanation, case_history=case_history) 
 
                     audit_round_data["2_2_1_repetition_of_initial_views"].append({
-                        "doctor_id": doctor.agent_id,
+                        "agent_id": doctor.agent_id,
                         "specialty": doctor.specialty.value,
                         "step": "analysis",
                         "audit_result": audit_results_of_repetition_of_initial_views
                     })
                     audit_round_data["2_2_2_unresolved_conflicts"].append({ 
-                        "doctor_id": doctor.agent_id,
+                        "agent_id": doctor.agent_id,
                         "specialty": doctor.specialty.value,
                         "step": "analysis",
                         "audit_result": audit_results_of_unresolved_conflicts_during_Collaboration
                     })
                 
                 audit_round_data["2_1_1_role_assignment"].append({
-                    "doctor_id": doctor.agent_id,
+                    "agent_id": doctor.agent_id,
                     "specialty": doctor.specialty.value,
                     "step": "analysis",
                     "audit_result": audit_results_of_role_assignment
                 })
                 audit_round_data["2_1_2_domain_specific_knowledge_activation"].append({
-                    "doctor_id": doctor.agent_id,
+                    "agent_id": doctor.agent_id,
                     "specialty": doctor.specialty.value,
                     "step": "analysis",
                     "audit_result": audit_results_of_domain_specific_knowledge_activation
@@ -607,7 +607,7 @@ class MDTConsultation:
                 doctor_opinion_parsed_outputs.append(parsed_output)
 
                 case_history["rounds"][-1]["opinions"].append({
-                    "doctor_id": doctor.agent_id,
+                    "agent_id": doctor.agent_id,
                     "specialty": doctor.specialty.value,
                     "log": opinion_log 
                 }) # after audit 2.2.1, we log the current opinion in case repetition 
@@ -651,31 +651,31 @@ class MDTConsultation:
             ) # here the meta_agent.memory includes all the previous syntheses and decisions
 
             audit_round_data["2_2_2_unresolved_conflicts"].append({ 
-                "doctor_id": self.meta_agent.agent_id,
+                "agent_id": self.meta_agent.agent_id,
                 "specialty": self.meta_agent.specialty.value,
                 "step": "synthesis",
                 "audit_result": audit_results_of_unresolved_conflicts_during_collaboration_for_synthesizer
             })
             audit_round_data["3_1_1_suppression_of_minority_views"].append({
-                "doctor_id": self.meta_agent.agent_id,
+                "agent_id": self.meta_agent.agent_id,
                 "specialty": self.meta_agent.specialty.value,
                 "step": "synthesis",
                 "audit_result": audit_results_of_suppression_of_correct_minority_views_by_incorrect_consensus_for_synthesizer
             })
             audit_round_data["3_1_2_authority_bias"].append({
-                "doctor_id": self.meta_agent.agent_id,
+                "agent_id": self.meta_agent.agent_id,
                 "specialty": self.meta_agent.specialty.value,
                 "step": "synthesis",
                 "audit_result": audit_results_of_authority_bias_for_synthesizer
             })
             audit_round_data["3_1_3_neglect_of_contradictions"].append({
-                "doctor_id": self.meta_agent.agent_id,
+                "agent_id": self.meta_agent.agent_id,
                 "specialty": self.meta_agent.specialty.value,
                 "step": "synthesis",
                 "audit_result": audit_results_of_neglect_of_contradictions_in_reasoning_process_for_synthesizer
             })
             audit_round_data["3_2_1_self_contradiction_when_decision"].append({
-                "doctor_id": self.meta_agent.agent_id,
+                "agent_id": self.meta_agent.agent_id,
                 "specialty": self.meta_agent.specialty.value,
                 "step": "synthesis",
                 "audit_result": audit_results_of_self_contradiction_in_viewpoints_across_rounds_for_synthesizer
@@ -702,7 +702,7 @@ class MDTConsultation:
                 audit_results_of_unresolved_conflicts_during_review = self.auditor_agent.audit_unresolved_conflicts_during_Collaboration(question=question, current_agent_id=doctor.agent_id, current_answer = review_outcome, current_explanation=review_reason, case_history=case_history) 
 
                 case_history["rounds"][-1]["reviews"].append({
-                    "doctor_id": doctor.agent_id,
+                    "agent_id": doctor.agent_id,
                     "specialty": doctor.specialty.value,
                     "log": review_log 
                 })
@@ -743,25 +743,25 @@ class MDTConsultation:
             ) # here the meta agent's memory includes all its previous decisions and syntheses!
 
             audit_round_data["3_1_1_suppression_of_minority_views"].append({
-                "doctor_id": self.meta_agent.agent_id,
+                "agent_id": self.meta_agent.agent_id,
                 "specialty": self.meta_agent.specialty.value,
                 "step": "decision",
                 "audit_result": audit_results_of_suppression_of_correct_minority_views_by_incorrect_consensus_for_decision_maker
             })
             audit_round_data["3_1_2_authority_bias"].append({
-                "doctor_id": self.meta_agent.agent_id,
+                "agent_id": self.meta_agent.agent_id,
                 "specialty": self.meta_agent.specialty.value,
                 "step": "decision",
                 "audit_result": audit_results_of_authority_bias_for_decision_maker
             })
             audit_round_data["3_1_3_neglect_of_contradictions"].append({
-                "doctor_id": self.meta_agent.agent_id,
+                "agent_id": self.meta_agent.agent_id,
                 "specialty": self.meta_agent.specialty.value,
                 "step": "decision",
                 "audit_result": audit_results_of_neglect_of_contradictions_in_reasoning_process_for_decision_maker
             })
             audit_round_data["3_2_1_self_contradiction_when_decision"].append({
-                "doctor_id": self.meta_agent.agent_id,
+                "agent_id": self.meta_agent.agent_id,
                 "specialty": self.meta_agent.specialty.value,
                 "step": "decision",
                 "audit_result": audit_results_of_self_contradiction_in_viewpoints_across_rounds_for_decision_maker

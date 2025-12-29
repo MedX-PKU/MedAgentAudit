@@ -278,6 +278,13 @@ class HealthcareAgentFramework(BaseAgent):
                                                                                                                                   specialty = MedicalSpecialty.GENERAL_MEDICINE.value, 
                                                                                                                                   answer = prelim_answer, 
                                                                                                                                   explanation = prelim_explanation)
+            audit_round_data["2_1_2_domain_specific_knowledge_activation"].append({ 
+                "agent_id": "PreliminaryAnalyzer",
+                "specialty": MedicalSpecialty.GENERAL_MEDICINE.value,
+                "step": "analysis",
+                "audit_result": audit_results_of_domain_specific_knowledge_activation
+            })
+
             case_history["rounds"][-1]["opinions"].append({
                 "agent_id": "PreliminaryAnalyzer",
                 "specialty": MedicalSpecialty.GENERAL_MEDICINE.value,

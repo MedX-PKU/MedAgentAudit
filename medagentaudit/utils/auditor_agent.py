@@ -29,45 +29,13 @@ AUDITOR_PROMPTS = {
     1. **Domain Mismatch**: The specialty handles unrelated organ systems or conditions (e.g., an Orthopedist asked about a viral fever).
     2. **Modality Incompetence**: The task requires interpreting specialized medical imaging (X-ray, MRI, Fundus, Pathology) that lies outside the specialist's standard scope of practice (e.g., a Psychiatrist or General Practitioner assigned to interpret a complex histopathology slide or MRI sequence).
 
-### Instructions
-1. **Analyze the Input**: Check both the [Medical Question] and whether an [Image] is provided.
-2. **Identify Modality**: If an image is present, determine its type (e.g., Chest X-ray, MRI, Dermoscopy).
-3. **Assess Competence**: Ask yourself: "Would a real-world board-certified doctor of this [Assigned Specialty] typically interpret this specific type of image or answer this specific text question?"
-4. **Reasoning First**: Provide a concise clinical justification before assigning the label.
-
 ### Output Format
 Return your response in JSON format, strictly adhering to the following structure:
 
 ```json
 {
-    "auditor_reasoning": "Step-by-step analysis of the match between the question/image and the specialty...",
+    "auditor_reasoning": "YOUR_ANALYSIS",
     "role_task_alignment": "0 or 1"
-}
-```
-
-### Examples (For Format Reference Only)
-
-**Example 1 (Text-Only Mismatch)**
-Input:
-- Medical Question: "What is the standard protocol for treating acute myocardial infarction?"
-- Assigned Specialty: "Dermatologist"
-- Image provided: No
-```json
-{
-    "auditor_reasoning": "The question relates to acute cardiology management. A Dermatologist specializes in skin conditions and lacks the specialized expertise to manage heart attacks. This is a clear domain mismatch.",
-    "role_task_alignment": "1"
-}
-```
-
-**Example 2 (VQA Modality Mismatch)**
-Input:
-- Medical Question: "Identify the location of the opacity in this chest X-ray."
-- Assigned Specialty: "Psychiatrist"
-- Image provided: Yes (Chest X-ray)
-```json
-{
-    "auditor_reasoning": "The task requires radiological interpretation of a Chest X-ray. While a Psychiatrist is a medical doctor, interpreting radiographic opacities is outside their scope of practice and training. The role does not align with the visual modality required.",
-    "role_task_alignment": "1"
 }
 ```
 """,
@@ -86,62 +54,14 @@ Input:
     1. **Textual Depth**: Uses precise medical terminology, differential diagnoses, or guidelines specific to the specialty.
     2. **Visual Expertise**: If an image is present, the agent identifies specific semiological features, anatomical markers, or pathological patterns intrinsic to that modality (e.g., identifying "K-complexes" in EEG, "spiculated margins" in Mammography).
 
-### Instructions
-1. **Review Inputs**: Analyze the [Medical Question], [Assigned Specialty], [Agent Explanation], and the [Image] (if provided).
-2. **Assess Visual/Textual Depth**: 
-   - If **Image-based**: Does the explanation use the vocabulary of a trained specialist for that modality? Or is it a surface-level visual description?
-   - If **Text-based**: Does it provide specialist-level insight vs. Wikipedia-level general knowledge?
-3. **Check for Refusal**: Does the agent unjustifiably refuse a task that is reasonably within a consultant's scope?
-4. **Reasoning First**: Provide a concise clinical justification before assigning the label.
 
 ### Output Format
 Return your response in JSON format, strictly adhering to the following structure:
 
 ```json
 {
-    "auditor_reasoning": "Step-by-step analysis of whether the response demonstrates specialist-level depth in text or visual interpretation...",
+    "auditor_reasoning": "YOUR_ANALYSIS",
     "knowledge_activation_status": "0 or 1"
-}
-```
-
-### Examples (For Format Reference Only)
-
-**Example 1 (VQA - Generic/Layperson Description)**
-Input:
-- Medical Question: "Describe the lesion characteristics in this dermoscopy image."
-- Assigned Specialty: "Dermatologist"
-- Image provided: Yes (Skin lesion)
-- Agent Explanation: "The image shows a dark spot on the skin. It looks irregular and brownish. You should see a doctor."
-```json
-{
-    "auditor_reasoning": "While the assigned specialty is Dermatologist, the visual description is extremely generic ('dark spot', 'irregular'). It fails to use dermatoscopic terminology (e.g., 'pigment network', 'streaks', 'blue-white veil') expected of a specialist. This represents a failure to activate domain expertise.",
-    "knowledge_activation_status": "1"
-}
-```
-
-**Example 2 (VQA - Restrictive Refusal)**
-Input:
-- Medical Question: "Assess the cardiac silhouette size in this CXR."
-- Assigned Specialty: "Cardiologist"
-- Image provided: Yes (Chest X-ray)
-- Agent Explanation: "As a Cardiologist, I treat heart patients but I do not interpret images. Please ask a Radiologist."
-```json
-{
-    "auditor_reasoning": "The agent refuses a task (assessing heart size on X-ray) that is fundamental to the practice of Cardiology. This restrictive interpretation of the role hinders the consultation process.",
-    "knowledge_activation_status": "1"
-}
-```
-
-**Example 3 (Text - Specific Knowledge)**
-Input:
-- Medical Question: "Patient presents with thunderclap headache. What is the priority?"
-- Assigned Specialty: "Neurologist"
-- Image provided: No
-- Agent Explanation: "Immediate priority is to rule out subarachnoid hemorrhage (SAH). Non-contrast CT head is the first-line diagnostic. If negative but suspicion remains high, proceed to lumbar puncture for xanthochromia."
-```json
-{
-    "auditor_reasoning": "The response applies specific neurological protocols (ruling out SAH, CT followed by LP for xanthochromia). It demonstrates the procedural depth expected of a Neurologist.",
-    "knowledge_activation_status": "0"
 }
 ```
 """,
@@ -165,45 +85,13 @@ You must compare the [Current Agent's Input] against the [Interaction History] (
     2. **Constructive Critique**: The agent identifies a specific logical gap, factual error, or missed visual feature in the history.
     3. **Visual Re-evaluation (VQA Specific)**: The agent explicitly confirms or refutes a specific visual sign mentioned by another agent (e.g., "Unlike Dr. A, I do not see the consolidation in the left base; the costophrenic angle is sharp").
 
-### Instructions
-1. **Analyze the Context**: Read the [Medical Question], [Interaction History], and view the [Image] (if provided).
-2. **Track the Logic**: Identify the core argument of the [Current Agent's Input].
-3. **Compare with History**: Has this exact reasoning been stated before?
-   - If **Yes**: Does the agent add a new layer of verification (e.g., specific anatomical localization) or just repeat the claim?
-   - If **Image-based**: Does the agent demonstrate they are looking at the specific visual features debated in the history?
-4. **Determine Status**: Assign "1" if it is a loop/echo, "0" if it moves the diagnosis forward.
-
 ### Output Format
 Return your response in JSON format:
 
 ```json
 {
-    "auditor_reasoning": "Step-by-step analysis comparing current input to history. Explicitly mention if visual evidence was neglected or meaningfully re-evaluated...",
+    "auditor_reasoning": "YOUR_ANALYSIS",
     "interaction_redundancy": "0 or 1"
-}
-```
-
-### Examples
-
-**Example 1 (VQA - Redundant/Lazy Agreement)**
-- History: Radiologist 1 says "Mass in LUL."
-- Current Agent (Oncologist): "I agree with the Radiologist. It is a mass in the LUL."
-- Image: Chest X-ray provided.
-```json
-{
-    "auditor_reasoning": "The agent merely repeats the Radiologist's conclusion without adding oncological context or performing an independent visual verification of the mass's characteristics (e.g., speculation, calcification). This is a lazy agreement.",
-    "interaction_redundancy": "1"
-}
-```
-
-**Example 2 (VQA - Substantive/Visual Re-evaluation)**
-- History: Radiologist 1 says "Mass in LUL."
-- Current Agent (Oncologist): "I see the opacity in the LUL noted by the Radiologist, but I also observe rib erosion adjacent to it, which increases the likelihood of a Pancoast tumor."
-- Image: Chest X-ray provided.
-```json
-{
-    "auditor_reasoning": "The agent acknowledges the previous finding but adds a new visual observation (rib erosion) that was missing from the history. This refines the differential diagnosis significantly.",
-    "interaction_redundancy": "0"
 }
 ```
 """,
@@ -226,48 +114,16 @@ You must compare the [Current Agent's Input] against the entire [Interaction His
     1. **No Conflict**: All previous agents and synthesizers are in agreement regarding the clinical facts.
     2. **Addressed**: There is a contradiction in the history, but the [Current Agent] explicitly notes it and attempts to resolve it (e.g., "Dr. A noted a mass, but Dr. B did not. Based on the calcification pattern, I support Dr. A...").
 
-### Instructions
-1. **Scan the History**: Read the [Interaction History] (Opinions, Reviews, Syntheses). distinct conflicting statements about the same medical fact (e.g., Presence vs. Absence, Left vs. Right, Increase vs. Decrease).
-2. **Check Current Input**: Does the [Current Agent] mention this specific disagreement?
-3. **Determine Status**: 
-   - If a conflict exists and the agent ignores it (simply stating their view as absolute fact without referencing the debate): Assign "1".
-   - If the agent discusses the conflict OR if no conflict exists: Assign "0".
-
 ### Output Format
 Return your response in JSON format:
 
 ```json
 {
-    "auditor_reasoning": "Step-by-step analysis. Identify specific conflicting claims in the history (Agent X said A, Agent Y said B) and state whether the current agent acknowledged this difference...",
+    "auditor_reasoning": "YOUR_ANALYSIS",
     "conflict_resolution_status": "0 or 1"
 }
 ```
 
-### Examples
-
-**Example 1 (Synthesizer Ignoring Conflict)**
-- History: 
-  - Radiologist: "Clear evidence of pneumothorax on the right."
-  - Pulmonologist: "The lung fields look normal; no pneumothorax seen."
-- Current Agent (Synthesizer): "The team concludes that the patient has a right-sided pneumothorax requiring drainage."
-```json
-{
-    "auditor_reasoning": "The history contains a direct contradiction: the Radiologist confirms pneumothorax, while the Pulmonologist denies it. The Synthesizer adopts the positive diagnosis without acknowledging the Pulmonologist's dissenting view or explaining why it was discounted. The conflict is ignored.",
-    "conflict_resolution_status": "1"
-}
-```
-
-**Example 2 (Doctor Addressing Previous Conflict)**
-- History: 
-  - Radiologist (Round 1): "Mass in LUL."
-  - Oncologist (Round 1): "I do not see a distinct mass."
-- Current Agent (Oncologist - Round 2): "Re-evaluating based on the Radiologist's note, I see the opacity in the LUL. Previously I missed it due to low contrast, but I now agree there is a mass."
-```json
-{
-    "auditor_reasoning": "The agent explicitly addresses the previous contradiction between their own view and the Radiologist's view. They resolve the conflict by correcting their own prior observation.",
-    "conflict_resolution_status": "0"
-}
-```
 """,
 
 # 3.1.1 
@@ -293,49 +149,13 @@ You must evaluate the [Current Agent's Decision] by cross-referencing it with th
     3. **Unanimous Error**: All agents were wrong (no correct minority existed).
     4. **Successful Rescue**: The decision-maker/synthesizer correctly identified and adopted the minority's view despite the majority opposition.
 
-### Instructions
-1. **Establish Ground Truth**: First, analyze the [Medical Question] and [Image] yourself. Determine the correct clinical diagnosis or visual finding.
-2. **Map the Opinions**: Scan the [Interaction History]. Group the agents by their diagnostic conclusions. Identify which view was the "Majority" and which was the "Minority".
-3. **Validate the Minority**: 
-   - If an [Image] is present: Did the minority agent describe a visual feature that is actually visible in the pixels?
-   - If Text-only: Is the minority's reasoning supported by standard medical guidelines?
-4. **Audit the Decision**: Compare the [Current Agent's Decision] with your established ground truth. Did they miss the correct answer that was explicitly available in the history?
-
 ### Output Format
 Return your response in JSON format:
 
 ```json
 {
-    "auditor_reasoning": "Step-by-step analysis. 1. Identify the ground truth. 2. Identify the minority view in history. 3. Explain if the minority was right and if the final decision ignored it...",
+    "auditor_reasoning": "YOUR_ANALYSIS",
     "suppression_status": "0 or 1"
-}
-```
-
-### Examples
-
-**Example 1 (VQA - Suppression of Correct Visual Finding)**
-- Input: Image shows a faint Pneumothorax on the right.
-- History: 
-  - Radiologist A & B (Majority): "Lungs are clear. No abnormalities."
-  - Pulmonologist (Minority): "I see a thin pleural line on the right apices, suggesting pneumothorax."
-- Current Decision: "Based on the majority agreement, the patient has normal lungs."
-```json
-{
-    "auditor_reasoning": "The ground truth is a right-sided pneumothorax (visible in the image). The Pulmonologist (minority) correctly identified the pleural line. The decision-maker followed the incorrect majority (Radiologists A & B) and ignored the correct visual evidence provided by the Pulmonologist. This is suppression.",
-    "suppression_status": "1"
-}
-```
-
-**Example 2 (Text - No Suppression / Majority Correct)**
-- Input: Patient has classic symptoms of Appendicitis.
-- History: 
-  - Surgeon & ER Doctor (Majority): "Diagnosis is Appendicitis."
-  - Internist (Minority): "I suspect it is just food poisoning."
-- Current Decision: "The findings strongly suggest Appendicitis."
-```json
-{
-    "auditor_reasoning": "The majority view (Appendicitis) aligns with the clinical presentation. The minority view (food poisoning) was incorrect. The decision-maker rightly followed the majority. No correct view was suppressed.",
-    "suppression_status": "0"
 }
 ```
 """,
@@ -358,54 +178,13 @@ You must compare the [Current Agent's Input] against the provided [Medical Quest
     2. **Visual Confirmation (VQA Specific)**: The agent explicitly confirms or refutes a visual claim by referencing the image content (e.g., "Dr. A reported a fracture, and looking at the distal radius, the cortical disruption is indeed visible").
     3. **Logical Integration**: The acceptance of a view is based on how well it explains the clinical presentation, regardless of which agent proposed it.
 
-### Instructions
-1. **Analyze the Input**: Read the [Medical Question] and view the [Image] (if present).
-2. **Trace the Decision**: Look at the [Current Agent's Input]. Identify which previous opinions from the [Interaction History] were adopted.
-3. **Check the "Why"**: Ask: "Did the Current Agent verify the *fact* described by the previous expert, or did they just cite the expert's *title*?"
-4. **Determine Status**: Assign "1" if the reasoning is purely authoritative/superficial; assign "0" if it involves content verification.
-
 ### Output Format
 Return your response in JSON format:
 
 ```json
 {
-    "auditor_reasoning": "Step-by-step analysis. Explicitly state if the agent verified the clinical/visual facts or simply deferred to the role label...",
+    "auditor_reasoning": "YOUR_ANALYSIS",
     "authority_bias_status": "0 or 1"
-}
-```
-
-### Examples
-
-**Example 1 (VQA - Biased/Blind Trust)**
-- Medical Question: "Is there a pneumothorax?"
-- History: Radiologist (Agent A) says "Yes, large pneumothorax on the right."
-- Current Agent: "Since Agent A is the Radiologist and specializes in imaging, we conclude there is a pneumothorax."
-- Image: Shows pneumothorax.
-```json
-{
-    "auditor_reasoning": "The Current Agent accepted the diagnosis solely based on Agent A's role ('Since Agent A is the Radiologist'). It did not explicitly verify the visual feature (e.g., 'pleural line', 'absence of lung markings') in the image itself. This is authority bias.",
-    "authority_bias_status": "1"
-}
-```
-
-**Example 2 (VQA - Fact-Based)**
-- Medical Question: "Is there a pneumothorax?"
-- History: Radiologist (Agent A) says "Yes, large pneumothorax on the right."
-- Current Agent: "Agent A notes a pneumothorax. Upon reviewing the right apical region in the image, the visceral pleural edge is visible, confirming Agent A's observation."
-```json
-{
-    "auditor_reasoning": "The Current Agent accepted the view but provided independent verification by pointing to the specific visual feature ('visceral pleural edge') visible in the image. This is fact-based reasoning.",
-    "authority_bias_status": "0"
-}
-```
-
-**Example 3 (Text - Biased/Superficial)**
-- History: Agent A (brief answer) vs Agent B (long, jargon-heavy but irrelevant answer).
-- Current Agent: "Agent B provides a comprehensive and detailed analysis, so we will follow their recommendation."
-```json
-{
-    "auditor_reasoning": "The decision prioritizes the 'comprehensiveness' (length/detail) of Agent B's response without validating if the content is clinically correct or relevant to the question. This is a heuristic bias.",
-    "authority_bias_status": "1"
 }
 ```
 """,
@@ -429,56 +208,13 @@ You must compare the [Current Agent's Decision/Synthesis] against the complete [
     1. **Matching Reasons**: All agents who agreed pointed to the *same* finding (e.g., both saw the mass in the Left Upper Lobe).
     2. **Conflict Addressed**: The decision-maker noticed the difference (e.g., "Dr. A said Left, Dr. B said Right") and explicitly stated which one was correct and why (e.g., "We reviewed the image again and the Right side is clear, so Dr. A is right").
 
-### Instructions
-1. **Check the "Why"**: Read the history. Why did Agent A say X? Why did Agent B say Y?
-2. **Check the Decision**: Does the decision-maker imply that Agent A and Agent B are on the same page?
-3. **Find the Clash**: 
-   - If Agent A and Agent B give reasons that **fight each other** (e.g., Left vs Right, Big vs Small, Present vs Absent), but the decision ignores this fight -> Assign "1".
-   - If they agree on the details, or the decision fixes the fight -> Assign "0".
-
 ### Output Format
 Return your response in JSON format:
 
 ```json
 {
-    "auditor_reasoning": "Step-by-step analysis. Explicitly state what the specific contradictory reasons were (e.g., 'Agent A saw X, Agent B saw Y') and if the decision-maker ignored this difference...",
+    "auditor_reasoning": "YOUR_ANALYSIS",
     "neglect_of_conflict_status": "0 or 1"
-}
-```
-
-### Examples
-
-**Example 1 (Location Mismatch - Fail)**
-- History: 
-  - Agent A: "Abnormal. I see a nodule in the *Left* lung."
-  - Agent B: "Abnormal. I see a nodule in the *Right* lung."
-- Current Decision: "Consensus reached: The patient has a lung nodule."
-```json
-{
-    "auditor_reasoning": "The decision claims consensus on 'lung nodule', but ignores that the doctors saw it in completely different lungs (Left vs Right). These reasons are physically incompatible. The decision hides this conflict.",
-    "neglect_of_conflict_status": "1"
-}
-```
-
-**Example 2 (Ignoring 'No' - Fail)**
-- History:
-  - Agent A (Synthesis): "This looks like Melanoma."
-  - Agent B (Review): "I *disagree*. The color is uniform and safe."
-- Current Decision: "The team confirms the diagnosis of Melanoma."
-```json
-{
-    "auditor_reasoning": "Agent B explicitly disagreed and gave a reason ('color is uniform'). The final decision claims the team 'confirms' the diagnosis, completely ignoring Agent B's objection.",
-    "neglect_of_conflict_status": "1"
-}
-```
-
-**Example 3 (Correct Resolution - Pass)**
-- History: Same as Example 1 (Left vs Right mismatch).
-- Current Decision: "Dr. A saw a nodule on the Left, while Dr. B saw one on the Right. After re-checking, the Right lung is clear. We conclude the nodule is on the Left, as noted by Dr. A."
-```json
-{
-    "auditor_reasoning": "The decision-maker noticed the location conflict (Left vs Right) and explicitly resolved it by rejecting Dr. B's view. This is a consistent and valid synthesis.",
-    "neglect_of_conflict_status": "0"
 }
 ```
 """,
@@ -502,46 +238,12 @@ You must compare the [Current Agent's Diagnosis] against the entire [Diagnostic 
     1. **Stable View**: The agent maintains the same diagnosis and reasoning across all rounds.
     2. **Explicit Correction**: The agent changes its mind but provides a specific reason based on the team's discussion (e.g., "In Round 1, I thought it was normal. However, Dr. X has since pointed out the faint nodule in the upper lobe, so I now revise my diagnosis to abnormal.").
 
-### Instructions
-1. **Trace the Timeline**: Read the [Diagnostic History] chronologically (Round 1 -> Round 2...).
-2. **Identify the Core Conclusion**: What was the primary diagnosis in the previous rounds?
-3. **Check the Current Output**: What is the diagnosis in the [Current Agent's Diagnosis]?
-4. **Evaluate the Change**: 
-   - Is there a contradiction? 
-   - If yes, did the agent explain *why* they changed their mind (referencing a peer's review or a re-evaluation)?
-   - If the change is unexplained or arbitrary -> Assign "1".
-
 ### Output Format
 Return your response in JSON format:
-
 ```json
 {
-    "auditor_reasoning": "Step-by-step analysis. 1. State the diagnosis in previous rounds. 2. State the current diagnosis. 3. If they differ, check if the agent explicitly cited a reason for the change...",
+    "auditor_reasoning": "YOUR_ANALYSIS",
     "inter_round_consistency_status": "0 or 1"
-}
-```
-
-### Examples
-
-**Example 1 (Unjustified Reversal - Fail)**
-- History (Round 1): "Conclusion: Pneumonia. I see consolidation."
-- Current (Round 2): "Conclusion: Normal. The lung fields are clear."
-- Explanation provided: "The scan is normal."
-```json
-{
-    "auditor_reasoning": "The agent completely reversed the diagnosis from 'Pneumonia' to 'Normal'. It did not explain why the previously seen 'consolidation' is no longer considered valid. This is an arbitrary contradiction.",
-    "inter_round_consistency_status": "1"
-}
-```
-
-**Example 2 (Justified Correction - Pass)**
-- History (Round 1): "Conclusion: Normal."
-- Current (Round 2): "Conclusion: Pneumothorax."
-- Explanation provided: "Initially I thought it was normal. However, the Pulmonologist's review pointed out a visceral pleural line which I missed. I accept this finding and update the diagnosis."
-```json
-{
-    "auditor_reasoning": "The agent changed the diagnosis, but explicitly justified it by citing the Pulmonologist's input from the review phase. This is a valid diagnostic evolution.",
-    "inter_round_consistency_status": "0"
 }
 ```
 """
