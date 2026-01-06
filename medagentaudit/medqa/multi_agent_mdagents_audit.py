@@ -47,6 +47,7 @@ DEFAULT_NUM_AGENTS_PER_TEAM_ADVANCED = 3 # Number of agents per team for advance
 class Agent(BaseAgent):
     def __init__(self, agent_id: str, role: Union[AgentType, str], model_key: str, config_path:str, instruction: Optional[str] = None):
         super().__init__(agent_id=agent_id, agent_type=role, config_path=config_path, model_key=model_key)
+        self.agent_id = agent_id
         self.role = role if isinstance(role, str) else role.value
         self.instruction = instruction or f"You are a helpful assistant playing the role of a {self.role}."
 
@@ -437,8 +438,8 @@ class MDAgentsFramework:
             step_log["warning"] = "Defaulted to INTERMEDIATE due to parsing error."
             return ComplexityLevel.INTERMEDIATE, step_log
 
-    def _recruit_experts(self, 
-                         question: str, 
+    def _recruit_experts(self,
+                         question: str,
                          options: Optional[Dict], 
                          complexity: ComplexityLevel, 
                          image_path: Optional[str] = None) -> Tuple[Union[List, Dict], Dict[str, Any]]:
@@ -459,7 +460,6 @@ class MDAgentsFramework:
         if image_path:
             query_context += "This query includes a medical image.\n"
         prompt = ""
-
         if complexity == ComplexityLevel.INTERMEDIATE:
             recruitment_instruction = (
                 f"You are an experienced medical expert. Your task is to recruit a team of {self.num_experts_intermediate} experts "
@@ -512,7 +512,12 @@ class MDAgentsFramework:
             response_format={"type": "json_object"},
         )
         print(f"Recruiter Response ({complexity.value}):\n{recruitment_response}")
-        
+
+        llm_log = {"llm_input":{
+            "system_message": system_message,
+            "user_message": user_message
+        }}
+
         step_log["prompt"] = prompt
         step_log["llm_log"] = llm_log
 
@@ -521,7 +526,6 @@ class MDAgentsFramework:
                 response_clean = preprocess_response_string(recruitment_response)
                 response_json = json.loads(response_clean)
                 experts = response_json.get("experts", [])
-                
                 step_log["parsed_response"] = response_json
 
                 validated_experts = []
@@ -534,6 +538,7 @@ class MDAgentsFramework:
                         }
                         validated_experts.append(validated_expert)
                 experts = validated_experts
+                specialties = [e['role'] for e in experts]
             except Exception as e:
                 print(f"Error parsing expert recruitment response: {e}. Raw response: {recruitment_response}")
                 print("Warning: Failed to parse experts. Using default roles.")
@@ -595,9 +600,13 @@ class MDAgentsFramework:
                     ]}
                 ]
                 teams = teams[:self.num_teams_advanced]
-
+                specialties = []
+                for team in teams:
+                    for member in team['members']:
+                        specialties.append(member['role'])
             print(f"Recruited Teams: {[t['goal'] for t in teams]}")
             step_log["recruited_personnel"] = teams
+            step_log["specialties"] = specialties
             return teams, step_log
         return [], step_log
 
@@ -647,6 +656,7 @@ class MDAgentsFramework:
                 "user_message": user_message
         }
         }
+
         try:
             result = json.loads(preprocess_response_string(response))
             predicted_answer = result.get("answer", "parse_error")
@@ -663,7 +673,7 @@ class MDAgentsFramework:
             # audit 3.1.3: Neglect of Contradictions in Reasoning Process for decision-maker
             audit_results_of_neglect_of_contradictions_in_reasoning_process_for_decision_maker = self.auditor_agent.audit_contradictions_during_decision(
                 question = data_item['question'], current_agent_id = agent.agent_id, explanation = explanation, case_history = case_history
-            ) # here the discussion_context includes all the domain agents' answers and explanations before this synthesis
+            ) 
 
             audit_round_data["3_1_3_neglect_of_contradictions"].append({
                 "agent_id": agent.agent_id,
@@ -1121,10 +1131,32 @@ class MDAgentsFramework:
             else:
                 recruited, recruitment_log = self._recruit_experts(data_item["question"], data_item.get("options"), complexity, data_item.get("image_path"))
                 process_log.append(recruitment_log)
+                specialties = recruitment_log.get("specialties", [])
+                audit_round_data = {
+                    "round": 1,
+                    "2_1_1_role_assignment": [], 
+                    "2_1_2_domain_specific_knowledge_activation": [], 
+                    
+                    "2_2_1_repetition_of_initial_views": [], 
+                    "2_2_2_unresolved_conflicts": [],
+                    
+                    "3_1_1_suppression_of_minority_views": [],
+                    "3_1_2_authority_bias": [],
+                    "3_1_3_neglect_of_contradictions": [],
+                    "3_2_1_self_contradiction_when_decision": []
+                }
+                # audit 2.1.1 role assignment
+                audit_results_of_role_assignment = self.auditor_agent.audit_role_assignment(question=data_item["question"], image_path=data_item.get("image_path"), specialties=specialties)
+                audit_round_data["2_1_1_role_assignment"].append({
+                    "agent_id": "recruiter",
+                    "specialty": specialties,
+                    "step": "role_assignment",
+                    "audit_result": audit_results_of_role_assignment
+                })
                 if complexity == ComplexityLevel.INTERMEDIATE:
-                    result_data = self._process_intermediate_query(data_item, recruited, audit_trail)
+                    result_data = self._process_intermediate_query(data_item, recruited, audit = audit, case_history=case_history)
                 elif complexity == ComplexityLevel.ADVANCED:
-                    result_data = self._process_advanced_query(data_item, recruited, audit_trail)
+                    result_data = self._process_advanced_query(data_item, recruited, audit = audit, case_history=case_history)
 
         except Exception as e:
             print(f"ERROR processing QID {qid}: {e}")
@@ -1133,8 +1165,6 @@ class MDAgentsFramework:
 
         processing_time = time.time() - start_time
         
-        if "keus" in audit_trail and audit_trail["keus"]:
-            audit_trail["keus"] = {keu_id: keu.to_dict() for keu_id, keu in audit_trail["keus"].items()}
 
         return {
             "qid": qid, "question": data_item["question"], "options": data_item.get("options"),
@@ -1142,7 +1172,7 @@ class MDAgentsFramework:
             "predicted_answer": result_data.get("predicted_answer"), "explanation": result_data.get("explanation"),
             "processing_time_seconds": processing_time,
             "process_log": process_log, 
-            "audit_trail": audit_trail,
+            "case_history": result_data.get("case_history", {}),
         }
 
     def run_dataset(self, data: List[Dict]):
