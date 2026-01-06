@@ -305,7 +305,7 @@ class HealthcareAgentFramework(BaseAgent):
             audit_results_of_domain_specific_knowledge_activation = self.auditor_agent.audit_domain_specific_knowledge_activation(question = question, 
                                                                                                                                   image_path = image_path, 
                                                                                                                                   agent_id = "SafetyEthicsAgent", 
-                                                                                                                                  specialty = MedicalSpecialty.SAFETY_ETHICS.value, 
+                                                                                                                                  specialty = MedicalSpecialty.SAFETY_SUPERVISOR.value, 
                                                                                                                                   answer = ethics_feedback, 
                                                                                                                                   explanation = "")
             # audit 2.2.1 Repetition of Initial Views during Collaborative discussion
@@ -323,27 +323,27 @@ class HealthcareAgentFramework(BaseAgent):
                                                                                                                                             case_history=case_history) 
             audit_round_data["2_1_2_domain_specific_knowledge_activation"].append({
                     "agent_id": "SafetyEthicsAgent",
-                    "specialty": MedicalSpecialty.SAFETY_ETHICS.value,
+                    "specialty": MedicalSpecialty.SAFETY_SUPERVISOR.value,
                     "step": "review",
                     "audit_result": audit_results_of_domain_specific_knowledge_activation
                 })
 
             audit_round_data["2_2_1_repetition_of_initial_views"].append({
                 "agent_id": "SafetyEthicsAgent",
-                "specialty": MedicalSpecialty.SAFETY_ETHICS.value,
+                "specialty": MedicalSpecialty.SAFETY_SUPERVISOR.value,
                 "step": "review",
                 "audit_result": audit_results_of_repetition_of_initial_views
             })
             audit_round_data["2_2_2_unresolved_conflicts"].append({ 
                 "agent_id": "SafetyEthicsAgent",
-                "specialty": MedicalSpecialty.SAFETY_ETHICS.value,
+                "specialty": MedicalSpecialty.SAFETY_SUPERVISOR.value,
                 "step": "review",
                 "audit_result": audit_results_of_unresolved_conflicts_during_Collaboration
             })
 
             case_history["rounds"][-1]["reviews"].append({
                 "agent_id": "SafetyEthicsAgent",
-                "specialty": MedicalSpecialty.SAFETY_ETHICS.value,
+                "specialty": MedicalSpecialty.SAFETY_SUPERVISOR.value,
                 "log": ethics_log
             })
             # -- Emergency Review --
@@ -355,15 +355,15 @@ class HealthcareAgentFramework(BaseAgent):
             audit_results_of_domain_specific_knowledge_activation = self.auditor_agent.audit_domain_specific_knowledge_activation(question = question, 
                                                                                                                                   image_path = image_path, 
                                                                                                                                   agent_id = "SafetyEmergencyAgent", 
-                                                                                                                                  specialty = MedicalSpecialty.EMERGENCY_MEDICINE.value, 
-                                                                                                                                  answer = emergency_feedback, 
+                                                                                                                                  specialty = MedicalSpecialty.SAFETY_SUPERVISOR.value, 
+                                                                                                                                  answer = emergency_feedback,  # TODO ,this need to be fixed in auditor agent,the answer is not a integer but a sentence
                                                                                                                                   explanation = "")
             # audit 2.2.1 Repetition of Initial Views during Collaborative discussion
             audit_results_of_repetition_of_initial_views = self.auditor_agent.audit_repetition_of_initial_views(question = question, 
                                                                                                                 image_path=image_path, 
                                                                                                                 current_agent_id="SafetyEmergencyAgent", 
-                                                                                                                current_answer = emergency_feedback, 
-                                                                                                                current_explanation="", 
+                                                                                                                current_answer = emergency_feedback,
+                                                                                                                current_explanation="",
                                                                                                                 case_history=case_history)
             # audit 2.2.2 Unresolved Conflicts during Collaborative discussion
             audit_results_of_unresolved_conflicts_during_Collaboration = self.auditor_agent.audit_unresolved_conflicts_during_Collaboration(question = question, 
@@ -373,7 +373,7 @@ class HealthcareAgentFramework(BaseAgent):
                                                                                                                                             case_history=case_history) 
             case_history["rounds"][-1]["reviews"].append({
                 "agent_id": "SafetyEmergencyAgent",
-                "specialty": MedicalSpecialty.EMERGENCY_MEDICINE.value,
+                "specialty": MedicalSpecialty.SAFETY_SUPERVISOR.value,
                 "log": emergency_log
             })
             # -- Error Review --
@@ -385,7 +385,7 @@ class HealthcareAgentFramework(BaseAgent):
             audit_results_of_domain_specific_knowledge_activation = self.auditor_agent.audit_domain_specific_knowledge_activation(question = question, 
                                                                                                                                   image_path = image_path, 
                                                                                                                                   agent_id = "SafetyErrorAgent", 
-                                                                                                                                  specialty = MedicalSpecialty.FACTUAL_ACCURACY.value, 
+                                                                                                                                  specialty = MedicalSpecialty.SAFETY_SUPERVISOR.value, 
                                                                                                                                   answer = error_feedback, 
                                                                                                                                   explanation = "")
             # audit 2.2.1 Repetition of Initial Views during Collaborative discussion
@@ -401,6 +401,27 @@ class HealthcareAgentFramework(BaseAgent):
                                                                                                                                             current_answer = error_feedback, 
                                                                                                                                             current_explanation="", 
                                                                                                                                             case_history=case_history) 
+
+            audit_round_data["2_1_2_domain_specific_knowledge_activation"].append({
+                    "agent_id": "SafetyErrorAgent",
+                    "specialty": MedicalSpecialty.SAFETY_SUPERVISOR.value,
+                    "step": "review",
+                    "audit_result": audit_results_of_domain_specific_knowledge_activation
+                })
+            
+            audit_round_data["2_2_1_repetition_of_initial_views"].append({
+                    "agent_id": "SafetyErrorAgent",
+                    "specialty": MedicalSpecialty.SAFETY_SUPERVISOR.value,
+                    "step": "review",
+                    "audit_result": audit_results_of_domain_specific_knowledge_activation
+                })
+            audit_round_data["2_2_2_unresolved_conflicts"].append({ 
+                "agent_id": "SafetyErrorAgent",
+                "specialty": MedicalSpecialty.SAFETY_SUPERVISOR.value,
+                "step": "review",
+                "audit_result": audit_results_of_unresolved_conflicts_during_Collaboration
+            })
+
             case_history["rounds"][-1]["reviews"].append({
                 "agent_id": "SafetyErrorAgent",
                 "specialty": MedicalSpecialty.FACTUAL_ACCURACY.value,
@@ -420,25 +441,48 @@ class HealthcareAgentFramework(BaseAgent):
             decision_explanation = final_result.get("explanation", "")
             decision_answer = final_result.get("answer", "")
 
-            # audtit 3.1.1 : Suppression of Correct Minority Views by Incorrect Consensus for synthesizer
-            audit_results_of_suppression_of_correct_minority_views_by_incorrect_consensus_for_synthesizer = self.auditor_agent.audit_suppression_by_majority(
+            # audtit 3.1.1 : Suppression of Correct Minority Views by Incorrect Consensus for decision-maker
+            audit_results_of_suppression_of_correct_minority_views_by_incorrect_consensus_for_decision_maker = self.auditor_agent.audit_suppression_by_majority(
                 question = question, options = options_text, image_path = image_path, current_agent_id = "decision-maker", answer = decision_answer, explanation = decision_explanation, case_history = case_history
             ) # here the discussion_context includes all the domain agents' answers and explanations before this synthesis
 
-            # audit 3.1.2 : Reasoning Distorted by Authority Bias for synthesizer
-            audit_results_of_authority_bias_for_synthesizer = self.auditor_agent.audit_authority_bias(
+            # audit 3.1.2 : Reasoning Distorted by Authority Bias for decision-maker
+            audit_results_of_authority_bias_for_decision_maker = self.auditor_agent.audit_authority_bias(
                 question = question, options = options_text, image_path = image_path, current_agent_id = "decision-maker", answer = decision_answer, explanation = decision_explanation, case_history = case_history
             ) # here the discussion_context must include the role of domain agent and their answer and explanation before this synthesis
 
-            # audit 3.1.3: Neglect of Contradictions in Reasoning Process for synthesizer
-            audit_results_of_neglect_of_contradictions_in_reasoning_process_for_synthesizer = self.auditor_agent.audit_contradictions_during_decision(
+            # audit 3.1.3: Neglect of Contradictions in Reasoning Process for decision-maker
+            audit_results_of_neglect_of_contradictions_in_reasoning_process_for_decision_maker = self.auditor_agent.audit_contradictions_during_decision(
                 question = question, current_agent_id = "decision-maker", explanation = decision_explanation, case_history = case_history
             ) # here the discussion_context includes all the domain agents' answers and explanations before this synthesis
 
-            # audit 3.2.1: Self-Contradiction in Viewpoints Across Rounds for synthesizer
-            audit_results_of_self_contradiction_in_viewpoints_across_rounds_for_synthesizer = self.auditor_agent.audit_self_contradiction_across_rounds(
+            # audit 3.2.1: Self-Contradiction in Viewpoints Across Rounds for decision-maker
+            audit_results_of_self_contradiction_in_viewpoints_across_rounds_for_decision_maker = self.auditor_agent.audit_self_contradiction_across_rounds(
                 question = question, answer = decision_answer, explanation = decision_explanation, case_history = case_history
             ) # here the meta_agent.memory includes all the previous syntheses and decisions
+
+
+            audit_round_data["3_1_1_suppression_of_minority_views"].append({
+                "agent_id": "decision-maker",
+                "step": "decision",
+                "audit_result": audit_results_of_suppression_of_correct_minority_views_by_incorrect_consensus_for_decision_maker
+            })
+
+            audit_round_data["3_1_2_authority_bias"].append({
+                "agent_id": "decision-maker",
+                "step": "decision",
+                "audit_result": audit_results_of_authority_bias_for_decision_maker
+            })
+            audit_round_data["3_1_3_neglect_of_contradictions"].append({
+                "agent_id": "decision-maker",
+                "step": "decision",
+                "audit_result": audit_results_of_neglect_of_contradictions_in_reasoning_process_for_decision_maker
+            })
+            audit_round_data["3_2_1_self_contradiction_when_decision"].append({
+                "agent_id": "decision-maker",
+                "step": "decision",
+                "audit_result": audit_results_of_self_contradiction_in_viewpoints_across_rounds_for_decision_maker
+            })
 
             case_history["rounds"][-1]["decision"] = final_log
             
@@ -454,6 +498,8 @@ class HealthcareAgentFramework(BaseAgent):
             explanation = str(e)
             case_history["error"] = str(e)
 
+        audit["rounds"].append(audit_round_data)
+        case_history["audit"] = audit
         processing_time = time.time() - start_time
         print(f"Finished QID: {qid}. Time: {processing_time:.2f}s. Final Answer: {predicted_answer}")
 

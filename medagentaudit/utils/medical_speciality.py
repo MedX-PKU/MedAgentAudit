@@ -7,6 +7,5 @@ class MedicalSpecialty(Enum):
     SURGERY = "Surgery"
     RADIOLOGY = "Radiology"
     GENERAL_MEDICINE = "General Medicine"
-    SAFETY_ETHICS = "Safety and Ethics"
-    EMERGENCY_MEDICINE = "Emergency Medicine"
+    SAFETY_SUPERVISOR = "Safety Supervisor"
     FACTUAL_ACCURACY = "Factual Accuracy"

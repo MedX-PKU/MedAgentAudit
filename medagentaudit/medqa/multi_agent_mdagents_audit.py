@@ -1,8 +1,4 @@
 # multi_agent_mdagents_full_log.py
-# 该版本已根据您的需求，从 ColaCare 框架中迁移并集成了四个核心的量化观察机制。
-# 主要修改包括：引入 AuditorAgent、KEU、AnalysisHelperLLM；
-# 在 MDAgents 的各个流程节点（basic, intermediate, advanced）中嵌入审计和追踪逻辑；
-# 以及构建一个结构化的 `audit_trail` 来记录所有量化指标。
 
 import os
 import time
@@ -11,36 +7,24 @@ from openai import OpenAI
 from enum import Enum
 from typing import Dict, Any, Optional, List, Union, Tuple
 from tqdm import tqdm
+from pathlib import Path
 import json
 import time
 import sys
-
-# Utilities from the ColaCare framework
-sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-from medagentaudit.utils.config import get_config
-from medagentaudit.utils.dual_logger import DualLogger
-from medagentaudit.utils.encode_image import encode_image
-from medagentaudit.utils.json_utils import load_json, save_json, preprocess_response_string
-from medagentaudit.utils.analysishelper import AnalysisHelperLLM
-
-
-class KEU:
-    """关键证据单元 (Key Evidential Unit) 的数据结构。"""
-    def __init__(self, keu_id: str, content: str, source_agent: str, round_introduced: int, group_id: Optional[str] = None):
-        self.keu_id: str = keu_id
-        self.content: str = content
-        self.source_agent: str = source_agent
-        self.round_introduced: int = round_introduced
-        self.group_id: Optional[str] = group_id
-        self.is_key: bool = False
-        self.cited_by: List[Dict[str, Any]] = []
-        self.rebuttals: List[Dict[str, Any]] = []
-        self.present_in_synthesis: Dict[int, bool] = {}
-        self.present_in_final_decision: bool = False
-
-    def to_dict(self):
-        return self.__dict__
-
+current_file_path = Path(__file__).resolve()
+current_file_name = current_file_path.stem
+utils_root = current_file_path.parents[1] / "utils"
+project_root = current_file_path.parents[2]
+sys.path.extend([str(utils_root), str(project_root)])
+from config import get_config
+from dual_logger import DualLogger
+from encode_image import encode_image
+from json_utils import load_json, save_json, preprocess_response_string
+from auditor_agent import AuditorAgent
+from BaseAgent import BaseAgent
+from agent_type import AgentType
+from medical_specialty import MedicalSpecialty
+from parse_structured_output import parse_structured_output
 
 # --- Constants and Enums ---
 
@@ -49,84 +33,22 @@ class ComplexityLevel(Enum):
     INTERMEDIATE = "intermediate"
     ADVANCED = "advanced"
 
-class AgentRole(Enum):
-    MODERATOR = "Moderator"
-    RECRUITER = "Recruiter"
-    GENERAL_DOCTOR = "General Doctor"
-    SPECIALIST = "Specialist"
-    TEAM_LEAD = "Team Lead"
-    DECISION_MAKER = "Decision Maker"
-    AUDITOR = "Auditor"  # 新增审计智能体角色
-
 # Default settings (can be overridden by arguments)
-DEFAULT_MODERATOR_MODEL = "gemini-2.5-flash" # 分类/招募用的文本模型
-DEFAULT_RECRUITER_MODEL = "gemini-2.5-flash" # 招募专家用的文本模型
-DEFAULT_AGENT_MODEL = "gemini-2.5-flash" # 分析智能体的默认多模态模型
-DEFAULT_MAX_ROUNDS_INTERMEDIATE = 3 # Max discussion rounds for intermediate 中等复杂度的最大讨论轮数
-DEFAULT_MAX_TURNS_INTERMEDIATE = 3  # Max turns per round for intermediate 每轮的最大对话次数
-DEFAULT_NUM_EXPERTS_INTERMEDIATE = 5 #  招募的专家数量
-DEFAULT_NUM_TEAMS_ADVANCED = 3 # 高复杂度的团队数量
-DEFAULT_NUM_AGENTS_PER_TEAM_ADVANCED = 3 # 每个团队的智能体数量
+DEFAULT_MODERATOR_MODEL = "gemini-2.5-flash" 
+DEFAULT_RECRUITER_MODEL = "gemini-2.5-flash" 
+DEFAULT_AGENT_MODEL = "gemini-2.5-flash" 
+DEFAULT_MAX_ROUNDS_INTERMEDIATE = 3 # Max discussion rounds for intermediate 
+DEFAULT_MAX_TURNS_INTERMEDIATE = 3  # Max turns per round for intermediate 
+DEFAULT_NUM_EXPERTS_INTERMEDIATE = 5 #  Number of experts recruited
+DEFAULT_NUM_TEAMS_ADVANCED = 3 # Number of teams for advanced complexity
+DEFAULT_NUM_AGENTS_PER_TEAM_ADVANCED = 3 # Number of agents per team for advanced complexity
 # --- Base Agent and New Auditor Agent Classes ---
 
-class BaseAgent:
-    def __init__(self, agent_id: str, role: Union[AgentRole, str], model_key: str, config_path:str, instruction: Optional[str] = None):
-        self.agent_id = agent_id
+class Agent(BaseAgent):
+    def __init__(self, agent_id: str, role: Union[AgentType, str], model_key: str, config_path:str, instruction: Optional[str] = None):
+        super().__init__(agent_id=agent_id, agent_type=role, config_path=config_path, model_key=model_key)
         self.role = role if isinstance(role, str) else role.value
-        self.model_key = model_key
         self.instruction = instruction or f"You are a helpful assistant playing the role of a {self.role}."
-        self.memory = []
-        self.llm = get_config(config_path, active_llm=model_key).llm
-        self.llm_client = OpenAI(
-            api_key=self.llm.api_key, 
-            base_url=self.llm.base_url,
-            timeout=self.llm.timeout)
-        
-        self.model_name = self.llm.model_name
-        print(f"Initialized Agent: ID={self.agent_id}, Role={self.role}, Model={self.model_key} ({self.model_name})")
-
-    def call_llm(self, messages: List[Dict[str, Any]], response_format: Optional[Dict[str, str]] = None, max_retries: int = 3) -> Tuple[str, Dict[str, Any]]:
-        retries = 0
-        while retries < max_retries:
-            try:
-                # print(f"Agent {self.agent_id} calling LLM ({self.model_name}). Attempt {retries + 1}/{max_retries}.")
-                if hasattr(self.llm, 'reasoning') and self.llm.reasoning:
-                    completion_params = {
-                        "model": self.model_name, 
-                        "messages": messages,
-                        "reasoning_effort": self.llm.reasoning.effort,
-                        "stream": self.llm.stream}
-                else:
-                    completion_params = {
-                        "model": self.model_name, 
-                        "messages": messages,
-                        "stream": self.llm.stream}
-                if response_format:
-                    completion_params["response_format"] = response_format
-                completion = self.llm_client.chat.completions.create(**completion_params)
-
-                if self.llm.stream:
-                    response_chunks = []
-                    for chunk in completion:
-                        if chunk.choices[0].delta.content is not None:
-                            response_chunks.append(chunk.choices[0].delta.content)
-                    response_content = "".join(response_chunks)
-                else:
-                    response_content = completion.choices[0].message.content
-                # print(f"Agent {self.agent_id} received response successfully.")
-                if not response_content:
-                    raise ValueError("Received empty response from LLM.")
-                if messages[-1]['role'] == 'user':
-                    self.memory.append(messages[-1])
-                    self.memory.append({"role": "assistant", "content": response_content})
-                llm_call_log = {"request": completion_params, "raw_response": completion.model_dump()}
-                return response_content, llm_call_log
-            except Exception as e:
-                retries += 1
-                print(f"LLM API call error for agent {self.agent_id} (attempt {retries}/{max_retries}): {e}")
-                if retries >= max_retries:
-                    raise RuntimeError(f"CRITICAL: Agent {self.agent_id} failed after {max_retries} attempts. Reason: {str(e)}")
-                time.sleep(1)
 
     def chat(self, prompt: str, image_path: Optional[str] = None, use_memory: bool = True, response_format: Optional[Dict[str, str]] = None) -> Tuple[str, Dict[str, Any]]:
         system_message = {"role": "system", "content": self.instruction}
@@ -142,322 +64,15 @@ class BaseAgent:
         if use_memory and self.memory:
             messages.extend(self.memory)
         messages.append(user_message)
-        response, llm_call_log = self.call_llm(messages, response_format=response_format)
-        return response, llm_call_log
+        response, system_message, user_message = self.call_llm(messages, response_format=response_format)
+        return response, system_message, user_message
 
     def clear_memory(self):
         self.memory = []
-        # print(f"Cleared memory for agent {self.agent_id}")
 
-class AuditorAgent(BaseAgent):
-    """
-    审计智能体，负责在协作过程中进行非侵入式的监测、量化和记录。
-    继承自 BaseAgent 以复用 LLM 调用逻辑。
-    """
-    def __init__(self, config_path :str, agent_id: str = "auditor", model_key: str = "gemini-2.5-pro"):
-        super().__init__(
-            agent_id=agent_id,
-            role=AgentRole.AUDITOR,
-            model_key=model_key,
-            config_path= config_path,
-            instruction="You are a helpful AI assistant for auditing medical collaboration."
-        )
-
-    def _perform_audit(self, system_prompt: str, user_prompt: str) -> Dict[str, Any]:
-        """一个通用的审计任务执行器。"""
-        original_instruction = self.instruction
-        self.instruction = system_prompt
-        try:
-            response_text, _ = self.chat(
-                prompt=user_prompt,
-                use_memory=False,
-                response_format={"type": "json_object"}
-            )
-            return json.loads(preprocess_response_string(response_text))
-        except (json.JSONDecodeError, TypeError, Exception) as e:
-            print(f"Auditor agent failed to parse response: {e}")
-            return {"error": "Failed to parse audit response"}
-        finally:
-            self.instruction = original_instruction
-
-    # --- 以下方法均从 ColaCare 的 AuditorAgent 迁移而来 ---
-
-    def audit_domain_agent_contribution(self, question: str, agent_id: str, specialty: str, explanation: str) -> Dict[str, Any]:
-        """
-        在领域智能体发言后，评估其角色知识一致性和专家相关性。
-        """
-        # print(f"Auditor Agent: Auditing Domain Agent Contribution for {agent_id}...")
-        system_message = {
-            "role": "system",
-            "content": """You are an expert in medical epistemology and collaborative intelligence. Your task is to analyze an argument from a specialist AI doctor and assess two key dimensions of their contribution.
-
-You MUST provide a JSON object with two classifications:
-
-1.  **`specialized_insight_emergence`**: Classify the degree to which the argument demonstrates the emergence of insights unique to the agent's assigned specialty, beyond general medical knowledge.
-    - **"High"**: The reasoning presents a perspective, interpretation, or piece of knowledge that is highly specific to the assigned role and would likely not be offered by other specialists. It represents a unique, valuable contribution.
-    - **"Medium"**: The reasoning contains some specialty-specific elements but is largely grounded in shared or overlapping medical knowledge.
-    - **"Low"**: The reasoning is generic, lacks a distinct specialty perspective, and could have been generated by a generalist agent. No unique insight has emerged.
-2.  **`expertise_relevance_category`**: Classify the relevance of this agent's specialty to the overall question.
-    - **"Core"**: The specialty is central to diagnosing the problem.
-    - **"Relevant"**: The specialty provides important, but not central, insights.
-    - **"Ancillary"**: The specialty is only tangentially related.
-
-Provide a concise `auditor_reasoning` explaining your choices.
-"""
-        }
-        user_message = {
-            "role": "user",
-            "content": f"Medical Question: \"{question}\"\n\n"
-                       f"Agent: {agent_id} (Specialty: {specialty})\n"
-                       f"Argument/Explanation:\n\"{explanation}\"\n\n"
-                       f"Please provide your audit in the specified JSON format."
-        }
-        response_text, _ = self.call_llm([system_message, user_message], response_format={"type": "json_object"})
-        try:
-            return json.loads(preprocess_response_string(response_text))
-        except (json.JSONDecodeError, TypeError):
-            return {}
-
-    def audit_risk_and_quality(self, agent_id: str, explanation: str, image_path:Optional[str] = None) -> Dict[str, Any]:
-        """
-        在任何智能体发言后，评估其论据的风险规避类别。
-        """
-        # print(f"Auditor Agent: Auditing Risk and Quality for {agent_id}'s argument...")
-        system_message = {
-            "role": "system",
-            "content": """You are a senior attending physician specializing in emergency medicine and patient triage. Your task is to analyze a medical argument and classify its implied **Diagnostic Urgency Level**.
-
-This level reflects how quickly the argument suggests action should be taken, especially when faced with potentially high-risk diagnoses.
-
-You MUST provide a JSON object with one classification:
-- **`diagnostic_urgency_level`**:
-  - **"Immediate (STAT)"**: The argument demands immediate, urgent action to investigate or rule out a high-risk, time-sensitive condition. This aligns with the 'worst-case-first' principle. (e.g., "The possibility of aortic dissection requires a STAT CT angiogram now.")
-  - **"Standard (Routine)"**: The argument proposes a standard, routine diagnostic workup based on the most probable causes. It is diligent but not urgent. (e.g., "Let's order routine cardiac enzymes and an EKG.")
-  - **"Delayed (Deferrable)"**: The argument suggests a passive or delayed course of action, such as "watchful waiting" or follow-up at a later date, downplaying the need for immediate investigation. (e.g., "Since this is likely musculoskeletal, let's have the patient follow up with their primary care physician next week.")
-
-Provide a concise `auditor_reasoning` for your choice.
-"""
-        }
-        user_content = []
-        if image_path:
-            base64_image = encode_image(image_path)
-            user_content.append({
-                "type":"image_url",
-                "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}
-            })
-        text_content = (
-            f"Argument from Agent {agent_id}:\n\"{explanation}\"\n\nPlease provide your risk audit in the specified JSON format."
-        )
-        user_content.append({"type":"text","text": text_content})
-        user_message = {"role": "user", "content": user_content }
-        response_text, _ = self.call_llm([system_message, user_message], response_format={"type": "json_object"})
-        try:
-            return json.loads(preprocess_response_string(response_text))
-        except (json.JSONDecodeError, TypeError):
-            return {}
-
-
-    def audit_overall_quality_for_decision(self, question: str, arguments: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        # print("Auditor Agent: Auditing overall argument quality for decision-making...")
-        system_message = {
-            "role": "system",
-            "content": """You are a lead physician and medical logician. Your task is to provide an **Overall Quality Category** for several arguments, to inform a final decision.
-
-The Overall Quality considers all factors: logical soundness, evidence support, expertise relevance, and clinical safety.
-- **"High"**: A very strong, reliable argument. It is logical, evidence-based, safe, and comes from a relevant perspective.
-- **"Medium"**: A decent argument with some strengths but also notable weaknesses (e.g., logical gaps, ignores some risks).
-- **"Low"**: A weak or dangerous argument that should be treated with caution.
-
-For each doctor, you MUST provide a JSON object with:
-1.  **`agent_id`**: The doctor's ID.
-2.  **`overall_quality_category`**: "High", "Medium", or "Low".
-3.  **`auditor_reasoning`**: A concise justification.
-
-Your final output MUST be a JSON list of these objects.
-"""
-        }       
-       
-        arguments_text = ""
-        for arg in arguments:
-            # FIX: Use the generic 'role' key instead of 'specialty'
-            arguments_text += f"\n---\nAgent ID: {arg['agent_id']} (Role: {arg.get('agent_role', 'N/A')}):\n"
-            arguments_text += f"Supported Answer: {arg.get('answer', 'N/A')}\n"
-            arguments_text += f"Reasoning: {arg.get('explanation', 'N/A')}\n"
-        user_message = { "role": "user", "content": f"Medical Question: {question}\n\nArguments:\n{arguments_text}\n\nPlease provide the overall quality audit as a JSON list." }
-        
-        response_text, _ = self.call_llm([system_message, user_message], response_format={"type": "json_object"})
-        try:
-            return json.loads(preprocess_response_string(response_text))
-        except (json.JSONDecodeError, TypeError):
-            return []
-
-
-    def audit_single_argument_quality(self, question: str, explanation: str, image_path: Optional[str] = None, domain_agent_quality_domain: Optional[str] = None) -> Dict[str, Any]:
-        """
-        [新增] 对单个论据（特别是元智能体的最终决策）进行综合质量评估。
-        """
-        # print("Auditor Agent: Auditing single argument's overall quality...")
-        system_message = {
-            "role": "system",
-            "content": """You are a lead physician and medical logician. Your task is to provide an **Overall Quality Category** for a given medical argument.
-
-The Overall Quality considers all factors: logical soundness, evidence support, and clinical safety.
-- **"High"**: A very strong, reliable argument. It is logical, evidence-based, safe, and provides a comprehensive justification.
-- **"Medium"**: A decent argument with some strengths but also notable weaknesses (e.g., logical gaps, ignores some risks, superficial reasoning).
-- **"Low"**: A weak or dangerous argument that should be treated with caution.
-
-You MUST provide a JSON object with:
-1.  **`overall_quality_category`**: "High", "Medium", or "Low".
-2.  **`auditor_reasoning`**: A concise justification for your rating.
-"""
-        }
-        user_content = []
-        if image_path:
-            base64_image = encode_image(image_path)
-            user_content.append({
-                "type":"image_url",
-                "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}
-            })
-        if domain_agent_quality_domain:
-            individual_quality_text = ""
-            for audit in domain_agent_quality_domain:
-                individual_quality_text += f"- Agent: {audit.get('agent_id', 'Unknown')}\n"
-                individual_quality_text += f"  Quality: {audit.get('overall_quality_category', 'N/A')}\n"
-                individual_quality_text += f"  Auditor Reasoning: {audit.get('auditor_reasoning', 'No reasoning provided')}" + "\n"
-            text_content = (
-                f"Medical Question: \"{question}\"\n\n"
-                f"Argument to Evaluate:\n\"{explanation}\"\n\n"
-                f"We have evaluated the quality of individual doctors' arguments as follows:\n{individual_quality_text}\n"
-                f"Please provide the overall quality audit as a JSON object."
-            )
-        else:
-            text_content = (
-            f"Medical Question: \"{question}\"\n\n"
-            f"Argument to Evaluate:\n\"{explanation}\"\n\n"
-            f"Please provide the overall quality audit as a JSON object.")
-
-        user_content.append({"type":"text","text": text_content})
-        user_message = {"role": "user", "content": user_content }
-        response_text, _ = self.call_llm([system_message, user_message], response_format={"type": "json_object"})
-        try:
-            return json.loads(preprocess_response_string(response_text))
-        except (json.JSONDecodeError, TypeError):
-            return {}
-
-
-    def identify_critical_conflicts(self, 
-                                    contributions: List[Dict[str, Any]],
-                                    context_description: str) -> List[Dict[str, Any]]:
-        """
-        [通用版] 从一系列文本贡献中识别关键冲突点。
-        """
-        # print(f"Auditor Agent: Identifying critical conflict points (CCPs) from {context_description}...")
-
-        valid_contributions = [c for c in contributions if c.get("text", "").strip()]
-        
-        if not valid_contributions:
-            return []
-
-        system_message = {
-            "role": "system",
-            "content": """You are a meticulous and logical medical debate moderator. Your sole task is to read the provided arguments and identify direct, substantive contradictions about verifiable facts or core interpretations.
-
-    You MUST ignore minor differences in phrasing. Focus only on clear conflicts (e.g., Feature A is present vs. Feature A is absent; Diagnosis X is likely vs. Diagnosis X is unlikely).
-
-    Your final output MUST be a single JSON object containing a single key: "conflicts". The value of "conflicts" must be a list of conflict objects. 
-    Each conflict object must have the following structure:
-    - "conflicting_agents": A list of the agent_ids involved in this specific conflict.
-    - "conflict_summary": A brief, one-sentence summary of the core disagreement.
-    - "conflicting_statements": A list of objects, each detailing the specific statement, with keys "agent_id" and "statement_content".
-
-    If there are no conflicts, return a JSON object with an empty list: {"conflicts": []}.
-    """
-        }
-
-        context_text = f"Please analyze the following {context_description} for conflicts:\n\n"
-        for contrib in valid_contributions:
-            context_text += f"--- Argument from {contrib['agent_id']} ({contrib.get('role', 'N/A')}) ---\n"
-            context_text += f"{contrib['text']}\n\n"
-
-        user_message = { "role": "user", "content": context_text }
-
-        response_text, _ = self.call_llm([system_message, user_message], response_format={"type": "json_object"})
-        
-        try:
-            parsed_response = json.loads(preprocess_response_string(response_text))
-            conflicts = parsed_response.get("conflicts", [])
-            # print(f"Auditor Agent: Found {len(conflicts)} critical conflict point(s).")
-            return conflicts
-        except (json.JSONDecodeError, TypeError):
-            print("Auditor Agent: Error parsing CCP response from LLM.")
-            return []        
-            
-    def identify_key_evidential_units(self, 
-                                      question: str, 
-                                      opinions: List[Dict[str, Any]], 
-                                      all_keus: List[Dict],
-                                      image_path: Optional[str] = None) -> Dict[str, bool]:
-        """
-        [VQA 优化版] 从所有提出的KEU中，结合医生们的初步分析，判断哪些是“关键”证据。
-        """
-        # print("Auditor Agent: Identifying KEY evidential units with full context...")
-        
-        system_message = {
-            "role": "system",
-            "content": """You are a senior medical expert with exceptional diagnostic acumen. Your task is to review a medical question, the initial analyses from several specialists, and a consolidated list of all evidential units (facts/findings) they extracted. 
-
-Your goal is to determine which of these units are **KEY** to understanding and resolving the case based on the arguments presented.
-
-A **KEY** evidential unit is one that is:
-- Directly foundational to a doctor's primary conclusion.
-- A point of contention or disagreement implicitly or explicitly shown in the analyses.
-- Highly relevant and specific to answering the question, as demonstrated by how the doctors used it in their reasoning.
-- Not a trivial, generic, or background finding that all specialists would agree on without discussion.
-
-Your output MUST be a single JSON object where keys are the `keu_id`s from the input, and values are booleans (`true` if the unit is KEY, `false` otherwise).
-Example: {"KEU-0": true, "KEU-1": false, "KEU-2": true}
-"""
-        }
-
-        opinions_context = "Here are the initial analyses from the specialists:\n\n"
-        for opinion in opinions:
-            opinions_context += f"--- Analysis from {opinion['agent_id']} ({opinion['agent_role']}) ---\n"
-            opinions_context += f"Explanation: {opinion.get('explanation', 'N/A')}\n"
-            opinions_context += f"Answer: {opinion.get('answer', 'N/A')}\n\n"
-
-        keu_list_text = "\n".join([f"- {keu['keu_id']}: \"{keu['content']}\"" for keu in all_keus])
-        user_content = []
-        if image_path:
-            base64_image = encode_image(image_path)
-            user_content.append({
-                "type":"image_url",
-                "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}
-            })
-        
-        text_content = (
-            f"**Medical Question:**\n \"{question}\"\n\n"
-            f"**Doctors' Analyses:**\n{opinions_context}"
-            f"**Consolidated List of All Evidential Units to Evaluate:**\n{keu_list_text}\n\n"
-            f"Based on the doctors' analyses, please provide your judgment on which of these are KEY units in the specified JSON format."
-        )
-        user_content.append({"type":"text","text": text_content})
-        user_message = {"role": "user", "content": user_content }
-
-        response_text, _ = self.call_llm([system_message, user_message], response_format={"type": "json_object"})
-        try:
-            key_status_map = json.loads(preprocess_response_string(response_text))
-            for keu in all_keus:
-                if keu['keu_id'] not in key_status_map:
-                    key_status_map[keu['keu_id']] = False
-            return key_status_map
-        except (json.JSONDecodeError, TypeError):
-            print("Auditor Agent: Error parsing KEU key status response. Defaulting all to not key.")
-            return {keu['keu_id']: False for keu in all_keus}        
-
-# --- MDAgents Group Class (Modified for Auditing) ---
 
 class Group:
-    def __init__(self, group_id: str, goal: str, members: List[BaseAgent], question_context: Dict[str, Any]):
+    def __init__(self, group_id: str, goal: str, members: List[Agent], question_context: Dict[str, Any]):
         self.group_id = group_id
         self.goal = goal
         self.members = members
@@ -476,7 +91,6 @@ class Group:
     def perform_internal_discussion(
         self,
         auditor_agent: AuditorAgent,
-        analysis_llm: AnalysisHelperLLM,
         audit_trail: Dict[str, Any],
         keu_counter: int,
         ccp_counter: int
@@ -512,7 +126,7 @@ class Group:
 
         delivery_prompt += "--- End Query ---\n\nProvide a concise summary of required investigations or your direct analysis if no assistants."
 
-        lead_request, lead_request_log = self.lead_agent.chat(
+        lead_request, system_message, user_message = self.lead_agent.chat(
             prompt=delivery_prompt,
             image_path=self.question_context.get('image_path'),
         )
@@ -554,7 +168,7 @@ class Group:
 
             investigation_prompt += "\nKeep your response focused and relevant to the group's goal."
 
-            investigation_json_str, investigation_log = a_mem.chat(
+            investigation_json_str, system_message, user_message = a_mem.chat(
                 prompt=investigation_prompt,
                 image_path=self.question_context.get('image_path'),
                 response_format={"type": "json_object"}
@@ -683,7 +297,7 @@ class Group:
         quality_audit_before_synthesis = auditor_agent.audit_overall_quality_for_decision(self.question_context['question'], arguments_for_quality_audit)
         audit_trail["collaboration_audits"][f"advanced_group_{self.group_id}_pre_synthesis_quality"] = quality_audit_before_synthesis
         
-        final_report_str, final_report_log = self.lead_agent.chat(
+        final_report_str, system_message, user_message = self.lead_agent.chat(
             prompt=synthesis_prompt,
             image_path=self.question_context.get('image_path'),
             response_format={"type": "json_object"},
@@ -743,27 +357,26 @@ class MDAgentsFramework:
         self.config_path = config_path
         os.makedirs(self.log_dir, exist_ok=True) 
 
-        self.moderator_agent = BaseAgent("moderator", 
-                                        AgentRole.MODERATOR, 
+        self.moderator_agent = Agent("moderator", 
+                                        AgentType.MODERATOR, 
                                         model_config.get('moderator', DEFAULT_MODERATOR_MODEL),
                                         config_path=config_path,
                                         instruction="You are a medical expert who conducts initial assessment. Your job is to decide the difficulty/complexity of the medical query based on the provided definitions. Respond in JSON format."
         )
-        self.recruiter_agent = BaseAgent("recruiter", 
-                                        AgentRole.RECRUITER, 
+        self.recruiter_agent = Agent("recruiter", 
+                                        AgentType.RECRUITER, 
                                         model_config.get('recruiter', DEFAULT_RECRUITER_MODEL),
                                         config_path=config_path,
                                         instruction="You are an experienced medical expert who recruits appropriate specialists based on the medical query and its complexity level. Respond in JSON format."
         )
-        self.decision_maker_agent = BaseAgent("final_decision_maker", 
-                                            AgentRole.DECISION_MAKER, 
+        self.decision_maker_agent = Agent("final_decision_maker", 
+                                            AgentType.DECISION_MAKER, 
                                             model_config.get('moderator', DEFAULT_MODERATOR_MODEL),
                                             config_path=config_path,
                                             instruction="You are a final medical decision maker. Review all provided information (opinions, reports, discussions) and make the final, consolidated answer to the original medical query. Respond in JSON format."
         )
         
-        self.auditor_agent = AuditorAgent(agent_id="auditor", model_key=auditor_model_key,config_path = config_path)
-        self.analysis_llm = AnalysisHelperLLM(model_key=conflict_model_key,config_path=config_path)
+        self.auditor_agent = AuditorAgent(agent_id="auditor", model_key=auditor_model_key,config_path = config_path, agent_type = AgentType.AUDITOR)
         
     def _determine_complexity(self, question: str, options: Optional[Dict] = None, image_path: Optional[str] = None) -> Tuple[ComplexityLevel, Dict[str, Any]]:
         print("\n--- Determining Complexity ---")
@@ -786,14 +399,17 @@ class MDAgentsFramework:
             f"3) advanced: A complex case requiring multiple teams (e.g., initial assessment, diagnostics, final review) collaborating across departments.\n\n"
             f"Respond with a JSON object containing a 'complexity' field with one of these values: 'basic', 'intermediate', or 'advanced'."
         )        
-        response, llm_log = self.moderator_agent.chat(
+        response, system_message, user_message = self.moderator_agent.chat(
             prompt=prompt,
             image_path=None,
             response_format={"type": "json_object"},
         )
         step_log = {"step_name": "determine_complexity", 
                     "prompt": prompt, 
-                    "llm_log": llm_log}
+                    "llm_log": {"llm_input":{
+                        "system_message": system_message,
+                        "user_message": user_message
+                    }}}
         try:
             response_clean = preprocess_response_string(response)
             response_json = json.loads(response_clean)
@@ -890,7 +506,7 @@ class MDAgentsFramework:
                 f"]}}"
             )
 
-        recruitment_response, llm_log = self.recruiter_agent.chat(
+        recruitment_response, system_message, user_message = self.recruiter_agent.chat(
             prompt=prompt,
             image_path=None,
             response_format={"type": "json_object"},
@@ -985,16 +601,31 @@ class MDAgentsFramework:
             return teams, step_log
         return [], step_log
 
-    def _process_basic_query(self, data_item: Dict, audit_trail: Dict) -> Dict:
+    def _process_basic_query(self, data_item: Dict, audit: Dict, case_history) -> Dict:
         print("\n--- Processing Basic Query ---")
+
+        audit_round_data = {
+        "round": 1,
+        "2_1_1_role_assignment": [], 
+        "2_1_2_domain_specific_knowledge_activation": [], 
+        
+        "2_2_1_repetition_of_initial_views": [], 
+        "2_2_2_unresolved_conflicts": [],
+        
+        "3_1_1_suppression_of_minority_views": [],
+        "3_1_2_authority_bias": [],
+        "3_1_3_neglect_of_contradictions": [],
+        "3_2_1_self_contradiction_when_decision": []
+        }
+        
         agent_model_key = self.model_config.get('default_agent', DEFAULT_AGENT_MODEL)
-        agent = BaseAgent(
+        agent = Agent(
             agent_id="basic_solver",
-            role=AgentRole.GENERAL_DOCTOR,
+            role=MedicalSpecialty.GENERAL_MEDICINE,
             config_path=self.config_path,
             model_key=agent_model_key,
             instruction="You are a helpful medical assistant. Answer the following medical question accurately. Respond in JSON format."
-        )
+        )                                                                                                                                                                                                                                                                                                                                                                                                                                                          
         main_prompt = f"Question: {data_item['question']}\n"
         options = data_item.get('options')
         if options:
@@ -1006,25 +637,20 @@ class MDAgentsFramework:
         else:
             main_prompt += "\nProvide your answer as a JSON object with 'answer', 'explanation', "
 
-        main_prompt += f"and 'keus' (a list of key evidential units). Each KEU in the list should be a string representing a single, verifiable piece of evidence "
-        main_prompt += f"from the case (e.g., 'A 2cm nodule is visible in the upper left lung lobe.', 'The patient's white blood cell count is 15,000/µL.')."
-
-        response, llm_log = agent.chat(prompt=main_prompt, 
+        response, system_message, user_message = agent.chat(prompt=main_prompt, 
                                        image_path=data_item.get('image_path'), 
                                        response_format={"type": "json_object"})
-
-        detailed_log = {
-            "step_name": "process_basic_query",
-            "agent_id": agent.agent_id,
-            "agent_role": agent.role,
-            "prompt": main_prompt,
-            "llm_log": llm_log
+    
+        llm_log = {
+            "llm_input": {
+                "system_message": system_message,
+                "user_message": user_message
+        }
         }
         try:
             result = json.loads(preprocess_response_string(response))
             predicted_answer = result.get("answer", "parse_error")
             explanation = result.get("explanation", "No explanation provided.")
-            detailed_log["parsed_response"] = result
             if options and isinstance(predicted_answer, str):
                 if predicted_answer.startswith('(') and predicted_answer.endswith(')'):
                     predicted_answer = predicted_answer[1:-1].strip()
@@ -1032,28 +658,34 @@ class MDAgentsFramework:
                     predicted_answer = predicted_answer[1]
                 elif len(predicted_answer) > 1 and predicted_answer[0].isalpha() and (predicted_answer[1] == '.' or predicted_answer[1] == ')'):
                     predicted_answer = predicted_answer[0]
+
+            
+            # audit 3.1.3: Neglect of Contradictions in Reasoning Process for decision-maker
+            audit_results_of_neglect_of_contradictions_in_reasoning_process_for_decision_maker = self.auditor_agent.audit_contradictions_during_decision(
+                question = data_item['question'], current_agent_id = agent.agent_id, explanation = explanation, case_history = case_history
+            ) # here the discussion_context includes all the domain agents' answers and explanations before this synthesis
+
+            audit_round_data["3_1_3_neglect_of_contradictions"].append({
+                "agent_id": agent.agent_id,
+                "step": "decision",
+                "audit_result": audit_results_of_neglect_of_contradictions_in_reasoning_process_for_decision_maker
+            })
+            audit.append(audit_round_data)
+            case_history["rounds"][-1]["decision"] = {"parsed_output": result}
+            case_history["audit"] = audit
         except Exception as e:
             print(f"Error parsing basic response: {e}. Raw response: {response}")
             predicted_answer = "Could not parse answer."
             explanation = "Error parsing model response."
-            detailed_log["error"] = f"Error parsing response: {e}"
         print(f"Basic Query Result: Answer='{predicted_answer}', Explanation='{explanation[:100]}...'")
 
-        if "keus" in result:
-            for i, keu_content in enumerate(result["keus"]):
-                audit_trail["keus"][f"KEU-{i}"] = KEU(f"KEU-{i}", keu_content, agent.agent_id, 1)
         
-        if audit_trail.get("viewpoints") is None: audit_trail["viewpoints"] = {}
-        audit_trail["viewpoints"][agent.agent_id] = [{"step": "basic_initial", "viewpoint": predicted_answer, "viewpoint_changed": False, "justification_type": "initial_analysis"}]
-        risk_audit = self.auditor_agent.audit_risk_and_quality(agent.agent_id, explanation, image_path = data_item.get('image_path'))
-        quality_audit = self.auditor_agent.audit_single_argument_quality(data_item['question'], explanation, image_path = data_item.get('image_path')) # needs to add discussion results
-        audit_trail["collaboration_audits"]["basic_query_audit"] = {**risk_audit, **quality_audit}
         
         return {
             "predicted_answer": predicted_answer,
             "explanation": explanation,
             "complexity": ComplexityLevel.BASIC.value,
-            "detailed_log": detailed_log
+            "case_history": case_history
         }
 
 
@@ -1072,7 +704,7 @@ class MDAgentsFramework:
         agents = []
         for i, config in enumerate(expert_configs):
             agent_id = f"expert_{i+1}_{config['role'].replace(' ','_').lower()}"
-            agent = BaseAgent(
+            agent = Agent(
                 agent_id=agent_id,
                 role=config['role'],
                 model_key=agent_model_key,
@@ -1111,7 +743,7 @@ class MDAgentsFramework:
                 f"Your output must be a JSON object with three fields: 'explanation' (your detailed reasoning), 'answer' (your final conclusion), "
                 f"and 'keus' (a list of key evidential units). Each KEU in the list should be a string representing a single, verifiable piece of evidence."
             )
-            response, llm_log = agent.chat(
+            response, system_message, user_message = agent.chat(
                 prompt=prompt,
                 image_path=image_path,
                 response_format={"type": "json_object"},
@@ -1233,7 +865,7 @@ class MDAgentsFramework:
         quality_audit = self.auditor_agent.audit_overall_quality_for_decision(data_item['question'], arguments_for_audit)
         audit_trail["collaboration_audits"]["intermediate_pre_decision_quality"] = quality_audit
         
-        final_response, final_llm_log = self.decision_maker_agent.chat(
+        final_response, final_system_message, final_user_message = self.decision_maker_agent.chat(
             prompt=synthesis_prompt,
             response_format={"type": "json_object"},
             image_path=image_path
@@ -1319,7 +951,7 @@ class MDAgentsFramework:
                 instruction_prefix = f"You are {member_config['role']} ({member_config['expertise']}) in team '{config['goal']}'."
                 if is_lead:
                     instruction_prefix += " You are the LEAD of this team."
-                agent = BaseAgent(
+                agent = Agent(
                     agent_id=agent_id,
                     role=f"{member_config['role']}{' (Lead)' if is_lead else ''}",
                     model_key=agent_model_key,
@@ -1412,7 +1044,7 @@ class MDAgentsFramework:
             f"Synthesize all this information into one final, definitive answer and explanation.\n"
             f"Respond with a JSON object containing 'answer' (letter for multiple-choice) and 'explanation' fields."
         )
-        final_response, final_llm_log = self.decision_maker_agent.chat(
+        final_response, final_system_message, final_user_message = self.decision_maker_agent.chat(
             prompt=synthesis_prompt,
             response_format={"type": "json_object"},
             image_path=data_item.get("image_path")
@@ -1476,8 +1108,8 @@ class MDAgentsFramework:
         print(f"\n{'='*20} Processing QID: {qid} {'='*20}")
         start_time = time.time()
         
-        audit_trail = {"keus": {}, "viewpoints": {}, "collaboration_audits": {}, "ccps": {}}
-        
+        audit = {"rounds" : []}
+        case_history  = {"rounds" : []}
         process_log = []
         result_data = {}
         try:
@@ -1485,7 +1117,7 @@ class MDAgentsFramework:
             process_log.append(complexity_log)
 
             if complexity == ComplexityLevel.BASIC:
-                result_data = self._process_basic_query(data_item=data_item, audit_trail=audit_trail)
+                result_data = self._process_basic_query(data_item=data_item, audit=audit, case_history=case_history)
             else:
                 recruited, recruitment_log = self._recruit_experts(data_item["question"], data_item.get("options"), complexity, data_item.get("image_path"))
                 process_log.append(recruitment_log)
@@ -1539,29 +1171,31 @@ def main():
     parser.add_argument("--num_samples",type = int, required = True, help = "number of samples to run")
     parser.add_argument("--num_experts", type=int, default=DEFAULT_NUM_EXPERTS_INTERMEDIATE)
     parser.add_argument("--num_teams", type=int, default=DEFAULT_NUM_TEAMS_ADVANCED)
-    parser.add_argument("--test_mode", type=bool, required=True, help="If set, log will be saved to a test-specific directory.")
+    parser.add_argument("--time_stamp", type=str, required=True, help="Timestamp for logging purposes")
 
     
     args = parser.parse_args()
-    test_mode = args.test_mode
-    timestamp = time.strftime("%Y%m%d_%H%M%S")
-    if test_mode:
-        terminal_log_dir = os.path.join("logs", "observation", "test", "terminal_log", "MDAgents", args.dataset)
-    else:
-        terminal_log_dir = os.path.join("logs", "observation", "terminal_log", "MDAgents", args.dataset)
-    os.makedirs(terminal_log_dir, exist_ok=True)
-    terminal_log_file = os.path.join(terminal_log_dir, f"{args.dataset}_{timestamp}_full_terminal.log")
+
+    dataset_name = args.dataset
+    print(f"Dataset: {dataset_name}")
+
+    timestamp = args.time_stamp
+    current_model_name = current_file_name.split("_")[2]
+
+    terminal_log_dir = project_root / "logs" / "observation" / timestamp / current_model_name / dataset_name / "terminal_log"
+    terminal_log_dir.mkdir(parents=True, exist_ok=True)
+    terminal_log_file = terminal_log_dir / f"{args.dataset}_{timestamp}_full_terminal.log"
     print(f"!!! Terminal output is being captured to: {terminal_log_file} !!!")
     sys.stdout = DualLogger(terminal_log_file, sys.stdout)
     sys.stderr = DualLogger(terminal_log_file, sys.stderr) # 捕获报错和tqdm进度条
-    if test_mode:
-        logs_dir = os.path.join("./logs", "observation", "test", "MDAgents", args.dataset)
-    else:
-        logs_dir = os.path.join("./logs", "observation", "MDAgents", args.dataset)
-    os.makedirs(logs_dir, exist_ok=True)
+
+    logs_dir = project_root / "logs" / "observation" / timestamp / current_model_name / dataset_name
+    logs_dir.mkdir(parents=True, exist_ok=True)
+    print(f"Logs will be saved to: {logs_dir}")
     
     data_path = f"./my_datasets/processed/medqa/{args.dataset}/medqa_{args.qa_type}_test.json"
     data = load_json(data_path)
+    print(f"Loaded {len(data)} samples from {data_path}")
 
     model_config = {
         "moderator": args.moderator_model,

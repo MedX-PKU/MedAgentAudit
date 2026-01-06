@@ -9,3 +9,7 @@ class AgentType(Enum):
     HEALTHCARE = "HealthcareAgent"
     DOCTOR = "Doctor"
     SUPERVISOR = "Supervisor"
+    MODERATOR = "Moderator"
+    RECRUITER = "Recruiter"
+    SPECIALIST = "Specialist"
+    TEAM_LEAD = "Team Lead"
