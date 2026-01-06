@@ -113,6 +113,7 @@ class MACFramework:
         start_time = time.time()
 
         conversation_log = []
+        audit = {"rounds": []}
         case_history = {"rounds": []}
         final_answer_obj = {"answer": "Error", "explanation": "Processing failed to produce a final answer."}
 
@@ -296,7 +297,7 @@ class MACFramework:
                     "step": "decision",
                     "audit_result": audit_results_of_self_contradiction_in_viewpoints_across_rounds_for_decision_maker
                 })
-
+                audit["rounds"].append(audit_round_data)
                 case_history["rounds"][-1]["decision"] = decision_log
                                 
                 # Check for consensus and end
@@ -318,6 +319,7 @@ class MACFramework:
         print(f"Finished QID: {qid}. Time: {processing_time:.2f}s")
         
         case_history["total_rounds"] = len(case_history["rounds"])
+        case_history["audit"] = audit
 
         final_result = {
             "qid": qid,
