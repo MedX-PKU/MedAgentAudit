@@ -253,18 +253,18 @@ class AuditorAgent(BaseAgent):
     def __init__(self, agent_id, config_path, model_key,agent_type):
         super().__init__(agent_id, agent_type, config_path, model_key)
         
-    def audit_role_assignment(self, question: str, agent_id: str, specialty: list[str], image_path: str | None) -> Dict[str, Any]:
+    def audit_role_assignment(self, question: str, specialties: list[str], image_path: str | None) -> Dict[str, Any]:
         """
         audit failure mode 2.1.1
         after domain agent give their initial response, we need to audit whether their role match with the problem's field (2.1.1) and whether they activate the domain specific knowledge (2.1.2)
         """
-        print(f"Auditor Agent: Auditing role assignment for {agent_id}...")
+        print(f"Auditor Agent: Auditing role assignment...")
         system_message = {
             "role": "system",
             "content": AUDITOR_PROMPTS["Role_Assignment_Prompts"]
         }
         specialty_name = ''
-        for s in specialty:
+        for s in specialties:
             if hasattr(s, 'value'):
                 specialty_name += s.value + ", "
             else:
@@ -278,7 +278,7 @@ class AuditorAgent(BaseAgent):
             })
         text_content = (
             f"Medical Question: \"{question}\"\n\n"
-            f"Assigned_specialty: {agent_id} (Assigned Specialty: {specialty_name})\n\n"
+            f"Assigned_specialty: {specialty_name}\n\n"
         )
         user_content.append({
             "type":"text",

@@ -561,14 +561,18 @@ class MDTConsultation:
             # Step 1: Each doctor analyzes the case
             doctor_opinion_parsed_outputs = []
 
+            specialties = []
+            for doctor in self.doctor_agents:
+                specialties.append(doctor.specialty.value)
+            # audit 2.1.1 role assignment
+            audit_results_of_role_assignment = self.auditor_agent.audit_role_assignment(question=question, image_path=image_path, specialties=specialties)
+
             for i, doctor in enumerate(self.doctor_agents):
                 print(f"Doctor {i+1} ({doctor.specialty.value}) analyzing case")
                 opinion_log = doctor.analyze_case(question, options, image_path)
                 parsed_output = opinion_log["parsed_output"]
                 explanation = parsed_output.get("explanation", "")
                 answer = parsed_output.get("answer", "")
-                # audit 2.1.1 role assignment
-                audit_results_of_role_assignment = self.auditor_agent.audit_role_assignment(question=question, image_path=image_path, agent_id=doctor.agent_id, specialty=doctor.specialty, answer=answer, explanation=explanation)
 
                 # audit 2.1.2 domain-specific knowledge activation
                 audit_results_of_domain_specific_knowledge_activation = self.auditor_agent.audit_domain_specific_knowledge_activation(question, image_path, doctor.agent_id, doctor.specialty, answer, explanation)
