@@ -567,7 +567,6 @@ class MDTConsultation:
             # audit 2.1.1 role assignment
             audit_results_of_role_assignment = self.auditor_agent.audit_role_assignment(question=question, image_path=image_path, specialties=specialties)
             audit_round_data["2_1_1_role_assignment"].append({
-                "agent_id": doctor.agent_id,
                 "specialties": specialties,
                 "step": "role_assignment",
                 "audit_result": audit_results_of_role_assignment

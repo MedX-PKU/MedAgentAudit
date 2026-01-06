@@ -610,23 +610,23 @@ class MDAgentsFramework:
             return teams, step_log
         return [], step_log
 
-    def _process_basic_query(self, data_item: Dict, audit: Dict, case_history) -> Dict:
+    def _process_basic_query(self, data_item: Dict) -> Dict:
         print("\n--- Processing Basic Query ---")
-
+        case_history = {"rounds": []}
+        audit = {"rounds": []}
         audit_round_data = {
-        "round": 1,
-        "2_1_1_role_assignment": [], 
-        "2_1_2_domain_specific_knowledge_activation": [], 
-        
-        "2_2_1_repetition_of_initial_views": [], 
-        "2_2_2_unresolved_conflicts": [],
-        
-        "3_1_1_suppression_of_minority_views": [],
-        "3_1_2_authority_bias": [],
-        "3_1_3_neglect_of_contradictions": [],
-        "3_2_1_self_contradiction_when_decision": []
+            "round": 1,
+            "2_1_1_role_assignment": [], 
+            "2_1_2_domain_specific_knowledge_activation": [], 
+            
+            "2_2_1_repetition_of_initial_views": [], 
+            "2_2_2_unresolved_conflicts": [],
+            
+            "3_1_1_suppression_of_minority_views": [],
+            "3_1_2_authority_bias": [],
+            "3_1_3_neglect_of_contradictions": [],
+            "3_2_1_self_contradiction_when_decision": []
         }
-        
         agent_model_key = self.model_config.get('default_agent', DEFAULT_AGENT_MODEL)
         agent = Agent(
             agent_id="basic_solver",
@@ -699,12 +699,30 @@ class MDAgentsFramework:
         }
 
 
-    def _process_intermediate_query(self, data_item: Dict, expert_configs: List[Dict], audit_trail: Dict) -> Dict:
+    def _process_intermediate_query(self, data_item: Dict, expert_configs: List[Dict], audit_results_of_role_assignment, specialties) -> Dict:
+        case_history = {"rounds": []}
+        audit = {"rounds": []}
+        audit_round_data = {
+        "round": 1,
+        "2_1_1_role_assignment": [], 
+        "2_1_2_domain_specific_knowledge_activation": [], 
+        
+        "2_2_1_repetition_of_initial_views": [], 
+        "2_2_2_unresolved_conflicts": [],
+        
+        "3_1_1_suppression_of_minority_views": [],
+        "3_1_2_authority_bias": [],
+        "3_1_3_neglect_of_contradictions": [],
+        "3_2_1_self_contradiction_when_decision": []
+        }
+        audit_round_data["2_1_1_role_assignment"].append({
+            "specialties": specialties,
+            "step": "role_assignment",
+            "audit_result": audit_results_of_role_assignment
+        })
+
         print("\n--- Processing Intermediate Query ---")
         agent_model_key = self.model_config.get('default_agent', DEFAULT_AGENT_MODEL)
-        keu_counter = len(audit_trail["keus"])
-        ccp_counter = sum(len(v) for v in audit_trail["ccps"].values())
-        all_unresolved_ccps = []
         detailed_log = {
             "step_name": "process_intermediate_query",
             "expert_configs": expert_configs,
@@ -720,7 +738,7 @@ class MDAgentsFramework:
                 model_key=agent_model_key,
                 instruction=f"You are a {config['role']} with expertise in {config['expertise']}. Collaborate with other medical experts to answer the medical query. Maintain your persona and provide insights based on your specialty. Respond in JSON format."
             )
-            agents.append(agent)        
+            agents.append(agent)
         if not agents:
             print("Error: No expert agents created for intermediate query. Aborting.")
             return {"predicted_answer": "Error", "explanation": "Failed to create expert agents."}
@@ -750,14 +768,20 @@ class MDAgentsFramework:
             prompt = (
                 f"{question_context}\n"
                 f"Based on your expertise as a {agent.role}, provide your initial analysis and answer.\n"
-                f"Your output must be a JSON object with three fields: 'explanation' (your detailed reasoning), 'answer' (your final conclusion), "
-                f"and 'keus' (a list of key evidential units). Each KEU in the list should be a string representing a single, verifiable piece of evidence."
+                f"Respond with a JSON object containing 'answer' and 'explanation' fields."
             )
             response, system_message, user_message = agent.chat(
                 prompt=prompt,
                 image_path=image_path,
                 response_format={"type": "json_object"},
             )
+
+            llm_log = {
+                "llm_input": {
+                    "system_message": system_message,
+                    "user_message": user_message
+                }
+            }
 
             opinion_log = {
                 "agent_id": agent.agent_id,
@@ -781,6 +805,10 @@ class MDAgentsFramework:
                     elif len(ans) > 1 and ans[0].isalpha() and (ans[1] == '.' or ans[1] == ')'):
                         ans = ans[0]
 
+                # audit 2.1.2 domain-specific knowledge activation
+                audit_results_of_domain_specific_knowledge_activation = self.auditor_agent.audit_domain_specific_knowledge_activation(question, image_path, agent.agent_id, agent.role, ans, explanation)
+
+
             except Exception as e:
                 print(f"Error parsing initial opinion from {agent.agent_id}: {e}. Raw response: {response}")
                 ans = "Could not parse answer."
@@ -792,7 +820,6 @@ class MDAgentsFramework:
                 "agent_role": agent.role,
                 "answer": ans,
                 "explanation": expl,
-                "keus": response_json.get("keus", [])
             }
             initial_opinions_parsed.append(parsed_opinion)
             
@@ -800,60 +827,18 @@ class MDAgentsFramework:
             print(f"Agent {agent.agent_id} ({agent.role}) Initial Answer: {ans}")
             detailed_log["initial_opinions"].append(opinion_log)
 
-            if "keus" in response_json:
-                for keu_content in response_json["keus"]:
-                    keu_id = f"KEU-{keu_counter}"
-                    audit_trail["keus"][keu_id] = KEU(keu_id, keu_content, agent.agent_id, 1)
-                    keu_counter += 1
             
-            if audit_trail.get("viewpoints") is None: audit_trail["viewpoints"] = {}
-            if agent.agent_id not in audit_trail["viewpoints"]: audit_trail["viewpoints"][agent.agent_id] = []
             
-            keus_from_this_agent = [f"KEU-{i}" for i, keu_content in enumerate(response_json.get("keus", []), start=keu_counter - len(response_json.get("keus", [])))]
-            audit_trail["viewpoints"][agent.agent_id].append({"step": "intermediate_initial", 
-                                                              "viewpoint": response_json.get("answer"),
-                                                              "viewpoint_changed": False,
-                                                              "justification_type": "initial_analysis",
-                                                              "cited_references": keus_from_this_agent})
             
             explanation = response_json.get("explanation", "")
-            contribution_audit = self.auditor_agent.audit_domain_agent_contribution(data_item['question'], agent.agent_id, agent.role, explanation)
-            risk_audit = self.auditor_agent.audit_risk_and_quality(agent.agent_id, explanation, image_path = image_path)
-            audit_trail["collaboration_audits"][f"intermediate_{agent.agent_id}"] = {**contribution_audit, **risk_audit}
             initial_contributions_for_ccp.append({'agent_id': agent.agent_id, 'role': agent.role, 'text': explanation})
         
-        all_keus_for_audit = [{"keu_id": k, "content": v.content} for k, v in audit_trail["keus"].items()]
-        if all_keus_for_audit:
-            key_status_map = self.auditor_agent.identify_key_evidential_units(data_item['question'], initial_opinions_parsed, all_keus_for_audit, image_path=image_path)
-            for keu_id, is_key in key_status_map.items():
-                if keu_id in audit_trail["keus"]:
-                    audit_trail["keus"][keu_id].is_key = is_key
 
-        initial_ccps = self.auditor_agent.identify_critical_conflicts(initial_contributions_for_ccp, "initial expert analyses")
-        if audit_trail["ccps"].get(1) is None: audit_trail["ccps"][1] = []
-        for ccp in initial_ccps:
-            ccp['ccp_id'] = f"CCP-{ccp_counter}"
-            ccp['round_identified'] = 1
-            ccp['status'] = 'unresolved'
-            ccp['round_resolved'] = None
-            audit_trail["ccps"][1].append(ccp)
-            ccp_counter += 1
-        all_unresolved_ccps.extend(audit_trail["ccps"][1])
 
         print("\n-- Synthesizing Final Decision --")
         self.decision_maker_agent.clear_memory()
 
-        ccp_text_for_prompt = ""
-        if all_unresolved_ccps:
-            ccp_text_for_prompt += "\n\n[ATTENTION] The following Critical Conflict Points (CCPs) from previous rounds remain UNRESOLVED and MUST be addressed:\n"
-            for ccp in all_unresolved_ccps:
-                ccp_text_for_prompt += f"- CCP ID: {ccp['ccp_id']})\n"
-                ccp_text_for_prompt += f"  Conflict: {ccp['conflict_summary']}\n"
-                ccp_text_for_prompt += f"  Involved Agents: {', '.join(ccp['conflicting_agents'])}\n"
                 
-        keu_list_text = "\n\nKey Evidential Units (KEUs) proposed so far:\n"
-        for keu_id, keu_obj in audit_trail["keus"].items():
-            keu_list_text += f"- {keu_id}: '{keu_obj.content}' (from {keu_obj.source_agent})\n"
 
         initial_reports_text = "\n".join(initial_report_parts)
         
@@ -861,12 +846,8 @@ class MDAgentsFramework:
             f"You need to make a final decision for the following medical query based on initial opinions from a team of experts:\n\n"
             f"{question_context}\n\n"
             f"--- Expert Opinions (Round 1) ---\n"
-            f"{initial_reports_text}\n"
+            f"{''.join(initial_report_parts)}\n"
             f"--- End Opinions ---\n\n"
-            f"Available KEUs (Key Evidential Units):\n{keu_list_text}\n"
-            f"Available CCPs (Critical Consensus Points):\n{ccp_text_for_prompt}\n\n"
-            f"Note that potential conflicts (CCPs) have been identified; a robust synthesis must acknowledge or resolve these points.\n\n"
-            f"**CRITICAL INSTRUCTION:** Your task is to synthesize these diverse opinions into a single, coherent analysis. In your 'explanation', you **MUST selectively cite only the most important KEU-IDs** that support your synthesized view. **DO NOT simply list all available KEUs.** Your goal is to demonstrate a deep understanding by building a new, consolidated argument from the strongest evidence (e.g., 'Synthesizing the specialists' views, the consensus leans towards X, primarily supported by the crucial findings in KEU-2 and KEU-5...').\n\n"
             f"Review these opinions carefully. Consider the different expert perspectives and their specific expertise.\n"
             f"Respond with a JSON object containing 'answer' (letter for multiple-choice) and 'explanation' fields."
         )
@@ -1117,9 +1098,6 @@ class MDAgentsFramework:
         qid = data_item["qid"]
         print(f"\n{'='*20} Processing QID: {qid} {'='*20}")
         start_time = time.time()
-        
-        audit = {"rounds" : []}
-        case_history  = {"rounds" : []}
         process_log = []
         result_data = {}
         try:
@@ -1127,36 +1105,17 @@ class MDAgentsFramework:
             process_log.append(complexity_log)
 
             if complexity == ComplexityLevel.BASIC:
-                result_data = self._process_basic_query(data_item=data_item, audit=audit, case_history=case_history)
+                result_data = self._process_basic_query(data_item=data_item)
             else:
                 recruited, recruitment_log = self._recruit_experts(data_item["question"], data_item.get("options"), complexity, data_item.get("image_path"))
                 process_log.append(recruitment_log)
                 specialties = recruitment_log.get("specialties", [])
-                audit_round_data = {
-                    "round": 1,
-                    "2_1_1_role_assignment": [], 
-                    "2_1_2_domain_specific_knowledge_activation": [], 
-                    
-                    "2_2_1_repetition_of_initial_views": [], 
-                    "2_2_2_unresolved_conflicts": [],
-                    
-                    "3_1_1_suppression_of_minority_views": [],
-                    "3_1_2_authority_bias": [],
-                    "3_1_3_neglect_of_contradictions": [],
-                    "3_2_1_self_contradiction_when_decision": []
-                }
                 # audit 2.1.1 role assignment
                 audit_results_of_role_assignment = self.auditor_agent.audit_role_assignment(question=data_item["question"], image_path=data_item.get("image_path"), specialties=specialties)
-                audit_round_data["2_1_1_role_assignment"].append({
-                    "agent_id": "recruiter",
-                    "specialty": specialties,
-                    "step": "role_assignment",
-                    "audit_result": audit_results_of_role_assignment
-                })
                 if complexity == ComplexityLevel.INTERMEDIATE:
-                    result_data = self._process_intermediate_query(data_item, recruited, audit = audit, case_history=case_history)
+                    result_data = self._process_intermediate_query(data_item, recruited, audit_results_of_role_assignment, specialties)
                 elif complexity == ComplexityLevel.ADVANCED:
-                    result_data = self._process_advanced_query(data_item, recruited, audit = audit, case_history=case_history)
+                    result_data = self._process_advanced_query(data_item, recruited, audit_results_of_role_assignment, specialties)
 
         except Exception as e:
             print(f"ERROR processing QID {qid}: {e}")
