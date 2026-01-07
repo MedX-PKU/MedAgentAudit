@@ -648,12 +648,16 @@ class MDTConsultation:
             audit_results_of_neglect_of_contradictions_in_reasoning_process_for_synthesizer = self.auditor_agent.audit_contradictions_during_decision(
                 question = question, current_agent_id = self.meta_agent.agent_id, explanation = synthesis_explanation, case_history = case_history
             ) # here the discussion_context includes all the domain agents' answers and explanations before this synthesis
-
-            # audit 3.2.1: Self-Contradiction in Viewpoints Across Rounds for synthesizer
-            audit_results_of_self_contradiction_in_viewpoints_across_rounds_for_synthesizer = self.auditor_agent.audit_self_contradiction_across_rounds(
-                question = question, answer = synthesis_answer, explanation = synthesis_explanation, case_history = case_history
-            ) # here the meta_agent.memory includes all the previous syntheses and decisions
-
+            if current_round > 1:
+                # audit 3.2.1: Self-Contradiction in Viewpoints Across Rounds for synthesizer
+                audit_results_of_self_contradiction_in_viewpoints_across_rounds_for_synthesizer = self.auditor_agent.audit_self_contradiction_across_rounds(
+                    question = question, answer = synthesis_answer, explanation = synthesis_explanation, case_history = case_history
+                ) # here the meta_agent.memory includes all the previous syntheses and decisions
+                audit_round_data["3_2_1_self_contradiction_when_decision"].append({
+                    "agent_id": self.meta_agent.agent_id,
+                    "step": "synthesis",
+                    "audit_result": audit_results_of_self_contradiction_in_viewpoints_across_rounds_for_synthesizer
+                })
             audit_round_data["2_2_2_unresolved_conflicts"].append({ 
                 "agent_id": self.meta_agent.agent_id,
                 "step": "synthesis",
@@ -674,11 +678,7 @@ class MDTConsultation:
                 "step": "synthesis",
                 "audit_result": audit_results_of_neglect_of_contradictions_in_reasoning_process_for_synthesizer
             })
-            audit_round_data["3_2_1_self_contradiction_when_decision"].append({
-                "agent_id": self.meta_agent.agent_id,
-                "step": "synthesis",
-                "audit_result": audit_results_of_self_contradiction_in_viewpoints_across_rounds_for_synthesizer
-            })
+
             case_history["rounds"][-1]["synthesis"] = synthesis_log # after synthesizer then log, in case repetition
 
             # Step 3: Doctors review synthesis
@@ -753,12 +753,16 @@ class MDTConsultation:
             audit_results_of_neglect_of_contradictions_in_reasoning_process_for_decision_maker = self.auditor_agent.audit_contradictions_during_decision(
                 question = question, current_agent_id = self.meta_agent.agent_id, explanation = decision_explanation, case_history = case_history
             ) # here the discussion_context includes all the domain agents' answers and explanations before this decision
-
-            # audit 3.2.1: Self-Contradiction in Viewpoints Across Rounds for decision-maker
-            audit_results_of_self_contradiction_in_viewpoints_across_rounds_for_decision_maker = self.auditor_agent.audit_contradictions_across_rounds(
-                question = question, options = options, answer = decision_answer, current_agent_id = self.meta_agent.agent_id, explanation = decision_explanation, case_history = case_history
-            ) # here the meta agent's memory includes all its previous decisions and syntheses!
-
+            if current_round > 1:
+                # audit 3.2.1: Self-Contradiction in Viewpoints Across Rounds for decision-maker
+                audit_results_of_self_contradiction_in_viewpoints_across_rounds_for_decision_maker = self.auditor_agent.audit_contradictions_across_rounds(
+                    question = question, options = options, answer = decision_answer, current_agent_id = self.meta_agent.agent_id, explanation = decision_explanation, case_history = case_history
+                ) # here the meta agent's memory includes all its previous decisions and syntheses!
+                audit_round_data["3_2_1_self_contradiction_when_decision"].append({
+                    "agent_id": self.meta_agent.agent_id,
+                    "step": "decision",
+                    "audit_result": audit_results_of_self_contradiction_in_viewpoints_across_rounds_for_decision_maker
+                })
             audit_round_data["3_1_1_suppression_of_minority_views"].append({
                 "agent_id": self.meta_agent.agent_id,
                 "step": "decision",
@@ -774,11 +778,7 @@ class MDTConsultation:
                 "step": "decision",
                 "audit_result": audit_results_of_neglect_of_contradictions_in_reasoning_process_for_decision_maker
             })
-            audit_round_data["3_2_1_self_contradiction_when_decision"].append({
-                "agent_id": self.meta_agent.agent_id,
-                "step": "decision",
-                "audit_result": audit_results_of_self_contradiction_in_viewpoints_across_rounds_for_decision_maker
-            })
+
             audit["rounds"].append(audit_round_data)
             case_history["rounds"][-1]["decision"] = decision_log
 
