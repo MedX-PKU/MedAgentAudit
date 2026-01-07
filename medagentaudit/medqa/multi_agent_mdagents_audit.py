@@ -98,7 +98,6 @@ class Group:
     def perform_internal_discussion(
         self,
         auditor_agent: AuditorAgent,
-        audit,
         audit_round_data,
         case_history
     ) -> Tuple[str, List[Dict], int, int]:
@@ -106,7 +105,7 @@ class Group:
         Simulates internal discussion with integrated auditing mechanisms.
         """
         if not self.lead_agent:
-            return "Error: Group has no lead agent.", self.internal_log, keu_counter, ccp_counter
+            return "Error: Group has no lead agent.", self.internal_log
 
         self._log_interaction(f"Starting internal discussion. Lead: {self.lead_agent.agent_id}")
         assist_members = [m for m in self.members if m != self.lead_agent]
@@ -233,7 +232,7 @@ class Group:
             ) 
         
         # Step 2: Lead synthesizes information
-        gathered_investigation = "Gathered insights from assistant clinicians:\n" + "\n".join([f"--- Report from {inv['role']} (ID: {inv['id']}) ---\n{json.dumps(inv['report'])}\n---" for inv in investigations])
+        gathered_investigation = "Gathered insights from assistant clinicians:\n" + "\n".join([f"--- Report from {inv['specialty']} (ID: {inv['id']}) ---\n{json.dumps(inv['report'])}\n---" for inv in investigations])
         
         synthesis_prompt = (
             f"{gathered_investigation}\n\n"
@@ -254,17 +253,6 @@ class Group:
         if self.question_context.get('image_path'):
             synthesis_prompt += f"(Image provided)\n"
         
-        # 机制三: 在团队领导决策前，审计论据综合质量得分 [FIXED]
-        arguments_for_quality_audit = [
-            {
-                'agent_id': opinion['agent_id'],
-                'agent_role': opinion['agent_role'],
-                'answer': opinion.get('answer'),
-                'explanation': opinion.get('explanation')
-            } for opinion in initial_opinions_parsed
-        ]
-        quality_audit_before_synthesis = auditor_agent.audit_overall_quality_for_decision(self.question_context['question'], arguments_for_quality_audit)
-        audit_trail["collaboration_audits"][f"advanced_group_{self.group_id}_pre_synthesis_quality"] = quality_audit_before_synthesis
         
         final_report_str, system_message, user_message = self.lead_agent.chat(
             prompt=synthesis_prompt,
@@ -277,32 +265,69 @@ class Group:
         except json.JSONDecodeError:
             final_report = {"explanation": final_report_str, "answer": "parse_error"}
 
-        # 机制三：审计元智能体的风险规避和角色扮演质量
+
         synthesis_explanation = final_report.get("explanation", "")
-        synthesis_risk_audit = auditor_agent.audit_risk_and_quality(self.lead_agent.agent_id, synthesis_explanation, image_path=self.question_context.get('image_path'))
-        synthesis_quality_audit = auditor_agent.audit_single_argument_quality(self.question_context['question'], synthesis_explanation, image_path =self.question_context.get('image_path'),domain_agent_quality_domain= quality_audit_before_synthesis)
-        step_id = f"advanced_group_{self.group_id}_synthesis_{self.lead_agent.agent_id}"
-        audit_trail["collaboration_audits"][step_id] = {**synthesis_risk_audit, **synthesis_quality_audit}
+        synthesis_answer = final_report.get("answer", "parse_error")
+        synthesis_log = {
+            "llm_input":{
+                "system_message": system_message,
+                "user_message": user_message,
+            },
+            "parsed_output": {
+                "answer": synthesis_answer, 
+                "explanation": synthesis_explanation}
+        }
 
-        # 机制一：检查元智能体是否正确引用了KEU
-        for keu_id, keu in audit_trail["keus"].items():
-            if keu.group_id == self.group_id and (keu_id in synthesis_explanation or keu.content in synthesis_explanation):
-                keu.cited_by.append({"agent_id": self.lead_agent.agent_id, "round": 1, "action": "group_synthesis"})
-        
-        # 机制四：检查元智能体是否解决了CCP
-        for ccp in audit_trail["ccps"].get(self.group_id, []):
-            if ccp['status'] == 'unresolved':
-                was_addressed, _ = analysis_llm.check_if_conflict_was_addressed(ccp, synthesis_explanation)
-                if was_addressed:
-                    ccp['status'] = 'resolved'
+        # audit 2.2.2 Unresolved Conflicts during Collaborative discussion
+        audit_results_of_unresolved_conflicts_during_Collaboration = self.auditor_agent.audit_unresolved_conflicts_during_Collaboration(question = self.question_context["question"], current_agent_id=self.lead_agent.agent_id, current_answer = synthesis_answer, current_explanation=synthesis_explanation, case_history=case_history) 
 
+        # audtit 3.1.1 : Suppression of Correct Minority Views by Incorrect Consensus for synthesizer
+        audit_results_of_suppression_of_correct_minority_views_by_incorrect_consensus_for_synthesizer = self.auditor_agent.audit_suppression_by_majority(
+            question = self.question_context["question"], options = self.question_context.get('options'), image_path = self.question_context.get('image_path'), current_agent_id = self.lead_agent.agent_id, answer = synthesis_answer, explanation = synthesis_explanation, case_history = case_history
+        ) # here the discussion_context includes all the domain agents' answers and explanations before this synthesis
+
+        # audit 3.1.2 : Reasoning Distorted by Authority Bias for synthesizer
+        audit_results_of_authority_bias_for_synthesizer = self.auditor_agent.audit_authority_bias(
+            question = self.question_context["question"], options = self.question_context.get('options'), image_path = self.question_context.get('image_path'), current_agent_id = self.lead_agent.agent_id, answer = synthesis_answer, explanation = synthesis_explanation, case_history = case_history
+        ) # here the discussion_context must include the role of domain agent and their answer and explanation before this synthesis
+
+        # audit 3.1.3: Neglect of Contradictions in Reasoning Process for synthesizer
+        audit_results_of_neglect_of_contradictions_in_reasoning_process_for_synthesizer = self.auditor_agent.audit_contradictions_during_decision(
+            question = self.question_context["question"], current_agent_id = self.lead_agent.agent_id, explanation = synthesis_explanation, case_history = case_history
+        ) # here the discussion_context includes all the domain agents' answers and explanations before this synthesis
+
+        audit_round_data["2_2_2_unresolved_conflicts"].append({ 
+            "agent_id": self.lead_agent.agent_id,
+            "step": "synthesis",
+            "audit_result": audit_results_of_unresolved_conflicts_during_Collaboration
+        })
+        audit_round_data["3_1_1_suppression_of_minority_views"].append({
+            "agent_id": self.lead_agent.agent_id,
+            "step": "synthesis",
+            "audit_result": audit_results_of_suppression_of_correct_minority_views_by_incorrect_consensus_for_synthesizer
+        })
+        audit_round_data["3_1_2_authority_bias"].append({
+            "agent_id": self.lead_agent.agent_id,
+            "step": "synthesis",
+            "audit_result": audit_results_of_authority_bias_for_synthesizer
+        })
+        audit_round_data["3_1_3_neglect_of_contradictions"].append({
+            "agent_id": self.lead_agent.agent_id,
+            "step": "synthesis",
+            "audit_result": audit_results_of_neglect_of_contradictions_in_reasoning_process_for_synthesizer
+        })
+        case_history["rounds"][-1]["opinions"].append({
+            "agent_id": self.lead_agent.agent_id,
+            "specialty": self.lead_agent.specialty,
+            "log": {"parsed_output": investigation}
+        })
         self._log_interaction(f"Lead ({self.lead_agent.agent_id}) generated final group report.",
                                data={"agent_id": self.lead_agent.agent_id,
-                                    "agent_role": self.lead_agent.role,
+                                    "agent_specialty": self.lead_agent.specialty,
                                     "prompt": synthesis_prompt,
                                     "response": final_report, 
-                                    "llm_log": final_report_log})
-        return json.dumps(final_report), self.internal_log, keu_counter, ccp_counter 
+                                    "llm_log": synthesis_log})
+        return json.dumps(final_report), case_history, audit_round_data
 
 # --- MDAgents Framework Class (Heavily Modified for Auditing) ---
 
@@ -879,6 +904,8 @@ class MDAgentsFramework:
         print("\n--- Processing Advanced Query ---")
 
         case_history = {"rounds": []}
+        round_data = {"round": 1, "opinions": [], "synthesis": [], "reviews": [], "decision": None} # TODO , here the synthesis is not a single dict, is a list, the auditor needs to handle this
+        case_history["rounds"].append(round_data)
         audit = {"rounds": []}
         audit_round_data = {
         "round": 1,
@@ -941,9 +968,8 @@ class MDAgentsFramework:
 
         for group in ordered_groups:
             print(f"\n-- Processing Team: {group.group_id} ({group.goal}) --")
-            raw_report, discussion_log = group.perform_internal_discussion(
+            raw_report, case_history, audit_round_data = group.perform_internal_discussion(
                 auditor_agent=self.auditor_agent,
-                audit = audit,
                 audit_round_data = audit_round_data,
                 case_history = case_history
             )
@@ -972,23 +998,6 @@ class MDAgentsFramework:
             for k,v in data_item['options'].items():
                 options_str += f"({k}) {v}\n"
 
-        # [FIXED] Inject KEU and CCP context into the final decision prompt
-        all_unresolved_ccps_list = []
-        for group_id, ccp_list in audit_trail.get("ccps", {}).items():
-            for ccp in ccp_list:
-                if 'resolved' not in ccp.get('status', 'unresolved'):
-                    all_unresolved_ccps_list.append(ccp)
-        
-        ccp_text_for_prompt = ""
-        if all_unresolved_ccps_list:
-            ccp_text_for_prompt += "\n\n[ATTENTION] The following Critical Conflict Points (CCPs) from team discussions remain UNRESOLVED and MUST be addressed:\n"
-            for ccp in all_unresolved_ccps_list:
-                ccp_text_for_prompt += f"- CCP ID: {ccp['ccp_id']}, Conflict: {ccp['conflict_summary']} (Involved: {', '.join(ccp['conflicting_agents'])})\n"
-        
-        keu_list_text = "\n\nKey Evidential Units (KEUs) proposed across all teams:\n"
-        for keu_id, keu_obj in audit_trail["keus"].items():
-            keu_list_text += f"- {keu_id}: '{keu_obj.content}' (from {keu_obj.source_agent})\n"
-
         synthesis_prompt = (
             f"You need to make the ultimate final decision for the following complex medical query based on reports from multiple specialized teams:\n\n"
             f"Original Query Context:\nQuestion: {data_item['question']}\n{options_str}"
@@ -996,9 +1005,7 @@ class MDAgentsFramework:
             f"--- Compiled Team Reports ---\n"
             f"{all_reports_for_synthesis}\n"
             f"--- End Reports ---\n\n"
-            f"Available KEUs (Key Evidential Units):\n{keu_list_text}\n"
-            f"Available CCPs (Critical Consensus Points):\n{ccp_text_for_prompt}\n\n"
-            f"**CRITICAL INSTRUCTION:** Your task is to synthesize all available information into a single, definitive analysis. In your 'explanation', you **MUST selectively cite the most pivotal KEU-IDs** from across all teams to build your final argument and **explicitly address any unresolved CCPs**. Your goal is to demonstrate a deep, cross-team understanding.\n\n"
+            f"Your task is to synthesize all available information into a single, definitive analysis.\n\n"
             f"Synthesize all this information into one final, definitive answer and explanation.\n"
             f"Respond with a JSON object containing 'answer' (letter for multiple-choice) and 'explanation' fields."
         )
@@ -1008,18 +1015,11 @@ class MDAgentsFramework:
             image_path=data_item.get("image_path")
         )
         
-        detailed_log["final_decision_synthesis"] = {
-            "agent_id": self.decision_maker_agent.agent_id,
-            "agent_specialty": self.decision_maker_agent.specialty,
-            "prompt": synthesis_prompt,
-            "llm_log": final_llm_log
-        }
         try:
             response_clean = preprocess_response_string(final_response)
             response_json = json.loads(response_clean)
             final_answer = response_json.get("answer", "")
             final_explanation = response_json.get("explanation", "No explanation provided.")
-            detailed_log["final_decision_synthesis"]["parsed_response"] = response_json
 
             options = data_item.get('options')
             if options and isinstance(final_answer, str):
@@ -1033,28 +1033,8 @@ class MDAgentsFramework:
             print(f"Error parsing final decision (advanced): {e}. Raw response: {final_response}")
             final_answer = "Could not parse answer."
             final_explanation = "Error parsing model response."
-            detailed_log["final_decision_synthesis"]["error"] = f"Error parsing response: {e}"
         print(f"Advanced Query Final Result: Answer='{final_answer}', Explanation='{final_explanation[:100]}...'")
 
-        for keu_id, keu in audit_trail["keus"].items():
-            if keu_id in final_explanation or keu.content in final_explanation:
-                keu.present_in_final_decision = True
-        
-        all_unresolved_ccps = []
-        for group_id, ccp_list in audit_trail.get("ccps", {}).items():
-            for ccp in ccp_list:
-                if ccp.get('status') == 'unresolved':
-                    all_unresolved_ccps.append(ccp)
-                    
-        for ccp in all_unresolved_ccps:
-            was_addressed, _ = self.analysis_llm.check_if_conflict_was_addressed(ccp, final_explanation)
-            if was_addressed:
-                ccp['status'] = 'resolved_in_final_decision'
-
-        risk_audit = self.auditor_agent.audit_risk_and_quality(self.decision_maker_agent.agent_id, final_explanation, image_path=data_item.get("image_path"))
-        quality_audit = self.auditor_agent.audit_single_argument_quality(data_item['question'], final_explanation, image_path=data_item.get("image_path"))
-        audit_trail["collaboration_audits"]["advanced_final_decision"] = {**risk_audit, **quality_audit}
-        
         return {
             "predicted_answer": final_answer,
             "explanation": final_explanation,
