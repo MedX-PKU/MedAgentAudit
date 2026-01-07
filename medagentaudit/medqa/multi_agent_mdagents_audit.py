@@ -699,7 +699,7 @@ class MDAgentsFramework:
         }
 
 
-    def _process_intermediate_query(self, data_item: Dict, expert_configs: List[Dict], audit_results_of_role_assignment, specialties) -> Dict:
+    def _process_intermediate_query(self, data_item: Dict, expert_configs: List[Dict], audit_results_of_role_assignment: Dict, specialties: List) -> Dict:
         case_history = {"rounds": []}
         audit = {"rounds": []}
         audit_round_data = {
@@ -723,12 +723,6 @@ class MDAgentsFramework:
 
         print("\n--- Processing Intermediate Query ---")
         agent_model_key = self.model_config.get('default_agent', DEFAULT_AGENT_MODEL)
-        detailed_log = {
-            "step_name": "process_intermediate_query",
-            "expert_configs": expert_configs,
-            "initial_opinions": [],
-            "final_synthesis": {}
-        }
         agents = []
         for i, config in enumerate(expert_configs):
             agent_id = f"expert_{i+1}_{config['role'].replace(' ','_').lower()}"
@@ -762,7 +756,7 @@ class MDAgentsFramework:
 
         initial_report_parts = []
         initial_contributions_for_ccp = []
-        initial_opinions_parsed = [] 
+        initial_opinions_parsed = []
         for agent in agents:
             agent.clear_memory()
             prompt = (
@@ -776,18 +770,11 @@ class MDAgentsFramework:
                 response_format={"type": "json_object"},
             )
 
-            llm_log = {
+            opinion_log = {
                 "llm_input": {
                     "system_message": system_message,
                     "user_message": user_message
                 }
-            }
-
-            opinion_log = {
-                "agent_id": agent.agent_id,
-                "agent_role": agent.role,
-                "prompt": prompt,
-                "llm_log": llm_log,
             }
 
             try:
@@ -795,7 +782,7 @@ class MDAgentsFramework:
                 response_json = json.loads(response_clean)
                 ans = response_json.get("answer", "")
                 expl = response_json.get("explanation", "No explanation provided.")
-                opinion_log["parsed_response"] = response_json
+                opinion_log["parsed_output"] = response_json
                 
                 if options and isinstance(ans, str):
                     if ans.startswith('(') and ans.endswith(')'):
@@ -807,7 +794,18 @@ class MDAgentsFramework:
 
                 # audit 2.1.2 domain-specific knowledge activation
                 audit_results_of_domain_specific_knowledge_activation = self.auditor_agent.audit_domain_specific_knowledge_activation(question, image_path, agent.agent_id, agent.role, ans, explanation)
+                audit_round_data["2_1_2_domain_specific_knowledge_activation"].append({
+                    "agent_id": agent.agent_id,
+                    "specialty": agent.role,
+                    "step": "analysis",
+                    "audit_result": audit_results_of_domain_specific_knowledge_activation
+                })
 
+                case_history["rounds"][-1]["opinions"].append({
+                    "agent_id": agent.agent_id,
+                    "specialty": agent.role,
+                    "log": opinion_log
+                })
 
             except Exception as e:
                 print(f"Error parsing initial opinion from {agent.agent_id}: {e}. Raw response: {response}")
@@ -821,27 +819,15 @@ class MDAgentsFramework:
                 "answer": ans,
                 "explanation": expl,
             }
+
             initial_opinions_parsed.append(parsed_opinion)
             
             initial_report_parts.append(f"Expert {agent.role} ({agent.agent_id}):\nAnswer: {ans}\nExplanation: {expl}\n---")
             print(f"Agent {agent.agent_id} ({agent.role}) Initial Answer: {ans}")
-            detailed_log["initial_opinions"].append(opinion_log)
-
-            
-            
-            
-            explanation = response_json.get("explanation", "")
-            initial_contributions_for_ccp.append({'agent_id': agent.agent_id, 'role': agent.role, 'text': explanation})
-        
-
 
         print("\n-- Synthesizing Final Decision --")
         self.decision_maker_agent.clear_memory()
 
-                
-
-        initial_reports_text = "\n".join(initial_report_parts)
-        
         synthesis_prompt = (
             f"You need to make a final decision for the following medical query based on initial opinions from a team of experts:\n\n"
             f"{question_context}\n\n"
@@ -851,28 +837,22 @@ class MDAgentsFramework:
             f"Review these opinions carefully. Consider the different expert perspectives and their specific expertise.\n"
             f"Respond with a JSON object containing 'answer' (letter for multiple-choice) and 'explanation' fields."
         )
-             
-        arguments_for_audit = initial_opinions_parsed 
-        quality_audit = self.auditor_agent.audit_overall_quality_for_decision(data_item['question'], arguments_for_audit)
-        audit_trail["collaboration_audits"]["intermediate_pre_decision_quality"] = quality_audit
         
         final_response, final_system_message, final_user_message = self.decision_maker_agent.chat(
             prompt=synthesis_prompt,
             response_format={"type": "json_object"},
             image_path=image_path
         )
-        detailed_log["final_synthesis"] = {
-            "agent_id": self.decision_maker_agent.agent_id,
-            "agent_role": self.decision_maker_agent.role,
-            "prompt": synthesis_prompt,
-            "llm_log": final_llm_log
+        decision_log = {
+            "llm_input": {"system_message": final_system_message, "user_message": final_user_message}
         }
+
         try:
             response_clean = preprocess_response_string(final_response)
             response_json = json.loads(response_clean)
             final_answer = response_json.get("answer", "")
             final_explanation = response_json.get("explanation", "No explanation provided.")
-            detailed_log["final_synthesis"]["parsed_response"] = response_json
+            decision_log["parsed_output"] = response_json
 
             if options and isinstance(final_answer, str):
                 if final_answer.startswith('(') and final_answer.endswith(')'):
@@ -881,52 +861,56 @@ class MDAgentsFramework:
                     final_answer = final_answer[1]
                 elif len(final_answer) > 1 and final_answer[0].isalpha() and (final_answer[1] == '.' or final_answer[1] == ')'):
                     final_answer = final_answer[0]
+
+            # audtit 3.1.1 : Suppression of Correct Minority Views by Incorrect Consensus for decision-maker
+            audit_results_of_suppression_of_correct_minority_views_by_incorrect_consensus_for_decision_maker = self.auditor_agent.audit_suppression_by_majority(
+                question = question, options = options, image_path = image_path, current_agent_id = self.decision_maker_agent.agent_id, answer = final_answer, explanation = final_explanation, case_history = case_history
+            )
+
+            # audit 3.1.2 : Reasoning Distorted by Authority Bias for synthesizer
+            audit_results_of_authority_bias_for_decision_maker = self.auditor_agent.audit_authority_bias(
+                question = question, options = options, image_path = image_path, current_agent_id = self.decision_maker_agent.agent_id, answer = final_answer, explanation = final_explanation, case_history = case_history
+            ) # here the discussion_context must include the role of domain agent and their answer and explanation before this synthesis
+
+            # audit 3.1.3: Neglect of Contradictions in Reasoning Process for synthesizer
+            audit_results_of_neglect_of_contradictions_in_reasoning_process_for_decision_maker = self.auditor_agent.audit_contradictions_during_decision(
+                question = question, current_agent_id = self.decision_maker_agent.agent_id, explanation = final_explanation, case_history = case_history
+            ) # here the discussion_context includes all the domain agents' answers and explanations before this synthesis
+            
+            audit_round_data["3_1_1_suppression_of_minority_views"].append({
+                "agent_id": self.decision_maker_agent.agent_id,
+                "step": "decision",
+                "audit_result": audit_results_of_suppression_of_correct_minority_views_by_incorrect_consensus_for_decision_maker
+            })
+            audit_round_data["3_1_2_authority_bias"].append({
+                "agent_id": self.decision_maker_agent.agent_id,
+                "step": "decision",
+                "audit_result": audit_results_of_authority_bias_for_decision_maker
+            })
+            audit_round_data["3_1_3_neglect_of_contradictions"].append({
+                "agent_id": self.decision_maker_agent.agent_id,
+                "step": "decision",
+                "audit_result": audit_results_of_neglect_of_contradictions_in_reasoning_process_for_decision_maker
+            })
+
+            case_history["rounds"][-1]["decision"] = decision_log # after synthesizer then log, in case repetition
+
         except Exception as e:
             print(f"Error parsing final decision: {e}. Raw response: {final_response}")
             final_answer = "Could not parse answer."
             final_explanation = "Error parsing model response."
-            detailed_log["final_synthesis"]["error"] = f"Error parsing response: {e}"
         print(f"Intermediate Query Final Result: Answer='{final_answer}', Explanation='{final_explanation[:100]}...'")
-
-        risk_audit = self.auditor_agent.audit_risk_and_quality(self.decision_maker_agent.agent_id, final_explanation, image_path=image_path)
-        quality_audit = self.auditor_agent.audit_single_argument_quality(data_item['question'], final_explanation, image_path=image_path, domain_agent_quality_domain=quality_audit)
-        audit_trail["collaboration_audits"]["intermediate_final_decision"] = {**risk_audit, **quality_audit}
-        
-        for keu_id, keu in audit_trail["keus"].items():
-            if keu_id in final_explanation or keu.content in final_explanation:
-                keu.present_in_final_decision = True
-
-        resolved_this_round_log = []
-        still_unresolved = []
-        for ccp in all_unresolved_ccps:
-            was_addressed, resolution_reasoning = self.analysis_llm.check_if_conflict_was_addressed(ccp, final_explanation)
-            if was_addressed:
-                ccp['status'] = 'resolved'
-                ccp['round_resolved'] = 1
-                ccp['resolution_reasoning'] = resolution_reasoning
-                resolved_this_round_log.append(ccp)
-            else:
-                still_unresolved.append(ccp)
-        all_unresolved_ccps = still_unresolved
-        print(f"Round 1: {len(resolved_this_round_log)} CCP(s) were resolved.")
 
         return {
             "predicted_answer": final_answer,
             "explanation": final_explanation,
-            "detailed_log": detailed_log,
             "complexity": ComplexityLevel.INTERMEDIATE.value,
+            "case_history": case_history
         }
-    def _process_advanced_query(self, data_item: Dict, team_configs: List[Dict], audit_trail: Dict) -> Dict:
+    
+    def _process_advanced_query(self, data_item: Dict, team_configs: List[Dict], audit_reluslts_of_role_assignment: Dict, specialties: List) -> Dict:
         print("\n--- Processing Advanced Query ---")
         agent_model_key = self.model_config.get('default_agent', DEFAULT_AGENT_MODEL)
-        detailed_log = {
-            "step_name": "process_advanced_query",
-            "team_configs": team_configs,
-            "team_discussions": [],
-            "final_decision_synthesis": {}
-        }
-        keu_counter = len(audit_trail["keus"])
-        ccp_counter = sum(len(v) for v in audit_trail["ccps"].values())
         question_context = {
             "question": data_item["question"],
             "options": data_item.get("options"),
@@ -970,17 +954,10 @@ class MDAgentsFramework:
             raw_report, discussion_log, keu_counter, ccp_counter = group.perform_internal_discussion(
                 auditor_agent=self.auditor_agent,
                 analysis_llm=self.analysis_llm,
-                audit_trail=audit_trail,
                 keu_counter=keu_counter,
                 ccp_counter=ccp_counter
             )
             
-            detailed_log["team_discussions"].append({
-                "group_id": group.group_id,
-                "goal": group.goal,
-                "discussion_log": discussion_log
-            })
-
             try:
                 response_clean = preprocess_response_string(raw_report)
                 report_json = json.loads(response_clean)
@@ -1120,7 +1097,6 @@ class MDAgentsFramework:
         except Exception as e:
             print(f"ERROR processing QID {qid}: {e}")
             result_data = {"predicted_answer": "Error", "explanation": str(e), "complexity": "unknown"}
-            audit_trail["fatal_error"] = str(e)
 
         processing_time = time.time() - start_time
         
