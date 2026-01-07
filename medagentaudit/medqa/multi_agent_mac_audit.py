@@ -267,11 +267,18 @@ class MACFramework:
                 audit_results_of_neglect_of_contradictions_in_reasoning_process_for_decision_maker = self.auditor_agent.audit_contradictions_during_decision(
                     question = data_item["question"], current_agent_id = self.meta_agent.agent_id, explanation = decision_explanation, case_history = case_history
                 ) # here the discussion_context includes all the domain agents' answers and explanations before this decision
-
-                # audit 3.2.1: Self-Contradiction in Viewpoints Across Rounds for decision-maker
-                audit_results_of_self_contradiction_in_viewpoints_across_rounds_for_decision_maker = self.auditor_agent.audit_contradictions_across_rounds(
-                    question = data_item["question"], options = data_item.get("options"), answer = decision_answer, current_agent_id = self.meta_agent.agent_id, explanation = decision_explanation, case_history = case_history
-                ) # here the meta agent's memory includes all its previous decisions and syntheses!
+                
+                if round_num > 1 :
+                    # audit 3.2.1: Self-Contradiction in Viewpoints Across Rounds for decision-maker
+                    audit_results_of_self_contradiction_in_viewpoints_across_rounds_for_decision_maker = self.auditor_agent.audit_contradictions_across_rounds(
+                        question = data_item["question"], options = data_item.get("options"), answer = decision_answer, current_agent_id = self.meta_agent.agent_id, explanation = decision_explanation, case_history = case_history
+                    ) # here the meta agent's memory includes all its previous decisions and syntheses!
+                    audit_round_data["3_2_1_self_contradiction_when_decision"].append({
+                        "agent_id": self.meta_agent.agent_id,
+                        "specialty": self.meta_agent.specialty.value,
+                        "step": "decision",
+                        "audit_result": audit_results_of_self_contradiction_in_viewpoints_across_rounds_for_decision_maker
+                    })
 
                 audit_round_data["3_1_1_suppression_of_minority_views"].append({
                     "agent_id": self.meta_agent.agent_id,
@@ -291,12 +298,7 @@ class MACFramework:
                     "step": "decision",
                     "audit_result": audit_results_of_neglect_of_contradictions_in_reasoning_process_for_decision_maker
                 })
-                audit_round_data["3_2_1_self_contradiction_when_decision"].append({
-                    "agent_id": self.meta_agent.agent_id,
-                    "specialty": self.meta_agent.specialty.value,
-                    "step": "decision",
-                    "audit_result": audit_results_of_self_contradiction_in_viewpoints_across_rounds_for_decision_maker
-                })
+
                 audit["rounds"].append(audit_round_data)
                 case_history["rounds"][-1]["decision"] = decision_log
                                 
