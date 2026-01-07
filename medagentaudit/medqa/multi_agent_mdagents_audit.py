@@ -45,11 +45,17 @@ DEFAULT_NUM_AGENTS_PER_TEAM_ADVANCED = 3 # Number of agents per team for advance
 # --- Base Agent and New Auditor Agent Classes ---
 
 class Agent(BaseAgent):
-    def __init__(self, agent_id: str, role: Union[AgentType, str], model_key: str, config_path:str, instruction: Optional[str] = None):
-        super().__init__(agent_id=agent_id, agent_type=role, config_path=config_path, model_key=model_key)
+    def __init__(self, agent_id: str, model_key: str, config_path:str, instruction: str | None = None, specialty: str | None = None, agent_type: Union[AgentType, str] = None):
+        super().__init__(agent_id=agent_id, agent_type=agent_type, config_path=config_path, model_key=model_key)
         self.agent_id = agent_id
-        self.role = role if isinstance(role, str) else role.value
-        self.instruction = instruction or f"You are a helpful assistant playing the role of a {self.role}."
+        self.specialty = specialty.value if hasattr(specialty, 'value') else specialty
+        self.agent_type = agent_type.value if hasattr(agent_type, 'value') else agent_type
+        if instruction:
+            self.instruction = instruction
+        elif self.specialty:
+            self.instruction = f"You are a helpful assistant playing the role of a {self.specialty}."
+        else:
+            self.instruction = f"You are a helpful assistant playing the role of a {self.agent_type}."
 
     def chat(self, prompt: str, image_path: Optional[str] = None, use_memory: bool = True, response_format: Optional[Dict[str, str]] = None) -> Tuple[str, Dict[str, Any]]:
         system_message = {"role": "system", "content": self.instruction}
@@ -80,7 +86,7 @@ class Group:
         self.question_context = question_context
         self.internal_log = []
         print(f"Initialized Group: ID={self.group_id}, Goal='{self.goal}', Members={[m.agent_id for m in self.members]}")
-        self.lead_agent = next((m for m in members if 'lead' in m.role.lower()), members[0] if members else None)
+        self.lead_agent = next((m for m in members if 'lead' in m.specialty.lower()), members[0] if members else None)
         if self.lead_agent:
             print(f"Group {self.group_id} Lead: {self.lead_agent.agent_id}")
 
@@ -92,12 +98,12 @@ class Group:
     def perform_internal_discussion(
         self,
         auditor_agent: AuditorAgent,
-        audit_trail: Dict[str, Any],
-        keu_counter: int,
-        ccp_counter: int
+        audit,
+        audit_round_data,
+        case_history
     ) -> Tuple[str, List[Dict], int, int]:
         """
-        [MODIFIED] Simulates internal discussion with integrated auditing mechanisms.
+        Simulates internal discussion with integrated auditing mechanisms.
         """
         if not self.lead_agent:
             return "Error: Group has no lead agent.", self.internal_log, keu_counter, ccp_counter
@@ -110,7 +116,7 @@ class Group:
         if assist_members:
             delivery_prompt += "Your assistant clinicians are:\n"
             for a_mem in assist_members:
-                delivery_prompt += f"- {a_mem.role} (ID: {a_mem.agent_id})\n"
+                delivery_prompt += f"- {a_mem.specialty} (ID: {a_mem.agent_id})\n"
             delivery_prompt += "\nGiven the medical query below, what specific insights or analyses are needed from each assistant based on their expertise?\n"
         else:
             delivery_prompt += "\nGiven the medical query below, please provide your comprehensive analysis based on your expertise.\n"
@@ -131,32 +137,35 @@ class Group:
             prompt=delivery_prompt,
             image_path=self.question_context.get('image_path'),
         )
- 
+
+        lead_request_log = {
+            "llm_input":{
+                "system_message": system_message,
+                "user_message": user_message
+            }
+        }
         self._log_interaction(
             f"Lead ({self.lead_agent.agent_id}) generated task assignments for assistants.",
             data={
                 "step": "1_lead_request_generation",
                 "agent_id": self.lead_agent.agent_id,
-                "agent_role": self.lead_agent.role,
+                "agent_specialty": self.lead_agent.specialty,
                 "prompt": delivery_prompt,
                 "response": lead_request,
                 "llm_log": lead_request_log
             }
         )
 
-        # Step 1: Assistants provide analysis and extract KEUs
+        # Step 1: Assistants provide analysis
         initial_opinions_parsed = []
         investigations = []
-        assistant_contributions_for_ccp = []
         for a_mem in assist_members:
             investigation_prompt = (
-                f"You are {a_mem.role} in medical group '{self.group_id}' with the goal: '{self.goal}'.\n"
+                f"You are {a_mem.specialty} in medical group '{self.group_id}' with the goal: '{self.goal}'.\n"
                 f"Provide your investigation summary or analysis focusing on your expertise regarding the medical query:\n"
                 f"Question: {self.question_context['question']}\n"
-                f"Your group lead ({self.lead_agent.role}, ID: {self.lead_agent.agent_id}) requires your input based on the following request:\n'{lead_request}'\n\n"
-                f"Your output must be a JSON object with three fields: 'explanation' (your detailed reasoning), 'answer' (your final conclusion), "
-                f"and 'keus' (a list of key evidential units). Each KEU in the list should be a string representing a single, verifiable piece of evidence "
-                f"from the case (e.g., 'A 2cm nodule is visible in the upper left lung lobe.', 'The patient's white blood cell count is 15,000/µL.')."
+                f"Your group lead ({self.lead_agent.specialty}, ID: {self.lead_agent.agent_id}) requires your input based on the following request:\n'{lead_request}'\n\n"
+                f"Your output must be a JSON object with two fields: 'explanation' (your detailed reasoning), 'answer' (your final conclusion)."
             )
             if self.question_context.get('options'):
                 options_str = ""
@@ -178,99 +187,58 @@ class Group:
             try:
                 investigation = json.loads(preprocess_response_string(investigation_json_str))
             except json.JSONDecodeError:
-                investigation = {"explanation": investigation_json_str, "answer": "parse_error", "keus": []}
+                investigation = {"explanation": investigation_json_str, "answer": "parse_error"}
 
             parsed_opinion = {
                 "agent_id": a_mem.agent_id,
-                "agent_role": a_mem.role,
+                "agent_role": a_mem.specialty,
                 "answer": investigation.get("answer"),
                 "explanation": investigation.get("explanation", ""),
-                "keus": investigation.get("keus", [])
             }
             initial_opinions_parsed.append(parsed_opinion)
-            investigations.append({"role": a_mem.role, "id": a_mem.agent_id, "report": investigation})
+            investigations.append({"specialty": a_mem.specialty, "id": a_mem.agent_id, "report": investigation})
+
+            # audit 2.1.2 domain-specific knowledge activation
+            audit_results_of_domain_specific_knowledge_activation = self.auditor_agent.audit_domain_specific_knowledge_activation(question = self.question_context['question'], 
+                                                                                                                                  image_path = self.question_context.get('image_path'), 
+                                                                                                                                  agent_id = a_mem.agent_id, 
+                                                                                                                                  specialty = a_mem.specialty, 
+                                                                                                                                  answer = investigation.get("answer"), 
+                                                                                                                                  explanation = investigation.get("explanation", ""))
+            audit_round_data["2_1_2_domain_specific_knowledge_activation"].append({
+                "agent_id": a_mem.agent_id,
+                "specialty": a_mem.specialty,
+                "step": "analysis",
+                "audit_result": audit_results_of_domain_specific_knowledge_activation
+            })
+            case_history["rounds"][-1]["opinions"].append({
+                "agent_id": a_mem.agent_id,
+                "specialty": a_mem.specialty,
+                "log": {"parsed_output": investigation}
+            })
+            investigation_log = {"llm_input":{
+                "system_message": system_message,
+                "user_message": user_message
+            }}
             self._log_interaction(
-                f"Assistant ({a_mem.agent_id} - {a_mem.role}) provided report.",
+                f"Assistant ({a_mem.agent_id} - {a_mem.specialty}) provided report.",
                 data={
                     "step": "2_assistant_analysis",
                     "agent_id": a_mem.agent_id,
-                    "agent_role": a_mem.role,
+                    "agent_specialty": a_mem.specialty,
                     "prompt": investigation_prompt,
                     "response": investigation,
                     "llm_log": investigation_log
                 }
             ) 
-            # 机制三: 审计特定领域知识、风险规避
-            explanation = investigation.get("explanation", "")
-            contribution_audit = auditor_agent.audit_domain_agent_contribution(self.question_context['question'], a_mem.agent_id, a_mem.role, explanation)
-            risk_audit = auditor_agent.audit_risk_and_quality(a_mem.agent_id, explanation, image_path=self.question_context.get('image_path'))
-            step_id = f"advanced_group_{self.group_id}_assist_{a_mem.agent_id}"
-            audit_trail["collaboration_audits"][step_id] = {**contribution_audit, **risk_audit}
-
-            # 机制一：定义证据单元
-            if "keus" in investigation:
-                for keu_content in investigation["keus"]:
-                    keu_id = f"KEU-{keu_counter}"
-                    new_keu = KEU(keu_id, keu_content, a_mem.agent_id, 1, self.group_id) 
-                    audit_trail["keus"][keu_id] = new_keu
-                    keu_counter += 1
-            
-            # 机制二：记录观点 [FIXED]
-            if audit_trail.get("viewpoints") is None: audit_trail["viewpoints"] = {}
-            if a_mem.agent_id not in audit_trail["viewpoints"]: audit_trail["viewpoints"][a_mem.agent_id] = []
-            
-            keus_from_this_agent = [f"KEU-{i}" for i, keu_content in enumerate(investigation.get("keus", []), start=keu_counter - len(investigation.get("keus", [])))]
-            audit_trail["viewpoints"][a_mem.agent_id].append({
-                "step": f"advanced_group_{self.group_id}_initial", 
-                "viewpoint": investigation.get("answer"),
-                "viewpoint_changed": False,
-                "justification_type": "initial_analysis",
-                "cited_references": keus_from_this_agent
-            })
-            assistant_contributions_for_ccp.append({'agent_id': a_mem.agent_id, 'role': a_mem.role, 'text': explanation})
-            
-        # 机制一：调用审计员代理来识别哪些KEU是关键的
-        all_keus_for_audit = [{"keu_id": k, "content": v.content} for k, v in audit_trail["keus"].items()]
-        if all_keus_for_audit:
-            key_status_map = auditor_agent.identify_key_evidential_units(
-                self.question_context['question'], 
-                initial_opinions_parsed, 
-                all_keus_for_audit,
-                image_path=self.question_context.get('image_path')
-            )
-            for keu_id, is_key in key_status_map.items():
-                if keu_id in audit_trail["keus"]:
-                    audit_trail["keus"][keu_id].is_key = is_key
-                
-        # 机制四：检测其中的矛盾。
-        initial_ccps = auditor_agent.identify_critical_conflicts(assistant_contributions_for_ccp, f"initial analyses in group {self.group_id}")
-        if audit_trail["ccps"].get(self.group_id) is None: audit_trail["ccps"][self.group_id] = []
-        for ccp in initial_ccps:
-            ccp['ccp_id'] = f"CCP-{ccp_counter}"
-            ccp['status'] = 'unresolved'
-            audit_trail["ccps"][self.group_id].append(ccp)
-            ccp_counter += 1
         
-        ccp_text_for_prompt = ""
-        if initial_ccps:
-            ccp_text_for_prompt += "\n\n[ATTENTION] The following Critical Conflict Points (CCPs) have been identified within your team and MUST be addressed:\n"
-            for ccp in initial_ccps:
-                ccp_text_for_prompt += f"- CCP ID: {ccp['ccp_id']}, Conflict: {ccp['conflict_summary']} (Involved: {', '.join(ccp['conflicting_agents'])})\n"
-
         # Step 2: Lead synthesizes information
-        keu_list_text = "\n\nKey Evidential Units (KEUs) proposed so far:\n"
-        for keu_id, keu_obj in audit_trail["keus"].items():
-            keu_list_text += f"- {keu_id}: '{keu_obj.content}' (from {keu_obj.source_agent})\n"
-            
         gathered_investigation = "Gathered insights from assistant clinicians:\n" + "\n".join([f"--- Report from {inv['role']} (ID: {inv['id']}) ---\n{json.dumps(inv['report'])}\n---" for inv in investigations])
         
         synthesis_prompt = (
             f"{gathered_investigation}\n\n"
             f"As the lead of group '{self.group_id}', synthesize the information to provide a comprehensive report for the group's goal: '{self.goal}'(including your own initial thoughts if applicable).\n"
-            f"Available KEUs (Key Evidential Units):\n{keu_list_text}\n"
-            f"Available CCPs (Critical Consensus Points):{ccp_text_for_prompt}\n"
-            f"Note that potential conflicts (CCPs) have been identified; a robust synthesis must acknowledge or resolve these points.\n\n"
-            f"**CRITICAL INSTRUCTION:** Your task is to synthesize these diverse opinions into a single, coherent analysis. In your 'explanation', you **MUST selectively cite only the most important KEU-IDs** that support your synthesized view. **DO NOT simply list all available KEUs.** Your goal is to demonstrate a deep understanding by building a new, consolidated argument from the strongest evidence (e.g., 'Synthesizing the specialists' views, the consensus leans towards X, primarily supported by the crucial findings in KEU-2 and KEU-5...').\n\n"
+            f"Your task is to synthesize these diverse opinions into a single, coherent analysis.\n\n"
         )
         synthesis_prompt += f"Question: {self.question_context['question']}\n"
         
@@ -358,21 +326,21 @@ class MDAgentsFramework:
         self.config_path = config_path
         os.makedirs(self.log_dir, exist_ok=True) 
 
-        self.moderator_agent = Agent("moderator", 
-                                        AgentType.MODERATOR, 
-                                        model_config.get('moderator', DEFAULT_MODERATOR_MODEL),
+        self.moderator_agent = Agent(agent_id="moderator", 
+                                        agent_type=AgentType.MODERATOR, 
+                                        model_key=model_config.get('moderator', DEFAULT_MODERATOR_MODEL),
                                         config_path=config_path,
                                         instruction="You are a medical expert who conducts initial assessment. Your job is to decide the difficulty/complexity of the medical query based on the provided definitions. Respond in JSON format."
         )
-        self.recruiter_agent = Agent("recruiter", 
-                                        AgentType.RECRUITER, 
-                                        model_config.get('recruiter', DEFAULT_RECRUITER_MODEL),
+        self.recruiter_agent = Agent(agent_id="recruiter", 
+                                        agent_type=AgentType.RECRUITER, 
+                                        model_key=model_config.get('recruiter', DEFAULT_RECRUITER_MODEL),
                                         config_path=config_path,
                                         instruction="You are an experienced medical expert who recruits appropriate specialists based on the medical query and its complexity level. Respond in JSON format."
         )
-        self.decision_maker_agent = Agent("final_decision_maker", 
-                                            AgentType.DECISION_MAKER, 
-                                            model_config.get('moderator', DEFAULT_MODERATOR_MODEL),
+        self.decision_maker_agent = Agent(agent_id="final_decision_maker", 
+                                            agent_type=AgentType.DECISION_MAKER, 
+                                            model_key=model_config.get('moderator', DEFAULT_MODERATOR_MODEL),
                                             config_path=config_path,
                                             instruction="You are a final medical decision maker. Review all provided information (opinions, reports, discussions) and make the final, consolidated answer to the original medical query. Respond in JSON format."
         )
@@ -464,26 +432,26 @@ class MDAgentsFramework:
             recruitment_instruction = (
                 f"You are an experienced medical expert. Your task is to recruit a team of {self.num_experts_intermediate} experts "
                 f"with diverse specialties and expertise to discuss and solve the given medical query. "
-                f"Specify their role, a brief expertise description, and optionally a communication hierarchy (e.g., 'Cardiologist > Nurse', 'Independent'). "
+                f"Specify their specialty, a brief expertise description, and optionally a communication hierarchy (e.g., 'Cardiologist > Nurse', 'Independent'). "
                 f"Respond in JSON format."
             )
             self.recruiter_agent.instruction = recruitment_instruction
             prompt = (
                 f"{query_context}\n"
                 f"Recruit {self.num_experts_intermediate} experts for this moderately complex query.\n"
-                f"Respond with a JSON array 'experts' where each expert object has fields: 'role', 'expertise', and 'hierarchy'.\n"
+                f"Respond with a JSON array 'experts' where each expert object has fields: 'specialty', 'expertise', and 'hierarchy'.\n"
                 f"Example response structure:\n"
                 f"{{\"experts\": [\n"
-                f"  {{\"role\": \"Pediatrician\", \"expertise\": \"Specializes in child healthcare\", \"hierarchy\": \"Independent\"}},\n"
-                f"  {{\"role\": \"Cardiologist\", \"expertise\": \"Focuses on heart conditions\", \"hierarchy\": \"Pediatrician > Cardiologist\"}},\n"
-                f"  {{\"role\": \"Pulmonologist\", \"expertise\": \"Specializes in respiratory disorders\", \"hierarchy\": \"Independent\"}}\n"
+                f"  {{\"specialty\": \"Pediatrician\", \"expertise\": \"Specializes in child healthcare\", \"hierarchy\": \"Independent\"}},\n"
+                f"  {{\"specialty\": \"Cardiologist\", \"expertise\": \"Focuses on heart conditions\", \"hierarchy\": \"Pediatrician > Cardiologist\"}},\n"
+                f"  {{\"specialty\": \"Pulmonologist\", \"expertise\": \"Specializes in respiratory disorders\", \"hierarchy\": \"Independent\"}}\n"
                 f"]}}"
             )
         elif complexity == ComplexityLevel.ADVANCED:
             recruitment_instruction = (
                 f"You are an experienced medical director. Your task is to organize {self.num_teams_advanced} Multidisciplinary Teams (MDTs) "
                 f"for a complex medical query. Each MDT should have around {self.num_agents_per_team_advanced} clinicians. Define the purpose (goal) of each team "
-                f"and list its members with their roles and expertise. Ensure you include an 'Initial Assessment Team (IAT)' and a 'Final Review and Decision Team (FRDT)'. "
+                f"and list its members with their specialties and expertise. Ensure you include an 'Initial Assessment Team (IAT)' and a 'Final Review and Decision Team (FRDT)'. "
                 f"Respond in JSON format."
             )
             self.recruiter_agent.instruction = recruitment_instruction
@@ -492,16 +460,16 @@ class MDAgentsFramework:
                 f"Organize {self.num_teams_advanced} MDTs, each with ~{self.num_agents_per_team_advanced} members, for this complex query.\n"
                 f"Include an IAT and an FRDT.\n"
                 f"Respond with a JSON object containing a 'teams' array where each team has: 'group_id', 'goal', and 'members' array.\n"
-                f"Each member should have 'role', 'expertise', and optionally 'is_lead' (boolean) fields.\n"
+                f"Each member should have 'specialty', 'expertise', and optionally 'is_lead' (boolean) fields.\n"
                 f"Example structure:\n"
                 f"{{\"teams\": [\n"
                 f"  {{\"group_id\": \"Group 1\", \"goal\": \"Initial Assessment Team (IAT)\", \"members\": [\n"
-                f"    {{\"role\": \"Emergency Physician\", \"expertise\": \"Handles acute assessment\", \"is_lead\": true}},\n"
-                f"    {{\"role\": \"Triage Nurse\", \"expertise\": \"Gathers initial patient data\"}}\n"
+                f"    {{\"specialty\": \"Emergency Physician\", \"expertise\": \"Handles acute assessment\", \"is_lead\": true}},\n"
+                f"    {{\"specialty\": \"Triage Nurse\", \"expertise\": \"Gathers initial patient data\"}}\n"
                 f"  ]}},\n"
                 f"  {{\"group_id\": \"Group 2\", \"goal\": \"Final Review and Decision Team (FRDT)\", \"members\": [\n"
-                f"    {{\"role\": \"Senior Consultant\", \"expertise\": \"Oversees final decision\", \"is_lead\": true}},\n"
-                f"    {{\"role\": \"Clinical Pharmacist\", \"expertise\": \"Medication review\"}}\n"
+                f"    {{\"specialty\": \"Senior Consultant\", \"expertise\": \"Oversees final decision\", \"is_lead\": true}},\n"
+                f"    {{\"specialty\": \"Clinical Pharmacist\", \"expertise\": \"Medication review\"}}\n"
                 f"  ]}}\n"
                 f"]}}"
             )
@@ -530,24 +498,24 @@ class MDAgentsFramework:
 
                 validated_experts = []
                 for expert in experts:
-                    if isinstance(expert, dict) and 'role' in expert:
+                    if isinstance(expert, dict) and 'specialty' in expert:
                         validated_expert = {
-                            "role": expert.get("role", "Unknown Role"),
-                            "expertise": expert.get("expertise", "General expertise related to the role."),
+                            "specialty": expert.get("specialty", "Unknown Specialty"),
+                            "expertise": expert.get("expertise", "General expertise related to the specialty."),
                             "hierarchy": expert.get("hierarchy", "Independent")
                         }
                         validated_experts.append(validated_expert)
                 experts = validated_experts
-                specialties = [e['role'] for e in experts]
+                specialties = [e['specialty'] for e in experts]
             except Exception as e:
                 print(f"Error parsing expert recruitment response: {e}. Raw response: {recruitment_response}")
-                print("Warning: Failed to parse experts. Using default roles.")
+                print("Warning: Failed to parse experts. Using default specialties.")
                 step_log["error"] = f"Error parsing response: {e}"
-                step_log["warning"] = "Using default roles due to parsing error."
-                default_roles = ["Internal Medicine Specialist", "Radiologist", "Surgeon", "Pathologist", "Pharmacist"]
-                experts = [{"role": r, "expertise": f"Expertise in {r}", "hierarchy": "Independent"} for r in default_roles[:self.num_experts_intermediate]]
+                step_log["warning"] = "Using default specialties due to parsing error."
+                default_specialties = ["Internal Medicine Specialist", "Radiologist", "Surgeon", "Pathologist", "Pharmacist"]
+                experts = [{"specialty": r, "expertise": f"Expertise in {r}", "hierarchy": "Independent"} for r in default_specialties[:self.num_experts_intermediate]]
 
-            print(f"Recruited Experts: {[e['role'] for e in experts]}")
+            print(f"Recruited Experts: {[e['specialty'] for e in experts]}")
             step_log["recruited_personnel"] = experts
             return experts, step_log
 
@@ -564,10 +532,10 @@ class MDAgentsFramework:
                     if isinstance(team, dict) and 'group_id' in team and 'members' in team:
                         validated_members = []
                         for member in team.get('members', []):
-                            if isinstance(member, dict) and 'role' in member:
+                            if isinstance(member, dict) and 'specialty' in member:
                                 validated_member = {
-                                    "role": member.get("role", "Unknown Role"),
-                                    "expertise": member.get("expertise", "General expertise for the role.")
+                                    "specialty": member.get("specialty", "Unknown Specialty"),
+                                    "expertise": member.get("expertise", "General expertise for the specialty.")
                                 }
                                 if member.get("is_lead") is True:
                                     validated_member["is_lead"] = True
@@ -587,23 +555,23 @@ class MDAgentsFramework:
                 step_log["warning"] = "Using default team structure due to parsing error."
                 teams = [
                     {"group_id": "Group 1", "goal": "Initial Assessment Team (IAT)", "members": [
-                        {"role": "Emergency Physician", "expertise": "Acute assessment", "is_lead": True},
-                        {"role": "Radiologist", "expertise": "Initial imaging"}
+                        {"specialty": "Emergency Physician", "expertise": "Acute assessment", "is_lead": True},
+                        {"specialty": "Radiologist", "expertise": "Initial imaging"}
                     ]},
                     {"group_id": "Group 2", "goal": "Diagnostic Team", "members": [
-                        {"role": "Cardiologist", "expertise": "Heart conditions", "is_lead": True},
-                        {"role": "Neurologist", "expertise": "Nervous system"}
+                        {"specialty": "Cardiologist", "expertise": "Heart conditions", "is_lead": True},
+                        {"specialty": "Neurologist", "expertise": "Nervous system"}
                     ]},
                     {"group_id": "Group 3", "goal": "Final Review and Decision Team (FRDT)", "members": [
-                        {"role": "Senior Consultant", "expertise": "Oversees decision", "is_lead": True},
-                        {"role": "Clinical Pharmacist", "expertise": "Medication review"}
+                        {"specialty": "Senior Consultant", "expertise": "Oversees decision", "is_lead": True},
+                        {"specialty": "Clinical Pharmacist", "expertise": "Medication review"}
                     ]}
                 ]
                 teams = teams[:self.num_teams_advanced]
                 specialties = []
                 for team in teams:
                     for member in team['members']:
-                        specialties.append(member['role'])
+                        specialties.append(member['specialty'])
             print(f"Recruited Teams: {[t['goal'] for t in teams]}")
             step_log["recruited_personnel"] = teams
             step_log["specialties"] = specialties
@@ -630,7 +598,7 @@ class MDAgentsFramework:
         agent_model_key = self.model_config.get('default_agent', DEFAULT_AGENT_MODEL)
         agent = Agent(
             agent_id="basic_solver",
-            role=MedicalSpecialty.GENERAL_MEDICINE,
+            specialty=MedicalSpecialty.GENERAL_MEDICINE,
             config_path=self.config_path,
             model_key=agent_model_key,
             instruction="You are a helpful medical assistant. Answer the following medical question accurately. Respond in JSON format."
@@ -725,12 +693,12 @@ class MDAgentsFramework:
         agent_model_key = self.model_config.get('default_agent', DEFAULT_AGENT_MODEL)
         agents = []
         for i, config in enumerate(expert_configs):
-            agent_id = f"expert_{i+1}_{config['role'].replace(' ','_').lower()}"
+            agent_id = f"expert_{i+1}_{config['specialty'].replace(' ','_').lower()}"
             agent = Agent(
                 agent_id=agent_id,
-                role=config['role'],
+                specialty=config['specialty'],
                 model_key=agent_model_key,
-                instruction=f"You are a {config['role']} with expertise in {config['expertise']}. Collaborate with other medical experts to answer the medical query. Maintain your persona and provide insights based on your specialty. Respond in JSON format."
+                instruction=f"You are a {config['specialty']} with expertise in {config['expertise']}. Collaborate with other medical experts to answer the medical query. Maintain your persona and provide insights based on your specialty. Respond in JSON format."
             )
             agents.append(agent)
         if not agents:
@@ -755,13 +723,12 @@ class MDAgentsFramework:
         print("\n-- Round 1: Initial Opinions --")
 
         initial_report_parts = []
-        initial_contributions_for_ccp = []
         initial_opinions_parsed = []
         for agent in agents:
             agent.clear_memory()
             prompt = (
                 f"{question_context}\n"
-                f"Based on your expertise as a {agent.role}, provide your initial analysis and answer.\n"
+                f"Based on your expertise as a {agent.specialty}, provide your initial analysis and answer.\n"
                 f"Respond with a JSON object containing 'answer' and 'explanation' fields."
             )
             response, system_message, user_message = agent.chat(
@@ -796,14 +763,14 @@ class MDAgentsFramework:
                 audit_results_of_domain_specific_knowledge_activation = self.auditor_agent.audit_domain_specific_knowledge_activation(question, image_path, agent.agent_id, agent.role, ans, explanation)
                 audit_round_data["2_1_2_domain_specific_knowledge_activation"].append({
                     "agent_id": agent.agent_id,
-                    "specialty": agent.role,
+                    "specialty": agent.specialty,
                     "step": "analysis",
                     "audit_result": audit_results_of_domain_specific_knowledge_activation
                 })
 
                 case_history["rounds"][-1]["opinions"].append({
                     "agent_id": agent.agent_id,
-                    "specialty": agent.role,
+                    "specialty": agent.specialty,
                     "log": opinion_log
                 })
 
@@ -815,15 +782,15 @@ class MDAgentsFramework:
             
             parsed_opinion = {
                 "agent_id": agent.agent_id,
-                "agent_role": agent.role,
+                "agent_specialty": agent.specialty,
                 "answer": ans,
                 "explanation": expl,
             }
 
             initial_opinions_parsed.append(parsed_opinion)
             
-            initial_report_parts.append(f"Expert {agent.role} ({agent.agent_id}):\nAnswer: {ans}\nExplanation: {expl}\n---")
-            print(f"Agent {agent.agent_id} ({agent.role}) Initial Answer: {ans}")
+            initial_report_parts.append(f"Expert {agent.specialty} ({agent.agent_id}):\nAnswer: {ans}\nExplanation: {expl}\n---")
+            print(f"Agent {agent.agent_id} ({agent.specialty}) Initial Answer: {ans}")
 
         print("\n-- Synthesizing Final Decision --")
         self.decision_maker_agent.clear_memory()
@@ -908,8 +875,31 @@ class MDAgentsFramework:
             "case_history": case_history
         }
     
-    def _process_advanced_query(self, data_item: Dict, team_configs: List[Dict], audit_reluslts_of_role_assignment: Dict, specialties: List) -> Dict:
+    def _process_advanced_query(self, data_item: Dict, team_configs: List[Dict], audit_results_of_role_assignment: Dict, specialties: List) -> Dict:
         print("\n--- Processing Advanced Query ---")
+
+        case_history = {"rounds": []}
+        audit = {"rounds": []}
+        audit_round_data = {
+        "round": 1,
+        "2_1_1_role_assignment": [], 
+        "2_1_2_domain_specific_knowledge_activation": [], 
+        
+        "2_2_1_repetition_of_initial_views": [], 
+        "2_2_2_unresolved_conflicts": [],
+        
+        "3_1_1_suppression_of_minority_views": [],
+        "3_1_2_authority_bias": [],
+        "3_1_3_neglect_of_contradictions": [],
+        "3_2_1_self_contradiction_when_decision": []
+        }
+
+        audit_round_data["2_1_1_role_assignment"].append({
+            "specialties": specialties,
+            "step": "role_assignment",
+            "audit_result": audit_results_of_role_assignment
+        })
+
         agent_model_key = self.model_config.get('default_agent', DEFAULT_AGENT_MODEL)
         question_context = {
             "question": data_item["question"],
@@ -921,14 +911,14 @@ class MDAgentsFramework:
         for i, config in enumerate(team_configs):
             members = []
             for j, member_config in enumerate(config['members']):
-                agent_id = f"{config['group_id'].replace(' ','_').lower()}_member_{j+1}_{member_config['role'].replace(' ','_').lower()}"
+                agent_id = f"{config['group_id'].replace(' ','_').lower()}_member_{j+1}_{member_config['specialty'].replace(' ','_').lower()}"
                 is_lead = member_config.get('is_lead', False)
-                instruction_prefix = f"You are {member_config['role']} ({member_config['expertise']}) in team '{config['goal']}'."
+                instruction_prefix = f"You are {member_config['specialty']} ({member_config['expertise']}) in team '{config['goal']}'."
                 if is_lead:
                     instruction_prefix += " You are the LEAD of this team."
                 agent = Agent(
                     agent_id=agent_id,
-                    role=f"{member_config['role']}{' (Lead)' if is_lead else ''}",
+                    specialty=f"{member_config['specialty']}{' (Lead)' if is_lead else ''}",
                     model_key=agent_model_key,
                     instruction=f"{instruction_prefix} Collaborate within your team to achieve the goal: '{config['goal']}'. Respond in JSON format."
                 )
@@ -951,11 +941,11 @@ class MDAgentsFramework:
 
         for group in ordered_groups:
             print(f"\n-- Processing Team: {group.group_id} ({group.goal}) --")
-            raw_report, discussion_log, keu_counter, ccp_counter = group.perform_internal_discussion(
+            raw_report, discussion_log = group.perform_internal_discussion(
                 auditor_agent=self.auditor_agent,
-                analysis_llm=self.analysis_llm,
-                keu_counter=keu_counter,
-                ccp_counter=ccp_counter
+                audit = audit,
+                audit_round_data = audit_round_data,
+                case_history = case_history
             )
             
             try:
@@ -1020,7 +1010,7 @@ class MDAgentsFramework:
         
         detailed_log["final_decision_synthesis"] = {
             "agent_id": self.decision_maker_agent.agent_id,
-            "agent_role": self.decision_maker_agent.role,
+            "agent_specialty": self.decision_maker_agent.specialty,
             "prompt": synthesis_prompt,
             "llm_log": final_llm_log
         }
