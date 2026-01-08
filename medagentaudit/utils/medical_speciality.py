@@ -9,3 +9,8 @@ class MedicalSpecialty(Enum):
     GENERAL_MEDICINE = "General Medicine"
     SAFETY_SUPERVISOR = "Safety Supervisor"
     FACTUAL_ACCURACY = "Factual Accuracy"
+    PEDIATRICS = "Pediatrics"
+    CARDIOLOGY = "Cardiology"
+    PULMONOLOGY = "Pulmonology"
+    NEONATOLOGY = "Neonatology"
+    GENETICS = "Genetics"
