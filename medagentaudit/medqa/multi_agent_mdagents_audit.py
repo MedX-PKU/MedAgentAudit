@@ -316,7 +316,7 @@ class Group:
             "step": "synthesis",
             "audit_result": audit_results_of_neglect_of_contradictions_in_reasoning_process_for_synthesizer
         })
-        case_history["rounds"][-1]["opinions"].append({
+        case_history["rounds"][-1]["synthesis"].append({ # TODO here is different from other mas, accordingly, we need to fix the audit mechanism.
             "agent_id": self.lead_agent.agent_id,
             "specialty": self.lead_agent.specialty,
             "log": {"parsed_output": investigation}
@@ -1035,11 +1035,45 @@ class MDAgentsFramework:
             final_explanation = "Error parsing model response."
         print(f"Advanced Query Final Result: Answer='{final_answer}', Explanation='{final_explanation[:100]}...'")
 
+        # audtit 3.1.1 : Suppression of Correct Minority Views by Incorrect Consensus for decision-maker
+        audit_results_of_suppression_of_correct_minority_views_by_incorrect_consensus_for_decision_maker = self.auditor_agent.audit_suppression_by_majority(
+            question = data_item["question"], options = options, image_path = data_item.get("image_path"), current_agent_id = self.decision_maker_agent.agent_id, answer = final_answer, explanation = final_explanation, case_history = case_history
+        ) # here the discussion_context includes all the domain agents' answers and explanations before this synthesis
+
+        # audit 3.1.2 : Reasoning Distorted by Authority Bias for decision-maker
+        audit_results_of_authority_bias_for_decision_maker = self.auditor_agent.audit_authority_bias(
+            question = data_item["question"], options = options, image_path = data_item.get("image_path"), current_agent_id = self.decision_maker_agent.agent_id, answer = final_answer, explanation = final_explanation, case_history = case_history
+        ) # here the discussion_context must include the role of domain agent and their answer and explanation before this synthesis
+
+        # audit 3.1.3: Neglect of Contradictions in Reasoning Process for decision-maker
+        audit_results_of_neglect_of_contradictions_in_reasoning_process_for_decision_maker = self.auditor_agent.audit_contradictions_during_decision(
+            question = data_item["question"], current_agent_id = self.decision_maker_agent.agent_id, explanation = final_explanation, case_history = case_history
+        ) # here the discussion_context includes all the domain agents' answers and explanations before this synthesis
+
+        audit_round_data["3_1_1_suppression_of_minority_views"].append({
+            "agent_id": self.decision_maker_agent.agent_id,
+            "step": "decision",
+            "audit_result": audit_results_of_suppression_of_correct_minority_views_by_incorrect_consensus_for_decision_maker
+        })
+        audit_round_data["3_1_2_authority_bias"].append({
+            "agent_id": self.decision_maker_agent.agent_id,
+            "step": "decision",
+            "audit_result": audit_results_of_authority_bias_for_decision_maker
+        })
+        audit_round_data["3_1_3_neglect_of_contradictions"].append({
+            "agent_id": self.decision_maker_agent.agent_id,
+            "step": "decision",
+            "audit_result": audit_results_of_neglect_of_contradictions_in_reasoning_process_for_decision_maker
+        })
+
+        audit.append(audit_round_data)
+        case_history['rounds'][-1]['decision'] = {'parsed_output': response_json}
+        case_history["audit"] = audit
         return {
             "predicted_answer": final_answer,
             "explanation": final_explanation,
-            "detailed_log": detailed_log,
             "complexity": ComplexityLevel.ADVANCED.value,
+            "case_history": case_history
         }
     def run_query(self, data_item: Dict) -> Dict:
         qid = data_item["qid"]
