@@ -13,5 +13,4 @@ class AgentType(Enum):
     RECRUITER = "Recruiter"
     SPECIALIST = "Specialist"
     TEAM_LEAD = "Team Lead"
-    COORDINATOR = "Coordinator"
     EXPERT_GATHERER = "Expert Gatherer"
