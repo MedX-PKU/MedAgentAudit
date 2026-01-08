@@ -579,7 +579,7 @@ class MDTConsultation:
                 answer = parsed_output.get("answer", "")
 
                 # audit 2.1.2 domain-specific knowledge activation
-                audit_results_of_domain_specific_knowledge_activation = self.auditor_agent.audit_domain_specific_knowledge_activation(question, image_path, doctor.agent_id, doctor.specialty, answer, explanation)
+                audit_results_of_domain_specific_knowledge_activation = self.auditor_agent.audit_domain_specific_knowledge_activation(question = question, image_path=image_path, agent_id=doctor.agent_id, specialty=doctor.specialty, answer=answer, explanation=explanation)
 
                 if current_round > 1:
                     # audit 2.2.1 Repetition of Initial Views during Collaborative discussion
@@ -692,7 +692,7 @@ class MDTConsultation:
                 review_outcome = "agrees" if review_parsed_output.get("agree", False) else "disagrees"
 
                 # audit 2.1.2 Failure to Activate Specialist Knowledge During Role Execution during Collaborative discussion
-                audit_results_of_domain_specific_knowledge_activation = self.auditor_agent.audit_domain_specific_knowledge_activation(question, doctor.agent_id, doctor.specialty, review_reason)
+                audit_results_of_domain_specific_knowledge_activation = self.auditor_agent.audit_domain_specific_knowledge_activation(question = question, image_path=image_path, agent_id=doctor.agent_id, specialty=doctor.specialty, answer=review_outcome, explanation=review_reason)
 
                 # audit 2.2.1 Repetition of Initial Views during Collaborative discussion 
                 audit_results_repetition_of_initial_views = self.auditor_agent.audit_repetition_of_initial_views(question=question, image_path = image_path, current_agent_id=doctor.agent_id, current_answer = review_outcome, current_explanation=review_reason, case_history=case_history)
