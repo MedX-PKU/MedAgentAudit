@@ -14,3 +14,5 @@ class MedicalSpecialty(Enum):
     PULMONOLOGY = "Pulmonology"
     NEONATOLOGY = "Neonatology"
     GENETICS = "Genetics"
+    RECONCILE = "Reconcile"
+

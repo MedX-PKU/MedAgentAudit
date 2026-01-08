@@ -1,12 +1,5 @@
 """
 medagentboard/medqa/multi_agent_reconcile.py
-
-This module implements the Reconcile framework for multi-model,
-multi-agent discussion. Each agent generates an answer with step-by-step
-reasoning and an estimated confidence level. Then, the agents engage in
-multi-round discussions and a confidence-weighted vote produces the final team answer.
-This version has been modified to include extensive logging for detailed analysis
-of the multi-agent collaboration process.
 """
 from openai import OpenAI
 import os
@@ -16,127 +9,65 @@ from enum import Enum
 from typing import Dict, List, Any, Optional, Union, Tuple
 import argparse
 from tqdm import tqdm
+from pathlib import Path
 import sys
 import traceback
-                    
+
 # Ensure project root is in path
-sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+current_file_path = Path(__file__).resolve()
+current_file_name = Path(__file__).stem
+utils_root = current_file_path.parents[1] / "utils"
+project_root = current_file_path.parents[2]
+sys.path.extend([str(utils_root), str(project_root)])
 
-# Import ColaCare utilities and analysis tools
-from medagentaudit.utils.json_utils import load_json, save_json, preprocess_response_string
-from medagentaudit.utils.encode_image import encode_image
-from medagentaudit.utils.keu import KEU
-from medagentaudit.utils.analysishelper import AnalysisHelperLLM
-from medagentaudit.utils.config import get_config
-from medagentaudit.utils.dual_logger import DualLogger
-from medagentaudit.medqa.multi_agent_colacare_audit import AuditorAgent # We can reuse the AuditorAgent directly
-
+from json_utils import load_json, save_json, preprocess_response_string
+from encode_image import encode_image
+from config import get_config
+from dual_logger import DualLogger
+from auditor_agent import AuditorAgent
+from BaseAgent import BaseAgent
+from agent_type import AgentType
+from medical_specialty import MedicalSpecialty
+from parse_structured_output import parse_structured_output
 
 class DiscussionPhase(Enum):
     """Enumeration of discussion phases in the Reconcile framework."""
     INITIAL = "initial"        # Initial answer generation
     DISCUSSION = "discussion"  # Multi-round discussion
     FINAL = "final"            # Final team answer
-class Spciality(Enum):
-    RECONCILE = "Reconcile"
 
-class ReconcileAgent:
+class ReconcileAgent(BaseAgent):
     """
     An agent participating in the Reconcile framework.
     This version is enhanced for quantitative observation.
     """
     def __init__(self, agent_id: str, model_key: str, config_path: str):
+        super().__init__(agent_id = agent_id, agent_type=AgentType.RECONCILE, model_key=model_key, config_path=config_path)
         """
         Initialize a Reconcile agent.
         """
-        self.agent_id = agent_id
-        self.model_key = model_key
         self.discussion_history = []
         self.memory = []
-        self.specialty = Spciality.RECONCILE
-        self.llm = get_config(config_path=config_path, active_llm=model_key).llm
-
-        self.client = OpenAI(
-            api_key=self.llm.api_key,
-            base_url=self.llm.base_url,
-            timeout=self.llm.timeout
-        )
-        self.model_name = self.llm.model_name
+        self.specialty = MedicalSpecialty.GENERAL_MEDICINE
         print(f"Initialized agent {self.agent_id} with model {self.model_name}")
 
-    def call_llm(self, messages: List[Dict[str, Any]], max_retries: int = 3) -> Tuple[str, Dict[str, Any]]:
-        """
-        Call the LLM with the provided messages and a retry mechanism.
-        Returns the raw response text and a detailed log of the call.
-        """
-        attempt = 0
-        call_log = {
-            "llm_prompt": messages,
-            "llm_raw_response": "",
-            "error_message": ""
-        }
-
-        while attempt < max_retries:
-            try:
-                print(f"Agent {self.agent_id} calling LLM with model {self.model_name} (attempt {attempt+1}/{max_retries})")
-                if hasattr(self.llm, 'reasoning') and self.llm.reasoning: # for model like gpt-5.1
-                    completion = self.client.chat.completions.create( 
-                        model=self.model_name,
-                        messages=messages,
-                        response_format={"type": "json_object"},
-                        reasoning_effort= self.llm.reasoning.effort,
-                        stream= self.llm.stream
-                    )
-                else:
-                    completion = self.client.chat.completions.create( 
-                        model=self.model_name,
-                        messages=messages,
-                        response_format={"type": "json_object"},
-                        stream= self.llm.stream
-                    )
-                if self.llm.stream:
-                    response_chunks = []
-                    for chunk in completion:
-                        if chunk.choices[0].delta.content is not None:
-                            response_chunks.append(chunk.choices[0].delta.content)
-                    response_text = "".join(response_chunks)
-                else:
-                    response_text = completion.choices[0].message.content
-                if not response_text.strip():
-                    raise ValueError("Empty response received from LLM")
-                print(f"Agent {self.agent_id} received response: {response_text[:100]}...")
-
-                call_log["llm_raw_response"] = response_text
-                return response_text, call_log
-            except Exception as e:
-                attempt += 1
-                print(f"Agent {self.agent_id} LLM call attempt {attempt}/{max_retries} failed: {e}")
-                call_log["error_message"] = str(e)
-                if attempt >= max_retries:
-                    raise RuntimeError(f"CRITICAL: Agent {self.agent_id} failed after {max_retries} attempts. Reason: {str(e)}")
-                time.sleep(1)
 
     def generate_initial_response(self,
                                 question: str,
                                 options: Optional[Dict[str, str]] = None,
                                 image_path: Optional[str] = None) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         """
-        Generate an initial response, now including Key Evidential Units (KEUs).
+        Generate an initial response.
         """
         print(f"Agent {self.agent_id} generating initial response")
 
-        # MODIFICATION: System prompt now requires KEU extraction.
         system_message = {
             "role": "system",
             "content": (
-                "You are a medical expert assistant. Analyze the following medical case. "
-                "Your output must be a JSON object with four fields: "
-                "1. 'reasoning': Your detailed step-by-step analysis. "
-                "2. 'answer': Your final conclusion or selected option letter. "
-                "3. 'confidence': Your confidence in the answer, a float between 0.0 and 1.0. "
-                "4. 'keus': A list of key evidential units. Each KEU in the list must be a string representing a "
-                "single, verifiable piece of evidence from the case (e.g., 'A 2cm nodule is visible in the upper "
-                "left lung lobe.', 'The patient's white blood cell count is 15,000/µL.')."
+                "You are a medical expert assistant. Analyze the following medical question "
+                "and provide a clear answer along with detailed step-by-step reasoning. "
+                "Based on your understanding, estimate your confidence in your answer "
+                "on a scale from 0.0 to 1.0, where 1.0 means complete certainty."
             )
         }
 
@@ -159,13 +90,12 @@ class ReconcileAgent:
         prompt_text = (
             f"Case Description:\n{question_text}\n\n"
             "Please provide your complete analysis as a single, well-formatted JSON object "
-            "strictly adhering to the four required fields: 'reasoning', 'answer', 'confidence', and 'keus'."
+            "strictly adhering to the four required fields: 'reasoning', 'answer', 'confidence'."
         )
         user_content.append({"type": "text", "text": prompt_text})
         user_message = {"role": "user", "content": user_content}
 
-        messages = [system_message, user_message]
-        response_text, call_log = self.call_llm(messages)
+        response_text, call_log = self.call_llm(system_message, user_message)
         result, parse_log = self._parse_response(response_text)
 
         step_log = {**call_log, **parse_log}
@@ -175,8 +105,6 @@ class ReconcileAgent:
     def generate_discussion_response(self,
                                   question: str,
                                   discussion_prompt: str,
-                                  keu_list_text: str,
-                                  ccp_text: str,
                                   current_round: int,
                                   options: Optional[Dict[str, str]] = None,
                                   image_path: Optional[str] = None) -> Tuple[Dict[str, Any], Dict[str, Any]]:
@@ -187,21 +115,13 @@ class ReconcileAgent:
 
         own_previous_analysis = self.memory[-1]['response'] if self.memory else {}
 
-        # MODIFICATION: System prompt now requires viewpoint attribution.
         system_message = {
             "role": "system",
             "content": (
-                f"You are a medical expert participating in round {current_round} of a multi-agent discussion. "
-                "Review the summary of your peers' opinions, your previous analysis, and the available evidence. "
-                "Your task is to provide an updated, comprehensive analysis. Your output MUST be a JSON object, including: "
-                "1. 'reasoning': Your detailed textual explanation for your current decision. This MUST reference relevant KEU-IDs. "
-                "2. 'current_viewpoint': Your current final answer after this review (e.g., 'A', 'B'). "
-                "3. 'confidence': Your updated confidence level (0.0 to 1.0). "
-                "4. 'viewpoint_changed': A boolean (true/false) indicating if your 'current_viewpoint' is different from your previous answer. "
-                "5. 'justification_type': A string, must be one of ['evidence_based', 'consensus_based']. "
-                "Choose 'evidence_based' if your decision is primarily driven by specific KEU facts. "
-                "Choose 'consensus_based' if you are primarily aligning with the group's opinion. "
-                "6. 'cited_references': A list of strings containing the KEU-IDs or Agent-IDs that most influenced your decision."
+                "You are a medical expert participating in a multi-agent discussion. "
+                "Review the opinions from other experts, then provide your updated analysis. "
+                "You may change your opinion if others' reasoning convinces you, or defend your position "
+                "with clear explanations. Estimate your confidence in your answer on a scale from 0.0 to 1.0."
             )
         }
 
@@ -221,31 +141,20 @@ class ReconcileAgent:
             options_text = "\n".join([f"{key}: {value}" for key, value in options.items()])
             question_text = f"{question}\n\nOptions:\n{options_text}"
         
-        own_analysis_text = (
-            f"Your Previous Analysis (Answer: {own_previous_analysis.get('answer', 'N/A')}, "
-            f"Confidence: {own_previous_analysis.get('confidence', 0.0):.2f}):\n"
-            f"{own_previous_analysis.get('reasoning', 'No previous reasoning recorded.')}\n"
+
+        # Add question and discussion prompt
+        prompt_text = (
+            f"Original question: {question_text}\n\n"
+            f"Discussion from other experts:\n{discussion_prompt}\n\n"
+            f"Based on this discussion, provide your updated analysis in JSON format with the following fields:\n"
+            f"- 'reasoning': your detailed step-by-step analysis\n"
+            f"- 'answer': your final answer"
         )
 
-        # MODIFICATION: User prompt now includes KEUs and CCPs.
-        prompt_text = (
-            f"Original Question:\n{question_text}\n\n"
-            f"--- YOUR PREVIOUS ANALYSIS ---\n{own_analysis_text}\n"
-            f"--- CURRENT DISCUSSION SUMMARY ---\n{discussion_prompt}\n\n"
-            f"--- AVAILABLE EVIDENCE & CONFLICTS ---\n"
-            f"Key Evidential Units (KEUs):\n{keu_list_text}\n\n"
-            f"Critical Conflict Points (CCPs) to Address:\n{ccp_text if ccp_text else 'None identified.'}\n\n"
-            f"--- YOUR TASK ---\n"
-            f"Note that potential conflicts (CCPs) have been identified; a robust synthesis must acknowledge or resolve these points.\n\n"
-            f"Based on all the information above, provide your updated analysis. Your 'reasoning' MUST reference "
-            f"**CRITICAL INSTRUCTION:** Your task is to synthesize these diverse opinions into a single, coherent analysis. In your 'explanation', you **MUST selectively cite only the most important KEU-IDs** that support your synthesized view. **DO NOT simply list all available KEUs.** Your goal is to demonstrate a deep understanding by building a new, consolidated argument from the strongest evidence (e.g., 'Synthesizing the specialists' views, the consensus leans towards X, primarily supported by the crucial findings in KEU-2 and KEU-5...').\n\n "
-            f"Your response MUST be a single JSON object, strictly adhering to the 6-field structure defined in your system instructions."
-        )
         user_content.append({"type": "text", "text": prompt_text})
         user_message = {"role": "user", "content": user_content}
         
-        messages = [system_message, user_message]
-        response_text, call_log = self.call_llm(messages)
+        response_text, call_log = self.call_llm(system_message, user_message)
         result, parse_log = self._parse_response(response_text, is_discussion=True)
 
         step_log = {**call_log, **parse_log}
@@ -258,44 +167,68 @@ class ReconcileAgent:
         })
         return result, step_log
 
-    def _parse_response(self, response_text: str, is_discussion: bool = False) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    def _parse_response(self, response_text: str) -> Dict[str, Any]:
         """
-        Parse the LLM response into a structured format, handling both initial and discussion structures.
+        Parse the LLM response into a structured format.
+
+        Args:
+            response_text: The raw response text from the LLM
+
+        Returns:
+            A dictionary with reasoning, answer, and confidence
         """
-        parse_log = {"parsing_success": False, "parsing_method": "json.loads"}
         try:
             result = json.loads(preprocess_response_string(response_text))
 
-            # --- Field validation and normalization ---
-            if "reasoning" not in result: result["reasoning"] = "No reasoning provided"
-            
-            # Unify answer field naming
-            if is_discussion:
-                if "current_viewpoint" in result: result["answer"] = result.pop("current_viewpoint")
-                elif "answer" not in result: result["answer"] = ""
-            elif "answer" not in result:
+            # Validate required fields
+            if "reasoning" not in result:
+                result["reasoning"] = "No reasoning provided"
+
+            if "answer" not in result:
                 result["answer"] = ""
 
-            try:
-                result["confidence"] = float(result.get("confidence", 0.0))
-                result["confidence"] = max(0.0, min(1.0, result["confidence"]))
-            except (ValueError, TypeError):
+            if "confidence" not in result:
                 result["confidence"] = 0.0
+            else:
+                # Ensure confidence is a float between 0 and 1
+                try:
+                    result["confidence"] = float(result["confidence"])
+                    result["confidence"] = max(0.0, min(1.0, result["confidence"]))
+                except (ValueError, TypeError):
+                    result["confidence"] = 0.0
 
-            if not is_discussion:
-                if "keus" not in result or not isinstance(result["keus"], list): result["keus"] = []
-            else: # Discussion-specific fields
-                if "viewpoint_changed" not in result: result["viewpoint_changed"] = False
-                if "justification_type" not in result: result["justification_type"] = "unknown"
-                if "cited_references" not in result: result["cited_references"] = []
+            return result
 
-            parse_log["parsing_success"] = True
-            return result, parse_log
         except json.JSONDecodeError:
             print(f"Agent {self.agent_id} failed to parse JSON response: {response_text[:100]}...")
-            parse_log["parsing_method"] = "fallback_manual_extraction"
-            # Fallback for critical fields if JSON parsing fails
-            return {"reasoning": response_text, "answer": "", "confidence": 0.0}, parse_log
+
+            # Attempt to extract with simple parsing
+            reasoning = ""
+            answer = ""
+            confidence = 0.0
+
+            lines = response_text.split('\n')
+            for line in lines:
+                if line.lower().startswith("reasoning:"):
+                    reasoning = line.split(":", 1)[1].strip()
+                elif line.lower().startswith("answer:"):
+                    answer = line.split(":", 1)[1].strip()
+                elif line.lower().startswith("confidence:"):
+                    try:
+                        confidence = float(line.split(":", 1)[1].strip())
+                        confidence = max(0.0, min(1.0, confidence))
+                    except (ValueError, IndexError):
+                        confidence = 0.0
+
+            # If basic parsing doesn't work, use the raw text
+            if not reasoning:
+                reasoning = response_text
+
+            return {
+                "reasoning": reasoning,
+                "answer": answer,
+                "confidence": confidence
+            }
 
 
 class ReconcileCoordinator:
@@ -387,61 +320,60 @@ class ReconcileCoordinator:
     def run_discussion(self,
                       qid: str,
                       question: str,
-                      options: Optional[Dict[str, str]] = None,
-                      image_path: Optional[str] = None) -> Dict[str, Any]:
+                      options: Dict[str, str] | None = None,
+                      image_path: str | None = None) -> Dict[str, Any]:
         """
         Run the complete discussion process with integrated quantitative observation mechanisms.
         """
         print(f"Starting discussion with {len(self.agents)} agents on question: {question}")
         start_time = time.time()
 
-        # MODIFICATION: Initialize audit_trail and other tracking variables
         discussion_history = []
-        audit_trail = {
-            "keus": {},
-            "viewpoints": {agent.agent_id: [] for agent in self.agents},
-            "collaboration_audits": {},
-            "ccps": {}
+        audit = {"rounds": []}
+        audit_round_data = {
+            "round": 1,
+            "2_1_1_role_assignment": [], 
+            "2_1_2_domain_specific_knowledge_activation": [],
+            
+            "2_2_1_repetition_of_initial_views": [],
+            "2_2_2_unresolved_conflicts": [],
+            
+            "3_1_1_suppression_of_minority_views": [],
+            "3_1_2_authority_bias": [],
+            "3_1_3_neglect_of_contradictions": [],
+            "3_2_1_self_contradiction_when_decision": []
         }
-        keu_counter = 0
-        ccp_counter = 0
-        all_unresolved_ccps = []
+        case_history = {"rounds": []}
+        round_data = {"round": 1, "opinions": [], "synthesis": None, "reviews": [], "decision": None} #TODO to see other MAS if has other keys
+        case_history["rounds"].append(round_data)
         doctor_opinions = []
         # === Phase 1: Initial responses ===
         print("Phase 1: Generating initial responses")
         current_answers = []
-        initial_contributions_for_ccp = []
         for agent in self.agents:
-            resp, step_log = agent.generate_initial_response(question, options, image_path) # resp is a dict including 4 keys
-            current_answers.append(resp)
-            doctor_opinions.append({"answer": resp.get("answer", ""), "explanation": resp.get("reasoning", "")})
-            # --- Mechanism 1 & 3: Audit initial response ---
-            explanation = resp.get("reasoning", "")
-            contribution_audit = self.auditor_agent.audit_domain_agent_contribution(question, agent.agent_id, "Specialist", explanation) # Reconcile has no specialties
-            risk_audit = self.auditor_agent.audit_risk_and_quality(agent.agent_id, explanation, image_path=image_path)
-            audit_trail["collaboration_audits"][f"round_0_initial_{agent.agent_id}"] = {**contribution_audit, **risk_audit}
+            resp, step_log = agent.generate_initial_response(question = question, options = options, image_path = image_path)
+            initial_answer = resp.get("answer", "")
+            initial_explanation = resp.get("reasoning", "")
+            opinion_log = {"parsed_output":{
+                "answer": initial_answer,
+                "explanation": initial_explanation,
+            }}
+            doctor_opinions.append(opinion_log["parsed_output"])
+            # audit 2.1.2 domain-specific knowledge activation
+            audit_results_of_domain_specific_knowledge_activation = self.auditor_agent.audit_domain_specific_knowledge_activation(question = question, image_path=image_path, agent_id=agent.agent_id, specialty=agent.specialty, answer=initial_answer, explanation=initial_explanation)
 
-            # --- Mechanism 1: Collect KEUs ---
-            for keu_content in resp.get("keus", []):
-                keu_id = f"KEU-{keu_counter}"
-                new_keu = KEU(keu_id, keu_content, agent.agent_id, 0)
-                audit_trail["keus"][keu_id] = new_keu
-                keu_counter += 1
-
-            # --- Mechanism 2: Log initial viewpoint ---
-            initial_viewpoint = {
-                "step": "round_0_initial",
-                "viewpoint": resp.get("answer"),
-                "viewpoint_changed": False,
-                "justification_type": "initial_analysis",
-                "cited_references": [f"KEU-{i}" for i in range(keu_counter - len(resp.get("keus", [])), keu_counter)]
-            }
-            audit_trail["viewpoints"][agent.agent_id].append(initial_viewpoint)
+            audit_round_data["2_1_2_domain_specific_knowledge_activation"].append({
+                "agent_id": agent.agent_id,
+                "specialty": agent.specialty.value,
+                "step": "analysis",
+                "audit_result": audit_results_of_domain_specific_knowledge_activation
+            })
+            case_history["rounds"][-1]["opinions"].append({
+                "agent_id": agent.agent_id,
+                "specialty": agent.specialty.value,
+                "log": opinion_log 
+            }) # after audit 2.2.1, we log the current opinion in case repetition
             
-            # --- For Mechanism 4 ---
-            full_text = explanation + "\nKey Evidential Units:\n- " + "\n- ".join(resp.get("keus", []))
-            initial_contributions_for_ccp.append({'agent_id': agent.agent_id, 'text': full_text})
-
             discussion_history.append({
                 "phase": DiscussionPhase.INITIAL.value,
                 "agent_id": agent.agent_id, "model_name": agent.model_name,
@@ -449,60 +381,76 @@ class ReconcileCoordinator:
             })
             print(f"Agent {agent.agent_id} initial answer: {resp.get('answer', '')} (conf: {resp.get('confidence', 0.0):.2f})")
 
-        # --- Mechanism 1 & 4 after all initial responses ---
-        all_keus_for_audit = [{"keu_id": k, "content": v.content} for k, v in audit_trail["keus"].items()]
-        if all_keus_for_audit:
-            key_status_map = self.auditor_agent.identify_key_evidential_units(question, doctor_opinions, self.agents, all_keus_for_audit,image_path=image_path)
-            for keu_id, is_key in key_status_map.items():
-                if keu_id in audit_trail["keus"]: audit_trail["keus"][keu_id].is_key = is_key
-
-        initial_ccps = self.auditor_agent.identify_critical_conflicts(initial_contributions_for_ccp, "initial analyses")
-        audit_trail["ccps"][0] = []
-        for ccp in initial_ccps:
-            ccp.update({'ccp_id': f"CCP-{ccp_counter}", 'round_identified': 0, 'status': 'unresolved', 'round_resolved': None})
-            audit_trail["ccps"][0].append(ccp)
-            ccp_counter += 1
-        all_unresolved_ccps.extend(audit_trail["ccps"][0])
-
-        # === Phase 2: Multi-round discussion ===
+        # === Phase 2: Multi-round discussion (Review Phase) ===
         round_num = 0
         consensus_reached = False
         while round_num < self.max_rounds and not consensus_reached:
             round_num += 1
             print(f"Phase 2: Discussion round {round_num}/{self.max_rounds}")
+            if round_num > 1:
+                audit_round_data = {
+                    "round": round_num,
+                    "2_1_1_role_assignment": [], 
+                    "2_1_2_domain_specific_knowledge_activation": [],
+                    
+                    "2_2_1_repetition_of_initial_views": [],
+                    "2_2_2_unresolved_conflicts": [],
+                    
+                    "3_1_1_suppression_of_minority_views": [],
+                    "3_1_2_authority_bias": [],
+                    "3_1_3_neglect_of_contradictions": [],
+                    "3_2_1_self_contradiction_when_decision": []
+                }
+                round_data = {"round": round_num, "opinions": [], "synthesis": None, "reviews": [], "decision": None} #TODO to see other MAS if has other keys
+                case_history["rounds"].append(round_data)
 
-            # --- Prepare prompts with KEU and CCP context ---
             discussion_prompt = self._group_answers(current_answers)
-            keu_list_text = "\n".join([f"- {k}: '{v.content}' (from {v.source_agent})" for k,v in audit_trail["keus"].items()])
-            ccp_text_for_prompt = "\n".join([f"- {c['ccp_id']}: {c['conflict_summary']} (Involves: {', '.join(c['conflicting_agents'])})" for c in all_unresolved_ccps]) if all_unresolved_ccps else ""
 
             new_answers = []
-            discussion_contributions_for_ccp = []
             for agent in self.agents:
                 resp, step_log = agent.generate_discussion_response(
-                    question, discussion_prompt, keu_list_text, ccp_text_for_prompt, round_num, options, image_path
+                    question, discussion_prompt, round_num, options, image_path
                 )
                 new_answers.append(resp)
-                reasoning = resp.get("reasoning", "")
+                explanation = resp.get("reasoning", "")
+                answer = resp.get("answer", "")
+                review_log = {"parsed_output":{
+                    "answer": answer,
+                    "explanation": explanation,
+                }}
+                # audit 2.1.2 Failure to Activate Specialist Knowledge During Role Execution during Collaborative discussion
+                audit_results_of_domain_specific_knowledge_activation = self.auditor_agent.audit_domain_specific_knowledge_activation(question = question, image_path=image_path, agent_id=agent.agent_id, specialty=agent.specialty, answer=answer, explanation=explanation)
+
+                # audit 2.2.1 Repetition of Initial Views during Collaborative discussion 
+                audit_results_repetition_of_initial_views = self.auditor_agent.audit_repetition_of_initial_views(question=question, image_path = image_path, current_agent_id=agent.agent_id, current_answer = answer, current_explanation=explanation, case_history=case_history)
                 
-                # --- Mechanism 1, 2, 3 Audits ---
-                contribution_audit = self.auditor_agent.audit_domain_agent_contribution(question, agent.agent_id, "Specialist", reasoning)
-                risk_audit = self.auditor_agent.audit_risk_and_quality(agent.agent_id, reasoning, image_path=image_path)
-                audit_trail["collaboration_audits"][f"round_{round_num}_discussion_{agent.agent_id}"] = {**contribution_audit, **risk_audit}
-                
-                viewpoint_entry = {
-                    "step": f"round_{round_num}_discussion", "viewpoint": resp.get("answer"),
-                    "viewpoint_changed": resp.get("viewpoint_changed", False),
-                    "justification_type": resp.get("justification_type", "unknown"),
-                    "cited_references": resp.get("cited_references", [])
-                }
-                audit_trail["viewpoints"][agent.agent_id].append(viewpoint_entry)
-                
-                for keu_id, keu in audit_trail["keus"].items():
-                    if keu_id in reasoning or keu.content in reasoning:
-                        keu.cited_by.append({"agent_id": agent.agent_id, "round": round_num, "action": "discussion"})
-                
-                discussion_contributions_for_ccp.append({'agent_id': agent.agent_id, 'text': reasoning})
+                # audit 2.2.2 Unresolved Conflicts during Collaborative discussion
+                audit_results_of_unresolved_conflicts_during_review = self.auditor_agent.audit_unresolved_conflicts_during_Collaboration(question=question, current_agent_id=agent.agent_id, current_answer = answer, current_explanation=explanation, case_history=case_history) 
+
+                audit_round_data["2_1_2_domain_specific_knowledge_activation"].append({
+                    "agent_id": agent.agent_id,
+                    "specialty": agent.specialty.value,
+                    "step": "review",
+                    "audit_result": audit_results_of_domain_specific_knowledge_activation
+                })
+                audit_round_data["2_2_1_repetition_of_initial_views"].append({
+                    "agent_id": agent.agent_id,
+                    "specialty": agent.specialty.value,
+                    "step": "review",
+                    "audit_result": audit_results_repetition_of_initial_views
+                })
+                audit_round_data["2_2_2_unresolved_conflicts"].append({ 
+                    "agent_id": agent.agent_id,
+                    "specialty": agent.specialty.value,
+                    "step": "review",
+                    "audit_result": audit_results_of_unresolved_conflicts_during_review
+                })
+
+                case_history["rounds"][-1]["reviews"].append({ # TODO  this framework does not have synthesis and decision in each round, so we need to modify the audit mechanism accordingly.
+                    "agent_id": agent.agent_id,
+                    "specialty": agent.specialty.value,
+                    "log": review_log 
+                })
 
                 discussion_history.append({
                     "phase": DiscussionPhase.DISCUSSION.value, "round": round_num,
@@ -510,51 +458,7 @@ class ReconcileCoordinator:
                     "response": resp, "interaction_log": step_log
                 })
                 print(f"Agent {agent.agent_id} round {round_num} answer: {resp.get('answer', '')} (conf: {resp.get('confidence', 0.0):.2f})")
-
-            # --- Mechanism 3: Pre-vote quality audit for the final round ---
-            if round_num == self.max_rounds or self._check_consensus(new_answers):
-                 # --- START OF FIX ---
-                 # 为每个智能体创建一个占位符“专科”列表
-                 dummy_specialties = ["Medical Expert"] * len(new_answers)
-                 
-                 # 确保传递给审计函数的数据包含agent_id
-                 # 注意：new_answers 是一个 response 列表，我们需要 agent_id
-                 # 从 discussion_history 的最新一轮中获取 agent_id
-                 final_round_reviews = []
-                 history_this_round = [h for h in discussion_history if h.get("round") == round_num]
-                 for agent_resp in history_this_round:
-                     review_data = agent_resp['response']
-                     review_data['agent_id'] = agent_resp['agent_id'] # 将 agent_id 注入
-                     final_round_reviews.append(review_data)
-
-                 overall_quality_audit = self.auditor_agent.audit_overall_quality_for_decision(
-                     question, 
-                     final_round_reviews, # <--- 传递包含 agent_id 的 review 列表
-                     dummy_specialties    # <--- 传递正确长度的占位符列表
-                 )
-                 audit_trail["collaboration_audits"][f"round_{round_num}_pre_vote_quality"] = overall_quality_audit
-
-            # --- Mechanism 4: Conflict Resolution Tracking ---
-            resolved_this_round_log = []
-            still_unresolved = []
-            current_discussion_text = self._group_answers(new_answers)
-            for ccp in all_unresolved_ccps:
-                was_addressed, resolution_reasoning = self.analysis_llm.check_if_conflict_was_addressed(ccp, current_discussion_text)
-                if was_addressed:
-                    ccp.update({'status': 'resolved', 'round_resolved': round_num, 'resolution_reasoning': resolution_reasoning})
-                    resolved_this_round_log.append(ccp)
-                else:
-                    still_unresolved.append(ccp)
-            all_unresolved_ccps = still_unresolved
-            
-            new_ccps = self.auditor_agent.identify_critical_conflicts(discussion_contributions_for_ccp, f"round {round_num} discussion")
-            audit_trail["ccps"][round_num] = []
-            for ccp in new_ccps:
-                ccp.update({'ccp_id': f"CCP-{ccp_counter}", 'round_identified': round_num, 'status': 'unresolved', 'round_resolved': None})
-                audit_trail["ccps"][round_num].append(ccp)
-                ccp_counter += 1
-            all_unresolved_ccps.extend(new_ccps)
-            
+            audit["rounds"].append(audit_round_data)
             current_answers = new_answers
             consensus_reached = self._check_consensus(current_answers)
             if consensus_reached:
@@ -564,7 +468,8 @@ class ReconcileCoordinator:
         # === Phase 3: Final team answer via weighted vote ===
         print("Phase 3: Generating final team answer")
         final_decision, voting_log = self._weighted_vote(current_answers)
-        
+
+        case_history["audit"] = audit
         discussion_history.append({
             "phase": DiscussionPhase.FINAL.value,
             "final_decision": final_decision, "consensus_reached": consensus_reached,
@@ -576,15 +481,12 @@ class ReconcileCoordinator:
         processing_time = end_time - start_time
         print(f"Discussion completed in {processing_time:.2f} seconds. Final answer: {final_decision}")
 
-        # Finalize and serialize audit_trail for saving
-        if "keus" in audit_trail and audit_trail["keus"]:
-            audit_trail["keus"] = {keu_id: keu.to_dict() for keu_id, keu in audit_trail["keus"].items()}
 
         return {
             "final_decision": final_decision,
             "discussion_history": discussion_history,
             "processing_time": processing_time,
-            "audit_trail": audit_trail, # MODIFICATION: Add the complete audit trail
+            "case_history": case_history
         }
 
 
@@ -616,7 +518,7 @@ def process_item(item: Dict[str, Any],
         "image_path": item.get("image_path"),
         "ground_truth": item.get("answer"),
         "predicted_answer": discussion_result["final_decision"],
-        "case_history": discussion_result,
+        "case_history": discussion_result["case_history"],
     }
     return result
 
@@ -632,27 +534,27 @@ def main():
     parser.add_argument("--max_rounds", type=int, default=3, help="Maximum number of discussion rounds")
     parser.add_argument("--auditor_model", type=str, required=True, help="Model for the AuditorAgent and conflict agent.")
     parser.add_argument("--num_samples", type=int, required=True, help="Number of samples to process.")
-    parser.add_argument("--config_path", type=str, required=True, help="Path to the config.toml file,default = config.toml")
-    parser.add_argument("--test_mode", type=bool, required=True, help="If set, log will be saved to a test-specific directory.")
-
+    parser.add_argument("--time_stamp", type=str, required=True, help="Timestamp for logging purposes")
     args = parser.parse_args()
 
-    test_mode = args.test_mode
-    timestamp = time.strftime("%Y%m%d_%H%M%S")
-    if test_mode:
-        terminal_log_dir = os.path.join("logs", "observation", "test", "terminal_log", "ReConcile", args.dataset)
-    else:
-        terminal_log_dir = os.path.join("logs", "observation", "terminal_log", "ReConcile", args.dataset)
-    os.makedirs(terminal_log_dir, exist_ok=True)
-    terminal_log_file = os.path.join(terminal_log_dir, f"{args.dataset}_{timestamp}_full_terminal.log")
+    dataset_name = args.dataset
+    print(f"Dataset: {dataset_name}")
+
+    qa_type = args.qa_type
+    print(f"QA Format: {qa_type}")
+
+    timestamp = args.time_stamp
+    current_model_name = current_file_name.split("_")[2]
+
+    terminal_log_dir = project_root / "logs" / "observation" / timestamp / current_model_name / dataset_name / "terminal_log"
+    terminal_log_dir.mkdir(parents=True, exist_ok=True)
+    terminal_log_file = terminal_log_dir / f"{dataset_name}_full_terminal.log"
     print(f"!!! Terminal output is being captured to: {terminal_log_file} !!!")
     sys.stdout = DualLogger(terminal_log_file, sys.stdout)
-    sys.stderr = DualLogger(terminal_log_file, sys.stderr) # 捕获报错和tqdm进度条
-    if test_mode:
-        logs_dir = os.path.join("logs", "observation", "test", "ReConcile", args.dataset)
-    else:
-        logs_dir = os.path.join("logs", "observation", "ReConcile", args.dataset)
-    os.makedirs(logs_dir, exist_ok=True)
+    sys.stderr = DualLogger(terminal_log_file, sys.stderr)
+
+    logs_dir = project_root / "logs" / "observation" / timestamp / current_model_name / dataset_name
+    logs_dir.mkdir(parents=True, exist_ok=True)
     print(f"Logs will be saved to: {logs_dir}")
 
     data_path = f"./my_datasets/processed/medqa/{args.dataset}/medqa_{args.qa_type}_test.json"
@@ -681,15 +583,12 @@ def main():
             )
             save_json(result, result_path)
         except Exception as e:
-            # 1. 获取完整的错误堆栈信息字符串
             error_traceback = traceback.format_exc()
             
-            # 2. 打印到终端 (使用 flush=True 确保立即显示)
             print(f"--- FATAL ERROR processing item {qid} ---", flush=True)
             print(error_traceback, flush=True)
             print(f"--- END OF ERROR for {qid} ---", flush=True)
 
-            # 3. 将完整的堆栈信息保存到 JSON 文件中，方便事后分析
             error_log = {
                 "qid": qid,
                 "error_type": str(type(e).__name__), # e.g., "IndexError"
