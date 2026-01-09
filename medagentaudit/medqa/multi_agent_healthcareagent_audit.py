@@ -1,5 +1,5 @@
 """
-medagentboard/medqa/multi_agent_healthcareagent_audit.py
+medagentaudit/medqa/multi_agent_healthcareagent_audit.py
 """
 
 import os
@@ -145,8 +145,14 @@ class HealthcareAgentFramework(BaseAgent):
     A standalone framework that implements the HealthcareAgent methodology,
     now enhanced with quantitative observation mechanisms.
     """
-    def __init__(self, model_key: str, auditor_model_key: str, conflict_model_key: str,config_path: str):
+    def __init__(self, model_key: str, config_path: str, auditor_model_key: str):
         super().__init__(agent_id="healthcare_agent", agent_type=AgentType.HEALTHCARE, config_path=config_path, model_key=model_key)
+        self.auditor_agent = AuditorAgent(
+            agent_id="auditor",
+            agent_type=AgentType.AUDITOR,
+            config_path=config_path,
+            model_key= auditor_model_key
+        )
         print(f"Initialized HealthcareAgentFramework with model: {self.model_name}")
     def _call_llm(self,
                   prompt: str,
@@ -352,11 +358,11 @@ class HealthcareAgentFramework(BaseAgent):
             emergency_feedback = emergency_log['parsed_output'].get("answer", "")
 
             # audit 2.1.2 domain-specific knowledge activation
-            audit_results_of_domain_specific_knowledge_activation = self.auditor_agent.audit_domain_specific_knowledge_activation(question = question, 
-                                                                                                                                  image_path = image_path, 
-                                                                                                                                  agent_id = "SafetyEmergencyAgent", 
+            audit_results_of_domain_specific_knowledge_activation = self.auditor_agent.audit_domain_specific_knowledge_activation(question = question,
+                                                                                                                                  image_path = image_path,
+                                                                                                                                  agent_id = "SafetyEmergencyAgent",
                                                                                                                                   specialty = MedicalSpecialty.SAFETY_SUPERVISOR.value, 
-                                                                                                                                  answer = emergency_feedback,  # TODO ,this need to be fixed in auditor agent,the answer is not a integer but a sentence
+                                                                                                                                  answer = emergency_feedback,
                                                                                                                                   explanation = "")
             # audit 2.2.1 Repetition of Initial Views during Collaborative discussion
             audit_results_of_repetition_of_initial_views = self.auditor_agent.audit_repetition_of_initial_views(question = question, 
@@ -376,6 +382,7 @@ class HealthcareAgentFramework(BaseAgent):
                 "specialty": MedicalSpecialty.SAFETY_SUPERVISOR.value,
                 "log": emergency_log
             })
+            
             # -- Error Review --
             error_prompt = SAFETY_ERROR_PROMPT.format(preliminary_response=preliminary_response_str)
             error_log = self._call_llm(error_prompt)
@@ -413,7 +420,7 @@ class HealthcareAgentFramework(BaseAgent):
                     "agent_id": "SafetyErrorAgent",
                     "specialty": MedicalSpecialty.SAFETY_SUPERVISOR.value,
                     "step": "review",
-                    "audit_result": audit_results_of_domain_specific_knowledge_activation
+                    "audit_result": audit_results_of_repetition_of_initial_views
                 })
             audit_round_data["2_2_2_unresolved_conflicts"].append({ 
                 "agent_id": "SafetyErrorAgent",
@@ -539,8 +546,8 @@ def main():
 
     framework = HealthcareAgentFramework(
         model_key=args.model,
-        auditor_model_key=args.auditor_model,
-        config_path=args.config_path
+        config_path=args.config_path,
+        auditor_model_key=args.auditor_model
     )
 
     for item in tqdm(data[:args.num_samples], desc=f"Running HealthcareAgent on {args.dataset}"):
