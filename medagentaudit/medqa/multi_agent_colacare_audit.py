@@ -483,7 +483,6 @@ class MDTConsultation:
                  doctor_configs: List[Dict] = None,
                  meta_model_key: str = None,
                  auditor_model_key: str = None,
-                 conflict_analysis_model_key: str = None,
                  config_path: str = "config.toml"):
         """
         Initialize MDT consultation.
@@ -505,8 +504,7 @@ class MDTConsultation:
             self.doctor_agents.append(doctor_agent)
 
         self.meta_agent = MetaAgent(agent_id="meta",config_path=config_path, model_key=meta_model_key)
-        self.auditor_agent = AuditorAgent(agent_id="auditor", config_path = config_path, model_key= auditor_model_key)
-
+        self.auditor_agent = AuditorAgent(agent_id="auditor", config_path = config_path, model_key= auditor_model_key, agent_type = AgentType.AUDITOR)
 
         self.doctor_specialties = [doctor.specialty for doctor in self.doctor_agents]
 
@@ -650,8 +648,8 @@ class MDTConsultation:
             ) # here the discussion_context includes all the domain agents' answers and explanations before this synthesis
             if current_round > 1:
                 # audit 3.2.1: Self-Contradiction in Viewpoints Across Rounds for synthesizer
-                audit_results_of_self_contradiction_in_viewpoints_across_rounds_for_synthesizer = self.auditor_agent.audit_self_contradiction_across_rounds(
-                    question = question, answer = synthesis_answer, explanation = synthesis_explanation, case_history = case_history
+                audit_results_of_self_contradiction_in_viewpoints_across_rounds_for_synthesizer = self.auditor_agent.audit_contradictions_across_rounds(
+                    question = question, answer = synthesis_answer, explanation = synthesis_explanation, case_history = case_history, options = options, current_agent_id = self.meta_agent.agent_id
                 ) # here the meta_agent.memory includes all the previous syntheses and decisions
                 audit_round_data["3_2_1_self_contradiction_when_decision"].append({
                     "agent_id": self.meta_agent.agent_id,
@@ -756,7 +754,7 @@ class MDTConsultation:
             if current_round > 1:
                 # audit 3.2.1: Self-Contradiction in Viewpoints Across Rounds for decision-maker
                 audit_results_of_self_contradiction_in_viewpoints_across_rounds_for_decision_maker = self.auditor_agent.audit_contradictions_across_rounds(
-                    question = question, options = options, answer = decision_answer, current_agent_id = self.meta_agent.agent_id, explanation = decision_explanation, case_history = case_history
+                    question = question, options = options, answer = decision_answer, current_agent_id = self.meta_agent.agent_id, explanation = decision_explanation, case_history = case_history, options = options, current_agent_id = self.meta_agent.agent_id
                 ) # here the meta agent's memory includes all its previous decisions and syntheses!
                 audit_round_data["3_2_1_self_contradiction_when_decision"].append({
                     "agent_id": self.meta_agent.agent_id,
@@ -834,7 +832,6 @@ def process_input(item, doctor_configs=None, config_path=None, meta_model_key="q
         doctor_configs=doctor_configs,
         meta_model_key=meta_model_key,
         auditor_model_key=auditor_model_key,
-        conflict_analysis_model_key = conflict_analysis_model_key,
         config_path=config_path
     )
 

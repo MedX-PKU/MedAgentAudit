@@ -411,7 +411,7 @@ class AuditorAgent(BaseAgent):
         except (json.JSONDecodeError, TypeError):
             return {}
 
-    def audit_unresolved_conflicts_during_Collaboration(self, question: str, current_agent_id: str, current_answer: str, current_explanation: str, case_history: Dict) -> List[Dict[str, Any]]:
+    def audit_unresolved_conflicts_during_Collaboration(self, question: str, current_agent_id: str, current_answer: str, current_explanation: str, case_history: Dict) -> Dict[str, Any]:
         """
         audit failure mode 2.2.2
         audit timing: 1. audit domain agents when they review other agents' opinions or when they state their opinions at next round. 2. audit synthesizer and decision-maker at every round.
