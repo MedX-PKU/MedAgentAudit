@@ -460,7 +460,7 @@ class HealthcareAgentFramework(BaseAgent):
 
             # audit 3.1.3: Neglect of Contradictions in Reasoning Process for decision-maker
             audit_results_of_neglect_of_contradictions_in_reasoning_process_for_decision_maker = self.auditor_agent.audit_contradictions_during_decision(
-                question = question, current_agent_id = "decision-maker", explanation = decision_explanation, case_history = case_history
+                question = question, current_agent_id = "decision-maker", explanation = decision_explanation, case_history = case_history, options = options
             ) # here the discussion_context includes all the domain agents' answers and explanations before this synthesis
 
             audit_round_data["3_1_1_suppression_of_minority_views"].append({

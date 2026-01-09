@@ -687,7 +687,7 @@ class AuditorAgent(BaseAgent):
         except (json.JSONDecodeError, TypeError):
             return {}
         
-    def audit_contradictions_during_decision(self, question: str, current_agent_id: str, explanation: str, case_history: Dict) -> Dict[str, Any]:
+    def audit_contradictions_during_decision(self, question: str, current_agent_id: str, explanation: str, case_history: Dict, options: Dict[str, str]) -> Dict[str, Any]:
         """
         audit failure mode: 3.1.3
         audit timing: when decision-maker or synthesizer synthesize opinions or make decisions!
@@ -732,8 +732,12 @@ class AuditorAgent(BaseAgent):
                             f"Review_answer: {past_domain_agent_review_answer}\n\n"
                         )
 
+        options_text = "\nOptions:\n"
+        for key, value in options.items():
+            options_text += f"{key}: {value}\n"
+
         text_content = (
-            f"Medical Question with options: {question}\n\n"
+            f"Medical Question with options: {question}\n{options_text}\n"
             f"--- CURRENT AGENT INPUT TO AUDIT ---\n"
             f"Agent: {current_agent_id}:\n"
             f"Agent Explanation/Review_reason: {explanation}\n\n"

@@ -293,7 +293,7 @@ class Group:
 
         # audit 3.1.3: Neglect of Contradictions in Reasoning Process for synthesizer
         audit_results_of_neglect_of_contradictions_in_reasoning_process_for_synthesizer = self.auditor_agent.audit_contradictions_during_decision(
-            question = self.question_context["question"], current_agent_id = self.lead_agent.agent_id, explanation = synthesis_explanation, case_history = case_history
+            question = self.question_context["question"], current_agent_id = self.lead_agent.agent_id, explanation = synthesis_explanation, case_history = case_history, options = self.question_context.get('options')
         ) # here the discussion_context includes all the domain agents' answers and explanations before this synthesis
 
         audit_round_data["2_2_2_unresolved_conflicts"].append({ 
@@ -665,7 +665,7 @@ class MDAgentsFramework:
             
             # audit 3.1.3: Neglect of Contradictions in Reasoning Process for decision-maker
             audit_results_of_neglect_of_contradictions_in_reasoning_process_for_decision_maker = self.auditor_agent.audit_contradictions_during_decision(
-                question = data_item['question'], current_agent_id = agent.agent_id, explanation = explanation, case_history = case_history
+                question = data_item['question'], current_agent_id = agent.agent_id, explanation = explanation, case_history = case_history, options=options
             ) 
 
             audit_round_data["3_1_3_neglect_of_contradictions"].append({
@@ -866,7 +866,7 @@ class MDAgentsFramework:
 
             # audit 3.1.3: Neglect of Contradictions in Reasoning Process for synthesizer
             audit_results_of_neglect_of_contradictions_in_reasoning_process_for_decision_maker = self.auditor_agent.audit_contradictions_during_decision(
-                question = question, current_agent_id = self.decision_maker_agent.agent_id, explanation = final_explanation, case_history = case_history
+                question = question, current_agent_id = self.decision_maker_agent.agent_id, explanation = final_explanation, case_history = case_history, options = options
             ) # here the discussion_context includes all the domain agents' answers and explanations before this synthesis
             
             audit_round_data["3_1_1_suppression_of_minority_views"].append({
@@ -1047,7 +1047,7 @@ class MDAgentsFramework:
 
         # audit 3.1.3: Neglect of Contradictions in Reasoning Process for decision-maker
         audit_results_of_neglect_of_contradictions_in_reasoning_process_for_decision_maker = self.auditor_agent.audit_contradictions_during_decision(
-            question = data_item["question"], current_agent_id = self.decision_maker_agent.agent_id, explanation = final_explanation, case_history = case_history
+            question = data_item["question"], current_agent_id = self.decision_maker_agent.agent_id, explanation = final_explanation, case_history = case_history, options = options
         ) # here the discussion_context includes all the domain agents' answers and explanations before this synthesis
 
         audit_round_data["3_1_1_suppression_of_minority_views"].append({

@@ -44,7 +44,6 @@ class MACFramework:
                  doctor_model_key: str = DEFAULT_DOCTOR_MODEL,
                  supervisor_model_key: str = DEFAULT_SUPERVISOR_MODEL,
                  auditor_model_key: str = "gemini-2.5-pro",
-                 conflict_model_key: str = "deepseek-reasoner",
                  num_doctors: int = DEFAULT_NUM_DOCTORS,
                  max_rounds: int = DEFAULT_MAX_ROUNDS, 
                  config_path: str = "config.toml"):
@@ -55,7 +54,7 @@ class MACFramework:
 
         self.doctor_agents = [BaseAgent(agent_id=f"doctor_{i+1}", agent_type=AgentType.DOCTOR, model_key=doctor_model_key, config_path=config_path) for i in range(num_doctors)]
         self.supervisor_agent = BaseAgent(agent_id="supervisor", agent_type=AgentType.SUPERVISOR, model_key=supervisor_model_key, config_path=config_path)
-        self.auditor_agent = AuditorAgent(agent_id="auditor", model_key=auditor_model_key, config_path=config_path)
+        self.auditor_agent = AuditorAgent(agent_id="auditor", model_key=auditor_model_key, config_path=config_path, AgentType = AgentType.AUDITOR)
 
         print("MACFramework Initialized with Quantitative Observation Mechanisms.")
 
@@ -198,13 +197,13 @@ class MACFramework:
                         
                         audit_round_data["2_2_1_repetition_of_initial_views"].append({
                             "agent_id": doctor.agent_id,
-                            "specialty": doctor.specialty.value,
+                            "specialty": MedicalSpecialty.GENERAL_MEDICINE.value,
                             "step": "analysis",
                             "audit_result": audit_results_of_repetition_of_initial_views
                         })
                         audit_round_data["2_2_2_unresolved_conflicts"].append({
                             "agent_id": doctor.agent_id,
-                            "specialty": doctor.specialty.value,
+                            "specialty": MedicalSpecialty.GENERAL_MEDICINE.value,
                             "step": "analysis",
                             "audit_result": audit_results_of_unresolved_conflicts_during_Collaboration
                         })
@@ -255,46 +254,42 @@ class MACFramework:
                 decision_explanation = parsed_output.get("explanation", "")
                 # audit 3.1.1: Suppression of Correct Minority Views by Incorrect Consensus during Decision-making for decision-maker
                 audit_results_of_suppression_of_correct_minority_views_by_incorrect_consensus_for_decision_maker = self.auditor_agent.audit_suppression_by_majority(
-                    question = data_item["question"], options = data_item.get("options"), image_path = data_item.get("image_path"), current_agent_id = self.meta_agent.agent_id, answer = decision_answer, explanation = decision_explanation, case_history = case_history
+                    question = data_item["question"], options = data_item.get("options"), image_path = data_item.get("image_path"), current_agent_id = self.supervisor_agent.agent_id, answer = decision_answer, explanation = decision_explanation, case_history = case_history
                 ) # here the discussion_context includes all the domain agents' answers and explanations before this decision
 
                 # audit 3.1.2: Reasoning Distorted by Authority Bias for decision-maker
                 audit_results_of_authority_bias_for_decision_maker = self.auditor_agent.audit_authority_bias(
-                    question = data_item["question"], options = data_item.get("options"), image_path = data_item.get("image_path"), current_agent_id = self.meta_agent.agent_id, explanation = decision_explanation, case_history = case_history
+                    question = data_item["question"], options = data_item.get("options"), image_path = data_item.get("image_path"), current_agent_id = self.supervisor_agent.agent_id, explanation = decision_explanation, case_history = case_history, answer = decision_answer
                 ) # here the discussion_context must include the role of domain agent and their answer and explanation before this decision
 
                 # audit 3.1.3: Neglect of Contradictions in Reasoning Process for decision-maker
                 audit_results_of_neglect_of_contradictions_in_reasoning_process_for_decision_maker = self.auditor_agent.audit_contradictions_during_decision(
-                    question = data_item["question"], current_agent_id = self.meta_agent.agent_id, explanation = decision_explanation, case_history = case_history
+                    question = data_item["question"], current_agent_id = self.supervisor_agent.agent_id, explanation = decision_explanation, case_history = case_history, options = data_item.get("options")
                 ) # here the discussion_context includes all the domain agents' answers and explanations before this decision
                 
                 if round_num > 1 :
                     # audit 3.2.1: Self-Contradiction in Viewpoints Across Rounds for decision-maker
                     audit_results_of_self_contradiction_in_viewpoints_across_rounds_for_decision_maker = self.auditor_agent.audit_contradictions_across_rounds(
-                        question = data_item["question"], options = data_item.get("options"), answer = decision_answer, current_agent_id = self.meta_agent.agent_id, explanation = decision_explanation, case_history = case_history
+                        question = data_item["question"], options = data_item.get("options"), answer = decision_answer, current_agent_id = self.supervisor_agent.agent_id, explanation = decision_explanation, case_history = case_history
                     ) # here the meta agent's memory includes all its previous decisions and syntheses!
                     audit_round_data["3_2_1_self_contradiction_when_decision"].append({
-                        "agent_id": self.meta_agent.agent_id,
-                        "specialty": self.meta_agent.specialty.value,
+                        "agent_id": self.supervisor_agent.agent_id,
                         "step": "decision",
                         "audit_result": audit_results_of_self_contradiction_in_viewpoints_across_rounds_for_decision_maker
                     })
 
                 audit_round_data["3_1_1_suppression_of_minority_views"].append({
-                    "agent_id": self.meta_agent.agent_id,
-                    "specialty": self.meta_agent.specialty.value,
+                    "agent_id": self.supervisor_agent.agent_id,
                     "step": "decision",
                     "audit_result": audit_results_of_suppression_of_correct_minority_views_by_incorrect_consensus_for_decision_maker
                 })
                 audit_round_data["3_1_2_authority_bias"].append({
-                    "agent_id": self.meta_agent.agent_id,
-                    "specialty": self.meta_agent.specialty.value,
+                    "agent_id": self.supervisor_agent.agent_id,
                     "step": "decision",
                     "audit_result": audit_results_of_authority_bias_for_decision_maker
                 })
                 audit_round_data["3_1_3_neglect_of_contradictions"].append({
-                    "agent_id": self.meta_agent.agent_id,
-                    "specialty": self.meta_agent.specialty.value,
+                    "agent_id": self.supervisor_agent.agent_id,
                     "step": "decision",
                     "audit_result": audit_results_of_neglect_of_contradictions_in_reasoning_process_for_decision_maker
                 })
@@ -403,7 +398,6 @@ def main():
         doctor_model_key=args.doctor_model,
         supervisor_model_key=args.supervisor_model,
         auditor_model_key=args.auditor_model,
-        conflict_model_key=args.auditor_model,
         num_doctors=args.num_doctors,
         max_rounds=args.max_rounds,
         config_path = args.config_path

@@ -644,7 +644,7 @@ class MDTConsultation:
 
             # audit 3.1.3: Neglect of Contradictions in Reasoning Process for synthesizer
             audit_results_of_neglect_of_contradictions_in_reasoning_process_for_synthesizer = self.auditor_agent.audit_contradictions_during_decision(
-                question = question, current_agent_id = self.meta_agent.agent_id, explanation = synthesis_explanation, case_history = case_history
+                question = question, current_agent_id = self.meta_agent.agent_id, explanation = synthesis_explanation, case_history = case_history, options = options
             ) # here the discussion_context includes all the domain agents' answers and explanations before this synthesis
             if current_round > 1:
                 # audit 3.2.1: Self-Contradiction in Viewpoints Across Rounds for synthesizer
@@ -749,7 +749,7 @@ class MDTConsultation:
 
             # audit 3.1.3: Neglect of Contradictions in Reasoning Process for decision-maker
             audit_results_of_neglect_of_contradictions_in_reasoning_process_for_decision_maker = self.auditor_agent.audit_contradictions_during_decision(
-                question = question, current_agent_id = self.meta_agent.agent_id, explanation = decision_explanation, case_history = case_history
+                question = question, current_agent_id = self.meta_agent.agent_id, explanation = decision_explanation, case_history = case_history, options = options
             ) # here the discussion_context includes all the domain agents' answers and explanations before this decision
             if current_round > 1:
                 # audit 3.2.1: Self-Contradiction in Viewpoints Across Rounds for decision-maker
