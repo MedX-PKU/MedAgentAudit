@@ -1,5 +1,5 @@
 '''
-medagentaudit/medqa/utils/auditor_agent.py
+medagentaudit/utils/auditor_agent.py
 '''
 from openai import OpenAI
 import json
@@ -427,6 +427,7 @@ class AuditorAgent(BaseAgent):
         domain_agent_past_history_opinions_text = ""
         domain_agent_past_history_reviews_text = ""
         synthesizer_opinions_text = ""
+        decision_maker_opinions_text = ""
 
         if "rounds" in case_history and case_history["rounds"]:
             for r in case_history["rounds"]:
@@ -462,6 +463,15 @@ class AuditorAgent(BaseAgent):
                         f"Synthesizer Answer: {past_synthesizer_answer}\n"
                         f"Synthesizer Explanation: {past_synthesizer_explanation}\n\n"
                     )
+                if r.get("decision"): # not any MAS has the decision stage (ReConcile just makes decisions basing on voting)
+                    decision_maker_opinions_text += f"\n--- [Round {round_num}] ---\n"
+                    past_decision_maker_answer = r["decision"]["parsed_output"].get("answer", "N/A")
+                    past_decision_maker_explanation = r["decision"]["parsed_output"].get("explanation", "N/A")
+                    decision_maker_opinions_text += (
+                        f"Decision Maker Answer: {past_decision_maker_answer}\n"
+                        f"Decision Maker Explanation: {past_decision_maker_explanation}\n\n"
+                    )
+                
         text_content = (
             f"Medical Question: {question}\n\n"
             f"--- CURRENT AGENT INPUT TO AUDIT ---\n"
@@ -473,6 +483,7 @@ class AuditorAgent(BaseAgent):
             f"Past history of domain agents' answers and explanations: {domain_agent_past_history_opinions_text}\n"
             f"Past history of domain agents' reviews and reasons: {domain_agent_past_history_reviews_text}\n\n"
             f"Past synthesizer's answers and explanations: {synthesizer_opinions_text}\n\n"
+            f"Past decision-maker's answers and explanations: {decision_maker_opinions_text}\n\n"
         )
         user_content.append({
             "type":"text",

@@ -54,7 +54,7 @@ class MACFramework:
 
         self.doctor_agents = [BaseAgent(agent_id=f"doctor_{i+1}", agent_type=AgentType.DOCTOR, model_key=doctor_model_key, config_path=config_path) for i in range(num_doctors)]
         self.supervisor_agent = BaseAgent(agent_id="supervisor", agent_type=AgentType.SUPERVISOR, model_key=supervisor_model_key, config_path=config_path)
-        self.auditor_agent = AuditorAgent(agent_id="auditor", model_key=auditor_model_key, config_path=config_path, AgentType = AgentType.AUDITOR)
+        self.auditor_agent = AuditorAgent(agent_id="auditor", model_key=auditor_model_key, config_path=config_path, agent_type = AgentType.AUDITOR)
 
         print("MACFramework Initialized with Quantitative Observation Mechanisms.")
 
@@ -189,10 +189,10 @@ class MACFramework:
                         audit_results_of_repetition_of_initial_views = self.auditor_agent.audit_repetition_of_initial_views(question = data_item["question"], image_path=data_item.get("image_path"), current_agent_id=doctor.agent_id, current_answer = parsed_output["answer"], current_explanation=parsed_output["explanation"], case_history=case_history) 
 
                         # audit 2.2.2 Unresolved Conflicts during Collaborative discussion
-                        audit_results_of_unresolved_conflicts_during_Collaboration = self.auditor_agent.audit_unresolved_conflicts_during_Collaboration(question = data_item["question"], 
-                                                                                                                                                        current_agent_id=doctor.agent_id, 
-                                                                                                                                                        current_answer = parsed_output["answer"], 
-                                                                                                                                                        current_explanation=parsed_output["explanation"], 
+                        audit_results_of_unresolved_conflicts_during_Collaboration = self.auditor_agent.audit_unresolved_conflicts_during_Collaboration(question = data_item["question"],
+                                                                                                                                                        current_agent_id=doctor.agent_id,
+                                                                                                                                                        current_answer = parsed_output["answer"],
+                                                                                                                                                        current_explanation=parsed_output["explanation"],
                                                                                                                                                         case_history=case_history)
                         
                         audit_round_data["2_2_1_repetition_of_initial_views"].append({
