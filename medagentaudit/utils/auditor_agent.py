@@ -1,3 +1,6 @@
+'''
+medagentaudit/medqa/utils/auditor_agent.py
+'''
 from openai import OpenAI
 import json
 from typing import Dict, Any, List, Tuple
@@ -353,23 +356,27 @@ class AuditorAgent(BaseAgent):
                 domain_agent_past_history_opinions_text += f"\n--- [Round {round_num}] ---\n"
                 domain_agent_past_history_reviews_text += f"\n--- [Round {round_num}] ---\n"
                 for opinion in r.get("opinions", []):
-                    domain_agent_id= ["doctor"] # to be expanded for different mas
-                    if any (da in opinion.get("agent_id","").lower() for da in domain_agent_id): # opinion.get("agent_id","").lower() maybe doctor_1 , ... 
-                        past_domain_agent_answer = opinion["log"]["parsed_output"].get("answer", "N/A")
-                        past_domain_agent_explanation = opinion["log"]["parsed_output"].get("explanation", "N/A")
-                        domain_agent_past_history_opinions_text += (
-                            f"Agent ID: {opinion.get('agent_id', 'N/A')}\n"
-                            f"Answer: {past_domain_agent_answer}\n"
-                            f"Explanation: {past_domain_agent_explanation}\n\n"
+                    domain_agent_id= opinion.get("agent_id","").lower()
+                    past_domain_agent_answer = opinion["log"]["parsed_output"].get("answer", "N/A")
+                    past_domain_agent_explanation = opinion["log"]["parsed_output"].get("explanation", "N/A")
+                    domain_agent_past_history_opinions_text += (
+                        f"Agent ID: {domain_agent_id}\n"
+                        f"Answer: {past_domain_agent_answer}\n"
+                        f"Explanation: {past_domain_agent_explanation}\n\n"
                         )
-                if r.get("reviews"): # not any MAS has the review stage
+                # not every MAS has the review stage, 
+                # in healthcare MAS, reviews only have "answer" key.
+                if r.get("reviews"):
                     for review in r["reviews"]:
                         past_domain_agent_review = review["log"]["parsed_output"].get("agree", "N/A")
                         past_domain_agent_review_reason = review["log"]["parsed_output"].get("reason", "N/A")
+                        # fix healthcare MAS review output format issue
+                        past_domain_agent_review_answer = review["log"]["parsed_output"].get("answer", "N/A")
                         domain_agent_past_history_reviews_text += (
                             f"Agent ID: {review.get('agent_id', 'N/A')}\n"
                             f"Review_result: {past_domain_agent_review}\n"
                             f"Review_reason: {past_domain_agent_review_reason}\n\n"
+                            f"Review_answer: {past_domain_agent_review_answer}\n\n"
                         )
 
         if image_path:
@@ -427,24 +434,25 @@ class AuditorAgent(BaseAgent):
                 domain_agent_past_history_opinions_text += f"\n--- [Round {round_num}] ---\n"
 
                 for opinion in r.get("opinions", []):
-                    domain_agent_id= ["doctor"] # to be expanded for different mas
-                    if any (da in opinion.get("agent_id","").lower() for da in domain_agent_id): # opinion.get("agent_id","").lower() maybe doctor_1 , ... 
-                        past_domain_agent_answer = opinion["log"]["parsed_output"].get("answer", "N/A")
-                        past_domain_agent_explanation = opinion["log"]["parsed_output"].get("explanation", "N/A")
-                        domain_agent_past_history_opinions_text += (
-                            f"Agent ID: {opinion.get('agent_id', 'N/A')}\n"
-                            f"Answer: {past_domain_agent_answer}\n"
-                            f"Explanation: {past_domain_agent_explanation}\n\n"
-                        )
+                    domain_agent_id= opinion.get("agent_id","").lower()
+                    past_domain_agent_answer = opinion["log"]["parsed_output"].get("answer", "N/A")
+                    past_domain_agent_explanation = opinion["log"]["parsed_output"].get("explanation", "N/A")
+                    domain_agent_past_history_opinions_text += (
+                        f"Agent ID: {domain_agent_id}\n"
+                        f"Answer: {past_domain_agent_answer}\n"
+                        f"Explanation: {past_domain_agent_explanation}\n\n"
+                    )
                 if r.get("reviews"): # not any MAS has the review stage
                     domain_agent_past_history_reviews_text += f"\n--- [Round {round_num}] ---\n"
                     for review in r["reviews"]:
                         past_domain_agent_review = review["log"]["parsed_output"].get("agree", "N/A")
                         past_domain_agent_review_reason = review["log"]["parsed_output"].get("reason", "N/A")
+                        past_domain_agent_review_answer = review["log"]["parsed_output"].get("answer", "N/A")
                         domain_agent_past_history_reviews_text += (
                             f"Agent ID: {review.get('agent_id', 'N/A')}\n"
                             f"Review_result: {past_domain_agent_review}\n"
-                            f"Review_reason: {past_domain_agent_review_reason}\n\n"
+                            f"Review_reason: {past_domain_agent_review_reason}\n"
+                            f"Review_answer: {past_domain_agent_review_answer}\n\n"
                         )
                 if r.get("synthesis"): # not any MAS has the synthesis stage
                     synthesizer_opinions_text += f"\n--- [Round {round_num}] ---\n"
@@ -511,24 +519,25 @@ class AuditorAgent(BaseAgent):
                 domain_agent_past_history_opinions_text += f"\n--- [Round {round_num}] ---\n"
 
                 for opinion in r.get("opinions", []):
-                    domain_agent_id= ["doctor"] # to be expanded for different mas
-                    if any (da in opinion.get("agent_id","").lower() for da in domain_agent_id): # opinion.get("agent_id","").lower() maybe doctor_1 , ... 
-                        past_domain_agent_answer = opinion["log"]["parsed_output"].get("answer", "N/A")
-                        past_domain_agent_explanation = opinion["log"]["parsed_output"].get("explanation", "N/A")
-                        domain_agent_past_history_opinions_text += (
-                            f"Agent ID: {opinion.get('agent_id', 'N/A')}\n"
-                            f"Answer: {past_domain_agent_answer}\n"
-                            f"Explanation: {past_domain_agent_explanation}\n\n"
-                        )
+                    domain_agent_id= opinion.get("agent_id","").lower()
+                    past_domain_agent_answer = opinion["log"]["parsed_output"].get("answer", "N/A")
+                    past_domain_agent_explanation = opinion["log"]["parsed_output"].get("explanation", "N/A")
+                    domain_agent_past_history_opinions_text += (
+                        f"Agent ID: {domain_agent_id}\n"
+                        f"Answer: {past_domain_agent_answer}\n"
+                        f"Explanation: {past_domain_agent_explanation}\n\n"
+                    )
                 if r.get("reviews"): # not any MAS has the review stage
                     domain_agent_past_history_reviews_text += f"\n--- [Round {round_num}] ---\n"
                     for review in r["reviews"]:
                         past_domain_agent_review = review["log"]["parsed_output"].get("agree", "N/A")
                         past_domain_agent_review_reason = review["log"]["parsed_output"].get("reason", "N/A")
+                        past_domain_agent_review_answer = review["log"]["parsed_output"].get("answer", "N/A")
                         domain_agent_past_history_reviews_text += (
                             f"Agent ID: {review.get('agent_id', 'N/A')}\n"
                             f"Review_result: {past_domain_agent_review}\n"
-                            f"Review_reason: {past_domain_agent_review_reason}\n\n"
+                            f"Review_reason: {past_domain_agent_review_reason}\n"
+                            f"Review_answer: {past_domain_agent_review_answer}\n\n"
                         )
                 if r.get("synthesis"): # not any MAS has the synthesis stage
                     synthesizer_opinions_text += f"\n--- [Round {round_num}] ---\n"
@@ -610,24 +619,25 @@ class AuditorAgent(BaseAgent):
                 domain_agent_past_history_opinions_text += f"\n--- [Round {round_num}] ---\n"
 
                 for opinion in r.get("opinions", []):
-                    domain_agent_id= ["doctor"] # to be expanded for different mas
-                    if any (da in opinion.get("agent_id","").lower() for da in domain_agent_id): # opinion.get("agent_id","").lower() maybe doctor_1 , ... 
-                        past_domain_agent_answer = opinion["log"]["parsed_output"].get("answer", "N/A")
-                        past_domain_agent_explanation = opinion["log"]["parsed_output"].get("explanation", "N/A")
-                        domain_agent_past_history_opinions_text += (
-                            f"Agent ID: {opinion.get('agent_id', 'N/A')} (Role: {opinion.get('specialty', 'N/A')})\n"
-                            f"Answer: {past_domain_agent_answer}\n"
-                            f"Explanation: {past_domain_agent_explanation}\n\n"
-                        )
+                    domain_agent_id= opinion.get("agent_id","").lower()
+                    past_domain_agent_answer = opinion["log"]["parsed_output"].get("answer", "N/A")
+                    past_domain_agent_explanation = opinion["log"]["parsed_output"].get("explanation", "N/A")
+                    domain_agent_past_history_opinions_text += (
+                        f"Agent ID: {domain_agent_id} (Role: {opinion.get('specialty', 'N/A')})\n"
+                        f"Answer: {past_domain_agent_answer}\n"
+                        f"Explanation: {past_domain_agent_explanation}\n\n"
+                    )
                 if r.get("reviews"): # not any MAS has the review stage
                     domain_agent_past_history_reviews_text += f"\n--- [Round {round_num}] ---\n"
                     for review in r["reviews"]:
                         past_domain_agent_review = review["log"]["parsed_output"].get("agree", "N/A")
                         past_domain_agent_review_reason = review["log"]["parsed_output"].get("reason", "N/A")
+                        past_domain_agent_review_answer = review["log"]["parsed_output"].get("answer", "N/A")
                         domain_agent_past_history_reviews_text += (
                             f"Agent ID: {review.get('agent_id', 'N/A')} (Role: {review.get('specialty', 'N/A')})\n"
                             f"Review_result: {past_domain_agent_review}\n"
-                            f"Review_reason: {past_domain_agent_review_reason}\n\n"
+                            f"Review_reason: {past_domain_agent_review_reason}\n"
+                            f"Review_answer: {past_domain_agent_review_answer}\n\n"
                         )
                 if r.get("synthesis"): # not any MAS has the synthesis stage
                     synthesizer_opinions_text += f"\n--- [Round {round_num}] ---\n"
@@ -701,12 +711,11 @@ class AuditorAgent(BaseAgent):
                 domain_agent_past_history_opinions_text += f"\n--- [Round {round_num}] ---\n"
 
                 for opinion in r.get("opinions", []):
-                    domain_agent_id= ["doctor"] # to be expanded for different mas
-                    if any (da in opinion.get("agent_id","").lower() for da in domain_agent_id): # opinion.get("agent_id","").lower() maybe doctor_1 , ... 
-                        past_domain_agent_answer = opinion["log"]["parsed_output"].get("answer", "N/A")
-                        past_domain_agent_explanation = opinion["log"]["parsed_output"].get("explanation", "N/A")
-                        domain_agent_past_history_opinions_text += (
-                            f"Agent ID: {opinion.get('agent_id', 'N/A')} (Role: {opinion.get('specialty', 'N/A')})\n"
+                    domain_agent_id= opinion.get("agent_id","").lower()
+                    past_domain_agent_answer = opinion["log"]["parsed_output"].get("answer", "N/A")
+                    past_domain_agent_explanation = opinion["log"]["parsed_output"].get("explanation", "N/A")
+                    domain_agent_past_history_opinions_text += (
+                        f"Agent ID: {domain_agent_id} (Role: {opinion.get('specialty', 'N/A')})\n"
                             f"Answer: {past_domain_agent_answer}\n"
                             f"Explanation: {past_domain_agent_explanation}\n\n"
                         )
@@ -715,10 +724,12 @@ class AuditorAgent(BaseAgent):
                     for review in r["reviews"]:
                         past_domain_agent_review = review["log"]["parsed_output"].get("agree", "N/A")
                         past_domain_agent_review_reason = review["log"]["parsed_output"].get("reason", "N/A")
+                        past_domain_agent_review_answer = review["log"]["parsed_output"].get("answer", "N/A")
                         domain_agent_past_history_reviews_text += (
                             f"Agent ID: {review.get('agent_id', 'N/A')} (Role: {review.get('specialty', 'N/A')})\n"
                             f"Review_result: {past_domain_agent_review}\n"
-                            f"Review_reason: {past_domain_agent_review_reason}\n\n"
+                            f"Review_reason: {past_domain_agent_review_reason}\n"
+                            f"Review_answer: {past_domain_agent_review_answer}\n\n"
                         )
 
         text_content = (

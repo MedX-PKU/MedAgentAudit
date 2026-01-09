@@ -376,22 +376,22 @@ class HealthcareAgentFramework(BaseAgent):
                                                                                                                                             current_agent_id="SafetyEmergencyAgent", 
                                                                                                                                             current_answer = emergency_feedback, 
                                                                                                                                             current_explanation="", 
-                                                                                                                                            case_history=case_history) 
+                                                                                                                                            case_history=case_history)
             case_history["rounds"][-1]["reviews"].append({
                 "agent_id": "SafetyEmergencyAgent",
                 "specialty": MedicalSpecialty.SAFETY_SUPERVISOR.value,
                 "log": emergency_log
             })
-            
+
             # -- Error Review --
             error_prompt = SAFETY_ERROR_PROMPT.format(preliminary_response=preliminary_response_str)
             error_log = self._call_llm(error_prompt)
             error_feedback = error_log['parsed_output'].get("answer", "")
 
             # audit 2.1.2 domain-specific knowledge activation
-            audit_results_of_domain_specific_knowledge_activation = self.auditor_agent.audit_domain_specific_knowledge_activation(question = question, 
+            audit_results_of_domain_specific_knowledge_activation = self.auditor_agent.audit_domain_specific_knowledge_activation(question = question,
                                                                                                                                   image_path = image_path, 
-                                                                                                                                  agent_id = "SafetyErrorAgent", 
+                                                                                                                                  agent_id = "SafetyErrorAgent",
                                                                                                                                   specialty = MedicalSpecialty.SAFETY_SUPERVISOR.value, 
                                                                                                                                   answer = error_feedback, 
                                                                                                                                   explanation = "")
@@ -431,7 +431,7 @@ class HealthcareAgentFramework(BaseAgent):
 
             case_history["rounds"][-1]["reviews"].append({
                 "agent_id": "SafetyErrorAgent",
-                "specialty": MedicalSpecialty.FACTUAL_ACCURACY.value,
+                "specialty": MedicalSpecialty.SAFETY_SUPERVISOR.value,
                 "log": error_log
             })
             # === STEP 5: Final Modification ("Modify" Phase as Meta Agent) ===
@@ -450,12 +450,12 @@ class HealthcareAgentFramework(BaseAgent):
 
             # audtit 3.1.1 : Suppression of Correct Minority Views by Incorrect Consensus for decision-maker
             audit_results_of_suppression_of_correct_minority_views_by_incorrect_consensus_for_decision_maker = self.auditor_agent.audit_suppression_by_majority(
-                question = question, options = options_text, image_path = image_path, current_agent_id = "decision-maker", answer = decision_answer, explanation = decision_explanation, case_history = case_history
+                question = question, options = options, image_path = image_path, current_agent_id = "decision-maker", answer = decision_answer, explanation = decision_explanation, case_history = case_history
             ) # here the discussion_context includes all the domain agents' answers and explanations before this synthesis
 
             # audit 3.1.2 : Reasoning Distorted by Authority Bias for decision-maker
             audit_results_of_authority_bias_for_decision_maker = self.auditor_agent.audit_authority_bias(
-                question = question, options = options_text, image_path = image_path, current_agent_id = "decision-maker", answer = decision_answer, explanation = decision_explanation, case_history = case_history
+                question = question, options = options, image_path = image_path, current_agent_id = "decision-maker", answer = decision_answer, explanation = decision_explanation, case_history = case_history
             ) # here the discussion_context must include the role of domain agent and their answer and explanation before this synthesis
 
             # audit 3.1.3: Neglect of Contradictions in Reasoning Process for decision-maker
