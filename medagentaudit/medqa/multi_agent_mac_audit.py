@@ -140,7 +140,7 @@ class MACFramework:
                     "3_1_3_neglect_of_contradictions": [],
                     "3_2_1_self_contradiction_when_decision": []
                 }
-                round_data = {"round": round_num, "opinions": [], "synthesis": None, "reviews": [], "decision": None, "supervisor_response": None}
+                round_data = {"round": round_num, "opinions": [], "synthesis": None, "reviews": [], "decision": None}
                 case_history["rounds"].append(round_data)
 
                 # --- 1 Doctors' Turn ---

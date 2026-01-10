@@ -343,7 +343,7 @@ class ReconcileCoordinator:
             "3_2_1_self_contradiction_when_decision": []
         }
         case_history = {"rounds": []}
-        round_data = {"round": 1, "opinions": [], "synthesis": None, "reviews": [], "decision": None} #TODO to see other MAS if has other keys
+        round_data = {"round": 1, "opinions": [], "synthesis": None, "reviews": [], "decision": None}
         case_history["rounds"].append(round_data)
         doctor_opinions = []
         # === Phase 1: Initial responses ===
@@ -400,7 +400,7 @@ class ReconcileCoordinator:
                     "3_1_3_neglect_of_contradictions": [],
                     "3_2_1_self_contradiction_when_decision": []
                 }
-                round_data = {"round": round_num, "opinions": [], "synthesis": None, "reviews": [], "decision": None} #TODO to see other MAS if has other keys
+                round_data = {"round": round_num, "opinions": [], "synthesis": None, "reviews": [], "decision": None}
                 case_history["rounds"].append(round_data)
 
             discussion_prompt = self._group_answers(current_answers)
