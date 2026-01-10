@@ -1,5 +1,5 @@
 """
-medagentboard/medqa/multi_agent_medagent.py
+MEDAGENTAUDIT-CODE/medagentaudit/medqa/multi_agent_medagent_audit.py
 """
 
 from openai import OpenAI
@@ -171,8 +171,6 @@ Your output must be a JSON object with three fields:
         except json.JSONDecodeError:
             print(f"Doctor {self.agent_id} response is not valid JSON, using fallback parsing")
             result = parse_structured_output(response_text)
-            if "keus" not in result: # 确保fallback时也有keus字段
-                result["keus"] = []
         
         return {"parsed_output": result, "llm_input": {"system_message": system_msg, "user_message": user_msg}}
 
@@ -190,7 +188,7 @@ Your output must be a JSON object with three fields:
             "role": "system",
             "content": f"You are a doctor specializing in {self.specialty.value}, participating in a multidisciplinary team consultation. "
                       f"Review the synthesis report and determine if you agree with it. "
-                      f"Your output should be in JSON format, including 'agree' (yes/no), 'explanation' (rationale for your decision), "
+                      f"Your output should be in JSON format, including 'agree' (yes/no), 'reason' (rationale for your decision), "
                       f"and 'answer' (your suggested answer if you disagree) fields."
         }
 
@@ -204,10 +202,10 @@ Your output must be a JSON object with three fields:
 
         text_content = {
             "type": "text",
-            "text": f"Synthesized report:\n{synthesis.get('explanation', '')}\n\n"
+            "text": f"Synthesized report:\n{synthesis.get('reason', '')}\n\n"
                     f"Do you agree with this synthesized report? Provide your response in JSON format with the following fields:\n"
                     f"1. 'agree': 'yes' or 'no'\n"
-                    f"2. 'explanation': Your rationale for agreeing or disagreeing\n"
+                    f"2. 'reason': Your rationale for agreeing or disagreeing\n"
                     f"3. 'answer': If you disagree, provide your suggested answer"
         }
         user_content.append(text_content)
@@ -259,7 +257,7 @@ class MetaAgent(BaseAgent):
                            doctor_opinions: List[Dict[str, Any]],
                            doctor_specialties: List[MedicalSpecialty],
                            current_round: int,
-                           options: Optional[Dict[str, str]] = None) -> Dict[str, Any]:
+                           options: Dict[str, str] | None = None) -> Dict[str, Any]:
         """
         Synthesize multiple doctors' opinions. Returns a full log.
         """
@@ -288,8 +286,6 @@ Your output should be in JSON format, including 'explanation' (synthesized reaso
         user_message = {
             "role": "user",
             "content": f"Round {current_round} Doctors' Opinions:\n{opinions_text}\n\n"
-                      f"Please synthesize these opinions into a coherent summary report. Do NOT provide a final answer or conclusion. "
-                      f"Provide your synthesis in JSON format with ONLY an 'explanation' field that summarizes the medical perspectives."
         }
 
         response_text, system_msg, user_msg = self.call_llm(system_message, user_message)
@@ -415,8 +411,8 @@ class MDTConsultation:
     def run_consultation(self,
                             qid: str,
                             question: str,
-                            options: Optional[Dict[str, str]] = None,
-                            image_path: Optional[str] = None) -> Dict[str, Any]:
+                            options: Dict[str, str] | None = None,
+                            image_path: str | None = None) -> Dict[str, Any]:
             start_time = time.time()
             print(f"Starting MDT consultation for case {qid}")
             print(f"Question: {question}")
@@ -514,7 +510,7 @@ class MDTConsultation:
                 
                 # audit 2.2.2 : Unresolved Conflicts during Collaborative discussion for synthesizer
                 audit_results_of_unresolved_conflicts_during_collaboration_for_synthesizer = self.auditor_agent.audit_unresolved_conflicts_during_Collaboration(
-                    question=question, current_agent_id=self.meta_agent.agent_id, current_explanation=synthesis_explanation, case_history=case_history
+                    question=question, current_agent_id=self.meta_agent.agent_id, current_explanation=synthesis_explanation, case_history=case_history, current_answer=synthesis_answer
                 )
 
                 # audtit 3.1.1 : Suppression of Correct Minority Views by Incorrect Consensus for synthesizer
@@ -533,8 +529,8 @@ class MDTConsultation:
                 ) # here the discussion_context includes all the domain agents' answers and explanations before this synthesis
                 if current_round > 1:
                     # audit 3.2.1: Self-Contradiction in Viewpoints Across Rounds for synthesizer
-                    audit_results_of_self_contradiction_in_viewpoints_across_rounds_for_synthesizer = self.auditor_agent.audit_self_contradiction_across_rounds(
-                        question = question, answer = synthesis_answer, explanation = synthesis_explanation, case_history = case_history
+                    audit_results_of_self_contradiction_in_viewpoints_across_rounds_for_synthesizer = self.auditor_agent.audit_contradictions_across_rounds(
+                        question = question, answer = synthesis_answer, explanation = synthesis_explanation, case_history = case_history, current_agent_id = self.meta_agent.agent_id, options = options
                     ) # here the meta_agent.memory includes all the previous syntheses and decisions
                     audit_round_data["3_2_1_self_contradiction_when_decision"].append({
                         "agent_id": self.meta_agent.agent_id,
@@ -570,7 +566,7 @@ class MDTConsultation:
                     print(f"Doctor {i+1} ({doctor.specialty.value}) reviewing synthesis")
                     review_log = doctor.review_synthesis(question, synthesis_parsed_output, options, image_path)
                     review_parsed_output = review_log["parsed_output"]
-                    review_explanation = review_parsed_output.get("explanation", "")
+                    review_reason = review_parsed_output.get("reason", "")
                     review_outcome = review_parsed_output.get("answer", "")
                     doctor_review_parsed_outputs.append(review_parsed_output)
                     agrees = review_parsed_output.get('agree', False)
@@ -578,13 +574,13 @@ class MDTConsultation:
                     print(f"Doctor {i+1} agrees: {'Yes' if agrees else 'No'}")
 
                     # audit 2.1.2 Failure to Activate Specialist Knowledge During Role Execution during Collaborative discussion
-                    audit_results_of_domain_specific_knowledge_activation = self.auditor_agent.audit_domain_specific_knowledge_activation(question = question, image_path=image_path, agent_id=doctor.agent_id, specialty=doctor.specialty, answer=review_outcome, explanation=review_explanation) #TODO we unite the reason/ explanation to explanation, we need to modify the logic in auditor.
+                    audit_results_of_domain_specific_knowledge_activation = self.auditor_agent.audit_domain_specific_knowledge_activation(question = question, image_path=image_path, agent_id=doctor.agent_id, specialty=doctor.specialty, answer=review_outcome, explanation=review_reason)
 
-                    # audit 2.2.1 Repetition of Initial Views during Collaborative discussion 
-                    audit_results_repetition_of_initial_views = self.auditor_agent.audit_repetition_of_initial_views(question=question, image_path = image_path, current_agent_id=doctor.agent_id, current_answer = review_outcome, current_explanation=review_explanation, case_history=case_history)
+                    # audit 2.2.1 Repetition of Initial Views during Collaborative discussion
+                    audit_results_repetition_of_initial_views = self.auditor_agent.audit_repetition_of_initial_views(question=question, image_path = image_path, current_agent_id=doctor.agent_id, current_answer = review_outcome, current_explanation=review_reason, case_history=case_history)
                     
                     # audit 2.2.2 Unresolved Conflicts during Collaborative discussion
-                    audit_results_of_unresolved_conflicts_during_review = self.auditor_agent.audit_unresolved_conflicts_during_Collaboration(question=question, current_agent_id=doctor.agent_id, current_answer = review_outcome, current_explanation=review_explanation, case_history=case_history) 
+                    audit_results_of_unresolved_conflicts_during_review = self.auditor_agent.audit_unresolved_conflicts_during_Collaboration(question=question, current_agent_id=doctor.agent_id, current_answer = review_outcome, current_explanation=review_reason, case_history=case_history)
 
                     audit_round_data["2_1_2_domain_specific_knowledge_activation"].append({
                         "agent_id": doctor.agent_id,
@@ -611,10 +607,10 @@ class MDTConsultation:
                         "log": review_log 
                     })
 
-                
+                audit["rounds"].append(audit_round_data)
+
                 consensus_reached = all_agree
-                case_history["rounds"].append(round_data)
-                
+
                 if consensus_reached or current_round == self.max_rounds:
                     print("Proceeding to final decision.")
                     
@@ -671,9 +667,9 @@ class MDTConsultation:
                 "audit_result": audit_results_of_neglect_of_contradictions_in_reasoning_process_for_decision_maker
             })
 
-            audit["rounds"].append(audit_round_data)
+
             case_history["rounds"][-1]["decision"] = final_decision_log
-            case_history
+            case_history["audit"] = audit
             # Finalize history
             processing_time = time.time() - start_time
             
@@ -685,34 +681,6 @@ class MDTConsultation:
             })
 
             return case_history
-
-def parse_structured_output(response_text: str) -> Dict[str, str]:
-    """Fallback parser for non-JSON LLM responses."""
-    try:
-        return json.loads(preprocess_response_string(response_text))
-    except json.JSONDecodeError:
-        lines = response_text.strip().split('\n')
-        result = {}
-        current_key = None
-        for line in lines:
-            if ":" in line:
-                key, value = line.split(":", 1)
-                key = key.strip().lower().replace("'", "").replace('"', '')
-                if key in ['explanation', 'answer', 'reason', 'current_viewpoint', 'justification_type']:
-                    current_key = key
-                    result[current_key] = value.strip()
-                else: # Handle nested content
-                    if current_key: result[current_key] += " " + line.strip()
-            else:
-                if current_key: result[current_key] += " " + line.strip()
-        
-        # Ensure mandatory fields
-        if "explanation" not in result and "reason" not in result:
-            result["explanation"] = response_text
-        if "answer" not in result and "current_viewpoint" not in result:
-            result["answer"] = "No answer found"
-        return result
-
 
 def process_input(item, model_key, meta_model_key, decision_model_key, auditor_model_key, conflict_analysis_model_key, config_path):
     """Process a single input data item."""
