@@ -1,5 +1,5 @@
 '''
-MEDAGENTAUDIT-CODE/medagentaudit/utils/auditor_agent.py
+[2025NM] MEDAGENTAUDIT-CODE/medagentaudit/utils/auditor_agent.py
 '''
 from openai import OpenAI
 import json
@@ -297,7 +297,7 @@ class AuditorAgent(BaseAgent):
         except (json.JSONDecodeError, TypeError):
             return {}
 
-    def audit_domain_specific_knowledge_activation(self, question: str, answer: str, agent_id: str, specialty, explanation: str, image_path: str | None) -> Dict[str, Any]:
+    def audit_domain_specific_knowledge_activation(self, question: str, answer: str, agent_id: str, specialty, explanation: str, image_path: str | None, case_history: dict | None = None) -> Dict[str, Any]:
         """
         audit failure mode 2.1.2
         after domain agent give their initial response, or review others' opinions, we need to audit whether they activate the domain specific knowledge (2.1.2)
@@ -315,12 +315,24 @@ class AuditorAgent(BaseAgent):
                 "type":"image_url",
                 "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}
             })
-        text_content = (
-            f"Medical Question: {question}\n\n"
-            f"Agent: {agent_id}, (Assigned Specialty: {specialty_name})\n\n"
-            f"Answer: {answer}\n\n"
-            f"Agent Explanation: {explanation}\n\n"
-        )
+        # add the extra inquiry question for healthcare MAS
+        if case_history and case_history["rounds"][1]["inquiry"]:
+            inquiry_question_lst = case_history["rounds"][0]["inquiry"]["parsed_output"].get("questions", ["no inquiry questions"])
+            inquiry_questions = " ; ".join(inquiry_question_lst)
+            text_content = (
+                f"Medical Question: {question}\n\n"
+                f"Additional Inquiry Questions: {inquiry_questions}\n\n"
+                f"Agent: {agent_id}, (Assigned Specialty: {specialty_name})\n\n"
+                f"Answer: {answer}\n\n"
+                f"Agent Explanation: {explanation}\n\n"
+            )
+        else:
+            text_content = (
+                f"Medical Question: {question}\n\n"
+                f"Agent: {agent_id}, (Assigned Specialty: {specialty_name})\n\n"
+                f"Answer: {answer}\n\n"
+                f"Agent Explanation: {explanation}\n\n"
+            )
         user_content.append({
             "type":"text",
             "text": text_content
@@ -378,7 +390,6 @@ class AuditorAgent(BaseAgent):
                             f"Review_reason: {past_domain_agent_review_reason}\n\n"
                             f"Review_answer: {past_domain_agent_review_answer}\n\n"
                         )
-
         if image_path:
             base64_image = encode_image(image_path)
             image_url_content = {
@@ -386,17 +397,35 @@ class AuditorAgent(BaseAgent):
                 "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"},
             }
             user_content.append(image_url_content)
-        text_content = (
-            f"Medical Question: {question}\n\n"
-            f"--- CURRENT AGENT INPUT TO AUDIT ---\n" 
-            f"Agent: {current_agent_id}:\n"
-            f"Agent Answer: {current_answer}\n"
-            f"Agent Explanation/Review_reason: {current_explanation}\n\n"
-            f"---------------------------------------------\n\n"
-            f"--- INTERACTION HISTORY (Previous Rounds) ---\n"
-            f"Past history of domain agents' answers and explanations: {domain_agent_past_history_opinions_text}\n"
-            f"Past history of domain agents' reviews and reasons: {domain_agent_past_history_reviews_text}\n\n"
-        )
+
+        if case_history.get("rounds") and case_history["rounds"][0].get("inquiry"):
+            inquiry_question_lst = case_history["rounds"][0]["inquiry"]["parsed_output"].get("questions", ["no inquiry questions"])
+            inquiry_questions = " ; ".join(inquiry_question_lst)
+            text_content = (
+                f"Medical Question: {question}\n\n"
+                f"Additional Inquiry Questions: {inquiry_questions}\n\n"
+                f"--- CURRENT AGENT INPUT TO AUDIT ---\n" 
+                f"Agent: {current_agent_id}:\n"
+                f"Agent Answer: {current_answer}\n"
+                f"Agent Explanation/Review_reason: {current_explanation}\n\n"
+                f"---------------------------------------------\n\n"
+                f"--- INTERACTION HISTORY (Previous Rounds) ---\n"
+                f"Past history of domain agents' answers and explanations: {domain_agent_past_history_opinions_text}\n"
+                f"Past history of domain agents' reviews and reasons: {domain_agent_past_history_reviews_text}\n\n"
+            )
+        else:
+            text_content = (
+                f"Medical Question: {question}\n\n"
+                f"--- CURRENT AGENT INPUT TO AUDIT ---\n" 
+                f"Agent: {current_agent_id}:\n"
+                f"Agent Answer: {current_answer}\n"
+                f"Agent Explanation/Review_reason: {current_explanation}\n\n"
+                f"---------------------------------------------\n\n"
+                f"--- INTERACTION HISTORY (Previous Rounds) ---\n"
+                f"Past history of domain agents' answers and explanations: {domain_agent_past_history_opinions_text}\n"
+                f"Past history of domain agents' reviews and reasons: {domain_agent_past_history_reviews_text}\n\n"
+            )
+
         user_content.append({
             "type":"text",
             "text":text_content
@@ -483,20 +512,37 @@ class AuditorAgent(BaseAgent):
                         f"Decision Maker Answer: {past_decision_maker_answer}\n"
                         f"Decision Maker Explanation: {past_decision_maker_explanation}\n\n"
                     )
-                
-        text_content = (
-            f"Medical Question: {question}\n\n"
-            f"--- CURRENT AGENT INPUT TO AUDIT ---\n"
-            f"Agent: {current_agent_id}:\n"
-            f"Agent Answer: {current_answer}\n"
-            f"Agent Explanation/Review_reason: {current_explanation}\n\n"
-            f"---------------------------------------------\n\n"
-            f"--- INTERACTION HISTORY (Previous Rounds) ---\n"
-            f"Past history of domain agents' answers and explanations: {domain_agent_past_history_opinions_text}\n"
-            f"Past history of domain agents' reviews and reasons: {domain_agent_past_history_reviews_text}\n\n"
-            f"Past synthesizer's answers and explanations: {synthesizer_opinions_text}\n\n"
-            f"Past decision-maker's answers and explanations: {decision_maker_opinions_text}\n\n"
-        )
+        if case_history.get("rounds") and case_history["rounds"][0].get("inquiry"):
+            inquiry_question_lst = case_history["rounds"][0]["inquiry"]["parsed_output"].get("questions", ["no inquiry questions"])
+            inquiry_questions = " ; ".join(inquiry_question_lst)
+            text_content = (
+                f"Medical Question: {question}\n\n"
+                f"Additional Inquiry Questions: {inquiry_questions}\n\n"
+                f"--- CURRENT AGENT INPUT TO AUDIT ---\n"
+                f"Agent: {current_agent_id}:\n"
+                f"Agent Answer: {current_answer}\n"
+                f"Agent Explanation/Review_reason: {current_explanation}\n\n"
+                f"---------------------------------------------\n\n"
+                f"--- INTERACTION HISTORY (Previous Rounds) ---\n"
+                f"Past history of domain agents' answers and explanations: {domain_agent_past_history_opinions_text}\n"
+                f"Past history of domain agents' reviews and reasons: {domain_agent_past_history_reviews_text}\n\n"
+                f"Past synthesizer's answers and explanations: {synthesizer_opinions_text}\n\n"
+                f"Past decision-maker's answers and explanations: {decision_maker_opinions_text}\n\n"
+            )
+        else:
+            text_content = (
+                f"Medical Question: {question}\n\n"
+                f"--- CURRENT AGENT INPUT TO AUDIT ---\n"
+                f"Agent: {current_agent_id}:\n"
+                f"Agent Answer: {current_answer}\n"
+                f"Agent Explanation/Review_reason: {current_explanation}\n\n"
+                f"---------------------------------------------\n\n"
+                f"--- INTERACTION HISTORY (Previous Rounds) ---\n"
+                f"Past history of domain agents' answers and explanations: {domain_agent_past_history_opinions_text}\n"
+                f"Past history of domain agents' reviews and reasons: {domain_agent_past_history_reviews_text}\n\n"
+                f"Past synthesizer's answers and explanations: {synthesizer_opinions_text}\n\n"
+                f"Past decision-maker's answers and explanations: {decision_maker_opinions_text}\n\n"
+            )
         user_content.append({
             "type":"text",
             "text":text_content
@@ -595,20 +641,37 @@ class AuditorAgent(BaseAgent):
         options_text = "\nOptions:\n"
         for key, value in options.items():
             options_text += f"{key}: {value}\n"
-
-        text_content = (
-            f"Medical Question with options: {question}\n{options_text}\n\n"
-            f"--- CURRENT AGENT INPUT TO AUDIT ---\n"
-            f"Agent: {current_agent_id}:\n"
-            f"Agent Answer: {answer}\n"
-            f"Agent Explanation/Review_reason: {explanation}\n\n"
-            f"---------------------------------------------\n\n"
-            f"--- INTERACTION HISTORY (Previous Rounds) ---\n"
-            f"Past history of domain agents' answers and explanations: {domain_agent_past_history_opinions_text}\n"
-            f"Past history of domain agents' reviews and reasons: {domain_agent_past_history_reviews_text}\n\n"
-            f"Past synthesizer's answers and explanations: {synthesizer_opinions_text}\n\n"
-            f"Past decision-maker's answers and explanations: {decision_opinions_text}\n\n"
-        )
+        if case_history.get("rounds") and case_history["rounds"][0].get("inquiry"):
+            inquiry_question_lst = case_history["rounds"][0]["inquiry"]["parsed_output"].get("questions", ["no inquiry questions"])
+            inquiry_questions = " ; ".join(inquiry_question_lst)
+            text_content = (
+                f"Medical Question with options: {question}\n{options_text}\n\n"
+                f"Additional Inquiry Questions: {inquiry_questions}\n\n"
+                f"--- CURRENT AGENT INPUT TO AUDIT ---\n"
+                f"Agent: {current_agent_id}:\n"
+                f"Agent Answer: {answer}\n"
+                f"Agent Explanation/Review_reason: {explanation}\n\n"
+                f"---------------------------------------------\n\n"
+                f"--- INTERACTION HISTORY (Previous Rounds) ---\n"
+                f"Past history of domain agents' answers and explanations: {domain_agent_past_history_opinions_text}\n"
+                f"Past history of domain agents' reviews and reasons: {domain_agent_past_history_reviews_text}\n\n"
+                f"Past synthesizer's answers and explanations: {synthesizer_opinions_text}\n\n"
+                f"Past decision-maker's answers and explanations: {decision_opinions_text}\n\n"
+            )
+        else:
+            text_content = (
+                f"Medical Question with options: {question}\n{options_text}\n\n"
+                f"--- CURRENT AGENT INPUT TO AUDIT ---\n"
+                f"Agent: {current_agent_id}:\n"
+                f"Agent Answer: {answer}\n"
+                f"Agent Explanation/Review_reason: {explanation}\n\n"
+                f"---------------------------------------------\n\n"
+                f"--- INTERACTION HISTORY (Previous Rounds) ---\n"
+                f"Past history of domain agents' answers and explanations: {domain_agent_past_history_opinions_text}\n"
+                f"Past history of domain agents' reviews and reasons: {domain_agent_past_history_reviews_text}\n\n"
+                f"Past synthesizer's answers and explanations: {synthesizer_opinions_text}\n\n"
+                f"Past decision-maker's answers and explanations: {decision_opinions_text}\n\n"
+            )
         user_content.append({
             "type":"text",
             "text":text_content
@@ -707,20 +770,37 @@ class AuditorAgent(BaseAgent):
         options_text = "\nOptions:\n"
         for key, value in options.items():
             options_text += f"{key}: {value}\n"
-
-        text_content = (
-            f"Medical Question with options: {question}\n{options_text}\n\n"
-            f"--- CURRENT AGENT INPUT TO AUDIT ---\n"
-            f"Agent: {current_agent_id}:\n"
-            f"Agent Answer: {answer}\n"
-            f"Agent Explanation/Review_reason: {explanation}\n\n"
-            f"---------------------------------------------\n\n"
-            f"--- INTERACTION HISTORY (Previous Rounds) ---\n"
-            f"Past history of domain agents' answers and explanations: {domain_agent_past_history_opinions_text}\n"
-            f"Past history of domain agents' reviews and reasons: {domain_agent_past_history_reviews_text}\n\n"
-            f"Past synthesizer's answers and explanations: {synthesizer_opinions_text}\n\n"
-            f"Past decision-maker's answers and explanations: {decision_opinions_text}\n\n"
-        )
+        if case_history.get("rounds") and case_history["rounds"][0].get("inquiry"):
+            inquiry_question_lst = case_history["rounds"][0]["inquiry"]["parsed_output"].get("questions", ["no inquiry questions"])
+            inquiry_questions = " ; ".join(inquiry_question_lst)
+            text_content = (
+                f"Medical Question with options: {question}\n{options_text}\n\n"
+                f"Additional Inquiry Questions: {inquiry_questions}\n\n"
+                f"--- CURRENT AGENT INPUT TO AUDIT ---\n"
+                f"Agent: {current_agent_id}:\n"
+                f"Agent Answer: {answer}\n"
+                f"Agent Explanation/Review_reason: {explanation}\n\n"
+                f"---------------------------------------------\n\n"
+                f"--- INTERACTION HISTORY (Previous Rounds) ---\n"
+                f"Past history of domain agents' answers and explanations: {domain_agent_past_history_opinions_text}\n"
+                f"Past history of domain agents' reviews and reasons: {domain_agent_past_history_reviews_text}\n\n"
+                f"Past synthesizer's answers and explanations: {synthesizer_opinions_text}\n\n"
+                f"Past decision-maker's answers and explanations: {decision_opinions_text}\n\n"
+            )
+        else:
+            text_content = (
+                f"Medical Question with options: {question}\n{options_text}\n\n"
+                f"--- CURRENT AGENT INPUT TO AUDIT ---\n"
+                f"Agent: {current_agent_id}:\n"
+                f"Agent Answer: {answer}\n"
+                f"Agent Explanation/Review_reason: {explanation}\n\n"
+                f"---------------------------------------------\n\n"
+                f"--- INTERACTION HISTORY (Previous Rounds) ---\n"
+                f"Past history of domain agents' answers and explanations: {domain_agent_past_history_opinions_text}\n"
+                f"Past history of domain agents' reviews and reasons: {domain_agent_past_history_reviews_text}\n\n"
+                f"Past synthesizer's answers and explanations: {synthesizer_opinions_text}\n\n"
+                f"Past decision-maker's answers and explanations: {decision_opinions_text}\n\n"
+            )
         user_content.append({
             "type":"text",
             "text":text_content
@@ -783,9 +863,12 @@ class AuditorAgent(BaseAgent):
         options_text = "\nOptions:\n"
         for key, value in options.items():
             options_text += f"{key}: {value}\n"
-
-        text_content = (
+        if case_history.get("rounds") and case_history["rounds"][0].get("inquiry"):
+            inquiry_question_lst = case_history["rounds"][0]["inquiry"]["parsed_output"].get("questions", ["no inquiry questions"])
+            inquiry_questions = " ; ".join(inquiry_question_lst)
+            text_content = (
             f"Medical Question with options: {question}\n{options_text}\n"
+            f"Additional Inquiry Questions: {inquiry_questions}\n\n"
             f"--- CURRENT AGENT INPUT TO AUDIT ---\n"
             f"Agent: {current_agent_id}:\n"
             f"Agent Explanation/Review_reason: {explanation}\n\n"
@@ -794,6 +877,17 @@ class AuditorAgent(BaseAgent):
             f"Past history of domain agents' answers and explanations: {domain_agent_past_history_opinions_text}\n"
             f"Past history of domain agents' reviews and reasons: {domain_agent_past_history_reviews_text}\n\n"
         )
+        else:
+            text_content = (
+                f"Medical Question with options: {question}\n{options_text}\n"
+                f"--- CURRENT AGENT INPUT TO AUDIT ---\n"
+                f"Agent: {current_agent_id}:\n"
+                f"Agent Explanation/Review_reason: {explanation}\n\n"
+                f"---------------------------------------------\n\n"
+                f"--- INTERACTION HISTORY (Previous Rounds) ---\n"
+                f"Past history of domain agents' answers and explanations: {domain_agent_past_history_opinions_text}\n"
+                f"Past history of domain agents' reviews and reasons: {domain_agent_past_history_reviews_text}\n\n"
+            )
         user_content.append({
             "type":"text",
             "text":text_content

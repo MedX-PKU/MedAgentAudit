@@ -1,6 +1,6 @@
 """
-medagentboard/medqa/multi_agent_reconcile.py
-"""
+[2025NM] MEDAGENTAUDIT-CODE/medagentaudit/medqa/multi_agent_reconcile_audit.py
+""" 
 from openai import OpenAI
 import os
 import json
@@ -22,7 +22,7 @@ sys.path.extend([str(utils_root), str(project_root)])
 
 from json_utils import load_json, save_json, preprocess_response_string
 from encode_image import encode_image
-from config import get_config
+from config import get_config  
 from dual_logger import DualLogger
 from auditor_agent import AuditorAgent
 from BaseAgent import BaseAgent
@@ -155,7 +155,7 @@ class ReconcileAgent(BaseAgent):
         user_message = {"role": "user", "content": user_content}
         
         response_text, call_log = self.call_llm(system_message, user_message)
-        result, parse_log = self._parse_response(response_text, is_discussion=True)
+        result, parse_log = self._parse_response(response_text)
 
         step_log = {**call_log, **parse_log}
         step_log["discussion_context_provided"] = discussion_prompt
@@ -241,8 +241,7 @@ class ReconcileCoordinator:
         """
         self.agents = [ReconcileAgent(agent_id=cfg["agent_id"], model_key=cfg["model_key"], config_path=config_path) for cfg in agent_configs]
         self.max_rounds = max_rounds
-        self.auditor_agent = AuditorAgent(agent_id="auditor", model_key=auditor_model_key, config_path=config_path)
-        self.analysis_llm = AnalysisHelperLLM(model_key=conflict_analysis_model_key,config_path=config_path)
+        self.auditor_agent = AuditorAgent(agent_id="auditor", model_key=auditor_model_key, config_path=config_path, agent_type=AgentType.AUDITOR)
         print(f"Initialized ReconcileCoordinator with {len(self.agents)} agents, max_rounds={max_rounds}")
 
     def _group_answers(self, answers: List[Dict[str, Any]]) -> str:
@@ -446,10 +445,10 @@ class ReconcileCoordinator:
                     "audit_result": audit_results_of_unresolved_conflicts_during_review
                 })
 
-                case_history["rounds"][-1]["reviews"].append({ # TODO  this framework does not have synthesis and decision in each round, so we need to modify the audit mechanism accordingly.
+                case_history["rounds"][-1]["reviews"].append({
                     "agent_id": agent.agent_id,
                     "specialty": agent.specialty.value,
-                    "log": review_log 
+                    "log": review_log
                 })
 
                 discussion_history.append({
@@ -534,6 +533,7 @@ def main():
     parser.add_argument("--max_rounds", type=int, default=3, help="Maximum number of discussion rounds")
     parser.add_argument("--auditor_model", type=str, required=True, help="Model for the AuditorAgent and conflict agent.")
     parser.add_argument("--num_samples", type=int, required=True, help="Number of samples to process.")
+    parser.add_argument("--config_path", type=str, default="config.toml", help="Path to config file")
     parser.add_argument("--time_stamp", type=str, required=True, help="Timestamp for logging purposes")
     args = parser.parse_args()
 

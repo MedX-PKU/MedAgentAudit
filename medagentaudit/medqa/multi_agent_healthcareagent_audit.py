@@ -241,7 +241,7 @@ class HealthcareAgentFramework(BaseAgent):
             "3_2_1_self_contradiction_when_decision": []
         }
 
-        round_data = {"round": 1, "opinions": [], "synthesis": None, "reviews": [], "decision": None, "plan": None, "inquiry": None}
+        round_data = {"round": 1, "opinions": [], "synthesis": None, "reviews": [], "decision": None, "plan": None, "inquiry": None} 
         case_history["rounds"].append(round_data)
         options_text = ""
         if options:
