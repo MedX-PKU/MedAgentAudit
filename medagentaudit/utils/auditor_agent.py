@@ -1,5 +1,5 @@
 '''
-medagentaudit/utils/auditor_agent.py
+MEDAGENTAUDIT-CODE/medagentaudit/utils/auditor_agent.py
 '''
 from openai import OpenAI
 import json
@@ -456,13 +456,25 @@ class AuditorAgent(BaseAgent):
                             f"Review_answer: {past_domain_agent_review_answer}\n\n"
                         )
                 if r.get("synthesis"): # not any MAS has the synthesis stage
-                    synthesizer_opinions_text += f"\n--- [Round {round_num}] ---\n"
-                    past_synthesizer_answer = r["synthesis"]["parsed_output"].get("answer", "N/A")
-                    past_synthesizer_explanation = r["synthesis"]["parsed_output"].get("explanation", "N/A")
-                    synthesizer_opinions_text += (
-                        f"Synthesizer Answer: {past_synthesizer_answer}\n"
-                        f"Synthesizer Explanation: {past_synthesizer_explanation}\n\n"
-                    )
+                    if isinstance(r["synthesis"], list):
+                        synthesizer_opinions_text += f"\n--- [Round {round_num} - Group Reports] ---\n"
+                        for synth_item in r["synthesis"]:
+                            synth_log = synth_item.get("log", {}).get("parsed_output", {})
+                            past_ans = synth_log.get("answer", "N/A")
+                            past_expl = synth_log.get("explanation", "N/A")
+                            agent_id = synth_item.get("agent_id", "Unknown Lead")
+                            synthesizer_opinions_text += (
+                                f"Group Lead ({agent_id}) Answer: {past_ans}\n"
+                                f"Group Lead Explanation: {past_expl}\n\n"
+                            )
+                    elif isinstance(r["synthesis"], dict):
+                        synthesizer_opinions_text += f"\n--- [Round {round_num}] ---\n"
+                        past_synthesizer_answer = r["synthesis"]["parsed_output"].get("answer", "N/A")
+                        past_synthesizer_explanation = r["synthesis"]["parsed_output"].get("explanation", "N/A")
+                        synthesizer_opinions_text += (
+                            f"Synthesizer Answer: {past_synthesizer_answer}\n"
+                            f"Synthesizer Explanation: {past_synthesizer_explanation}\n\n"
+                        )
                 if r.get("decision"): # not any MAS has the decision stage (ReConcile just makes decisions basing on voting)
                     decision_maker_opinions_text += f"\n--- [Round {round_num}] ---\n"
                     past_decision_maker_answer = r["decision"]["parsed_output"].get("answer", "N/A")
@@ -551,13 +563,26 @@ class AuditorAgent(BaseAgent):
                             f"Review_answer: {past_domain_agent_review_answer}\n\n"
                         )
                 if r.get("synthesis"): # not any MAS has the synthesis stage
-                    synthesizer_opinions_text += f"\n--- [Round {round_num}] ---\n"
-                    past_synthesizer_answer = r["synthesis"]["parsed_output"].get("answer", "N/A")
-                    past_synthesizer_explanation = r["synthesis"]["parsed_output"].get("explanation", "N/A")
-                    synthesizer_opinions_text += (
-                        f"Synthesizer Answer: {past_synthesizer_answer}\n"
-                        f"Synthesizer Explanation: {past_synthesizer_explanation}\n\n"
-                    )
+                    if isinstance(r["synthesis"], list):
+                        synthesizer_opinions_text += f"\n--- [Round {round_num} - Group Reports] ---\n"
+                        for synth_item in r["synthesis"]:
+                            synth_log = synth_item.get("log", {}).get("parsed_output", {})
+                            past_ans = synth_log.get("answer", "N/A")
+                            past_expl = synth_log.get("explanation", "N/A")
+                            agent_id = synth_item.get("agent_id", "Unknown Lead")
+                            synthesizer_opinions_text += (
+                                f"Group Lead ({agent_id}) Answer: {past_ans}\n"
+                                f"Group Lead Explanation: {past_expl}\n\n"
+                            )
+                    elif isinstance(r["synthesis"], dict):
+                        synthesizer_opinions_text += f"\n--- [Round {round_num}] ---\n"
+                        past_synthesizer_answer = r["synthesis"]["parsed_output"].get("answer", "N/A")
+                        past_synthesizer_explanation = r["synthesis"]["parsed_output"].get("explanation", "N/A")
+                        synthesizer_opinions_text += (
+                            f"Synthesizer Answer: {past_synthesizer_answer}\n"
+                            f"Synthesizer Explanation: {past_synthesizer_explanation}\n\n"
+                        )
+
                 if r.get("decision"): 
                     decision_opinions_text += f"\n--- [Round {round_num}] ---\n"
                     past_decision_answer = r["decision"]["parsed_output"].get("answer", "N/A")
@@ -651,13 +676,25 @@ class AuditorAgent(BaseAgent):
                             f"Review_answer: {past_domain_agent_review_answer}\n\n"
                         )
                 if r.get("synthesis"): # not any MAS has the synthesis stage
-                    synthesizer_opinions_text += f"\n--- [Round {round_num}] ---\n"
-                    past_synthesizer_answer = r["synthesis"]["parsed_output"].get("answer", "N/A")
-                    past_synthesizer_explanation = r["synthesis"]["parsed_output"].get("explanation", "N/A")
-                    synthesizer_opinions_text += (
-                        f"Synthesizer Answer: {past_synthesizer_answer}\n"
-                        f"Synthesizer Explanation: {past_synthesizer_explanation}\n\n"
-                    )
+                    if isinstance(r["synthesis"], list):
+                        synthesizer_opinions_text += f"\n--- [Round {round_num} - Group Reports] ---\n"
+                        for synth_item in r["synthesis"]:
+                            synth_log = synth_item.get("log", {}).get("parsed_output", {})
+                            past_ans = synth_log.get("answer", "N/A")
+                            past_expl = synth_log.get("explanation", "N/A")
+                            agent_id = synth_item.get("agent_id", "Unknown Lead")
+                            synthesizer_opinions_text += (
+                                f"Group Lead ({agent_id}) Answer: {past_ans}\n"
+                                f"Group Lead Explanation: {past_expl}\n\n"
+                            )
+                    elif isinstance(r["synthesis"], dict):
+                        synthesizer_opinions_text += f"\n--- [Round {round_num}] ---\n"
+                        past_synthesizer_answer = r["synthesis"]["parsed_output"].get("answer", "N/A")
+                        past_synthesizer_explanation = r["synthesis"]["parsed_output"].get("explanation", "N/A")
+                        synthesizer_opinions_text += (
+                            f"Synthesizer Answer: {past_synthesizer_answer}\n"
+                            f"Synthesizer Explanation: {past_synthesizer_explanation}\n\n"
+                        )
                 if r.get("decision"): 
                     decision_opinions_text += f"\n--- [Round {round_num}] ---\n"
                     past_decision_answer = r["decision"]["parsed_output"].get("answer", "N/A")
@@ -792,13 +829,26 @@ class AuditorAgent(BaseAgent):
                 round_num = r.get("round", "Unknown")
 
                 if r.get("synthesis"): # not any MAS has the synthesis stage
-                    synthesizer_opinions_text += f"\n--- [Round {round_num}] ---\n"
-                    past_synthesizer_answer = r["synthesis"]["parsed_output"].get("answer", "N/A")
-                    past_synthesizer_explanation = r["synthesis"]["parsed_output"].get("explanation", "N/A")
-                    synthesizer_opinions_text += (
-                        f"Synthesizer Answer: {past_synthesizer_answer}\n"
-                        f"Synthesizer Explanation: {past_synthesizer_explanation}\n\n"
-                    )
+                    if isinstance(r["synthesis"], list):
+                        synthesizer_opinions_text += f"\n--- [Round {round_num} - Group Reports] ---\n"
+                        for synth_item in r["synthesis"]:
+                            synth_log = synth_item.get("log", {}).get("parsed_output", {})
+                            past_ans = synth_log.get("answer", "N/A")
+                            past_expl = synth_log.get("explanation", "N/A")
+                            agent_id = synth_item.get("agent_id", "Unknown Lead")
+                            synthesizer_opinions_text += (
+                                f"Group Lead ({agent_id}) Answer: {past_ans}\n"
+                                f"Group Lead Explanation: {past_expl}\n\n"
+                            )
+                    elif isinstance(r["synthesis"], dict):
+                        synthesizer_opinions_text += f"\n--- [Round {round_num}] ---\n"
+                        past_synthesizer_answer = r["synthesis"]["parsed_output"].get("answer", "N/A")
+                        past_synthesizer_explanation = r["synthesis"]["parsed_output"].get("explanation", "N/A")
+                        synthesizer_opinions_text += (
+                            f"Synthesizer Answer: {past_synthesizer_answer}\n"
+                            f"Synthesizer Explanation: {past_synthesizer_explanation}\n\n"
+                        )
+                        
                 if r.get("decision"): 
                     decision_opinions_text += f"\n--- [Round {round_num}] ---\n"
                     past_decision_answer = r["decision"]["parsed_output"].get("answer", "N/A")

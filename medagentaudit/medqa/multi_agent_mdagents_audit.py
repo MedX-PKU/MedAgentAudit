@@ -1,7 +1,8 @@
-# multi_agent_mdagents_full_log.py
+'''
+MEDAGENTAUDIT-CODE/medagentaudit/medqa/multi_agent_mdagents_audit.py
+'''
 
 import os
-import time
 import argparse
 from openai import OpenAI
 from enum import Enum
@@ -24,7 +25,6 @@ from auditor_agent import AuditorAgent
 from BaseAgent import BaseAgent
 from agent_type import AgentType
 from medical_specialty import MedicalSpecialty
-from parse_structured_output import parse_structured_output
 
 # --- Constants and Enums ---
 
@@ -100,7 +100,7 @@ class Group:
         auditor_agent: AuditorAgent,
         audit_round_data,
         case_history
-    ) -> Tuple[str, List[Dict], int, int]:
+    ) -> str:
         """
         Simulates internal discussion with integrated auditing mechanisms.
         """
@@ -198,7 +198,7 @@ class Group:
             investigations.append({"specialty": a_mem.specialty, "id": a_mem.agent_id, "report": investigation})
 
             # audit 2.1.2 domain-specific knowledge activation
-            audit_results_of_domain_specific_knowledge_activation = self.auditor_agent.audit_domain_specific_knowledge_activation(question = self.question_context['question'], 
+            audit_results_of_domain_specific_knowledge_activation = auditor_agent.audit_domain_specific_knowledge_activation(question = self.question_context['question'], 
                                                                                                                                   image_path = self.question_context.get('image_path'), 
                                                                                                                                   agent_id = a_mem.agent_id, 
                                                                                                                                   specialty = a_mem.specialty, 
@@ -279,20 +279,20 @@ class Group:
         }
 
         # audit 2.2.2 Unresolved Conflicts during Collaborative discussion
-        audit_results_of_unresolved_conflicts_during_Collaboration = self.auditor_agent.audit_unresolved_conflicts_during_Collaboration(question = self.question_context["question"], current_agent_id=self.lead_agent.agent_id, current_answer = synthesis_answer, current_explanation=synthesis_explanation, case_history=case_history) 
+        audit_results_of_unresolved_conflicts_during_Collaboration = auditor_agent.audit_unresolved_conflicts_during_Collaboration(question = self.question_context["question"], current_agent_id=self.lead_agent.agent_id, current_answer = synthesis_answer, current_explanation=synthesis_explanation, case_history=case_history) 
 
         # audtit 3.1.1 : Suppression of Correct Minority Views by Incorrect Consensus for synthesizer
-        audit_results_of_suppression_of_correct_minority_views_by_incorrect_consensus_for_synthesizer = self.auditor_agent.audit_suppression_by_majority(
+        audit_results_of_suppression_of_correct_minority_views_by_incorrect_consensus_for_synthesizer = auditor_agent.audit_suppression_by_majority(
             question = self.question_context["question"], options = self.question_context.get('options'), image_path = self.question_context.get('image_path'), current_agent_id = self.lead_agent.agent_id, answer = synthesis_answer, explanation = synthesis_explanation, case_history = case_history
         ) # here the discussion_context includes all the domain agents' answers and explanations before this synthesis
 
         # audit 3.1.2 : Reasoning Distorted by Authority Bias for synthesizer
-        audit_results_of_authority_bias_for_synthesizer = self.auditor_agent.audit_authority_bias(
+        audit_results_of_authority_bias_for_synthesizer = auditor_agent.audit_authority_bias(
             question = self.question_context["question"], options = self.question_context.get('options'), image_path = self.question_context.get('image_path'), current_agent_id = self.lead_agent.agent_id, answer = synthesis_answer, explanation = synthesis_explanation, case_history = case_history
         ) # here the discussion_context must include the role of domain agent and their answer and explanation before this synthesis
 
         # audit 3.1.3: Neglect of Contradictions in Reasoning Process for synthesizer
-        audit_results_of_neglect_of_contradictions_in_reasoning_process_for_synthesizer = self.auditor_agent.audit_contradictions_during_decision(
+        audit_results_of_neglect_of_contradictions_in_reasoning_process_for_synthesizer = auditor_agent.audit_contradictions_during_decision(
             question = self.question_context["question"], current_agent_id = self.lead_agent.agent_id, explanation = synthesis_explanation, case_history = case_history, options = self.question_context.get('options')
         ) # here the discussion_context includes all the domain agents' answers and explanations before this synthesis
 
@@ -316,10 +316,10 @@ class Group:
             "step": "synthesis",
             "audit_result": audit_results_of_neglect_of_contradictions_in_reasoning_process_for_synthesizer
         })
-        case_history["rounds"][-1]["synthesis"].append({ # TODO here is different from other mas, accordingly, we need to fix the audit mechanism.
+        case_history["rounds"][-1]["synthesis"].append({
             "agent_id": self.lead_agent.agent_id,
             "specialty": self.lead_agent.specialty,
-            "log": {"parsed_output": investigation}
+            "log": synthesis_log
         })
         self._log_interaction(f"Lead ({self.lead_agent.agent_id}) generated final group report.",
                                data={"agent_id": self.lead_agent.agent_id,
@@ -327,9 +327,8 @@ class Group:
                                     "prompt": synthesis_prompt,
                                     "response": final_report, 
                                     "llm_log": synthesis_log})
-        return json.dumps(final_report), case_history, audit_round_data
+        return json.dumps(final_report)
 
-# --- MDAgents Framework Class (Heavily Modified for Auditing) ---
 
 class MDAgentsFramework:
     def __init__(self, 
@@ -337,7 +336,6 @@ class MDAgentsFramework:
                  dataset_name: str, 
                  model_config: Dict[str, str],
                  auditor_model_key: str, 
-                 conflict_model_key: str, # New args
                  config_path: str,
                  num_experts_intermediate: int = DEFAULT_NUM_EXPERTS_INTERMEDIATE,
                  num_teams_advanced: int = DEFAULT_NUM_TEAMS_ADVANCED,
@@ -351,20 +349,20 @@ class MDAgentsFramework:
         self.config_path = config_path
         os.makedirs(self.log_dir, exist_ok=True) 
 
-        self.moderator_agent = Agent(agent_id="moderator", 
+        self.moderator_agent = Agent(agent_id="moderator",
                                         agent_type=AgentType.MODERATOR, 
                                         model_key=model_config.get('moderator', DEFAULT_MODERATOR_MODEL),
                                         config_path=config_path,
                                         instruction="You are a medical expert who conducts initial assessment. Your job is to decide the difficulty/complexity of the medical query based on the provided definitions. Respond in JSON format."
         )
-        self.recruiter_agent = Agent(agent_id="recruiter", 
+        self.recruiter_agent = Agent(agent_id="recruiter",
                                         agent_type=AgentType.RECRUITER, 
                                         model_key=model_config.get('recruiter', DEFAULT_RECRUITER_MODEL),
                                         config_path=config_path,
                                         instruction="You are an experienced medical expert who recruits appropriate specialists based on the medical query and its complexity level. Respond in JSON format."
         )
-        self.decision_maker_agent = Agent(agent_id="final_decision_maker", 
-                                            agent_type=AgentType.DECISION_MAKER, 
+        self.decision_maker_agent = Agent(agent_id="final_decision_maker",
+                                            agent_type=AgentType.DECISION_MAKER,
                                             model_key=model_config.get('moderator', DEFAULT_MODERATOR_MODEL),
                                             config_path=config_path,
                                             instruction="You are a final medical decision maker. Review all provided information (opinions, reports, discussions) and make the final, consolidated answer to the original medical query. Respond in JSON format."
@@ -531,7 +529,7 @@ class MDAgentsFramework:
                         }
                         validated_experts.append(validated_expert)
                 experts = validated_experts
-                specialties = [e['specialty'] for e in experts]
+
             except Exception as e:
                 print(f"Error parsing expert recruitment response: {e}. Raw response: {recruitment_response}")
                 print("Warning: Failed to parse experts. Using default specialties.")
@@ -540,7 +538,9 @@ class MDAgentsFramework:
                 default_specialties = ["Internal Medicine Specialist", "Radiologist", "Surgeon", "Pathologist", "Pharmacist"]
                 experts = [{"specialty": r, "expertise": f"Expertise in {r}", "hierarchy": "Independent"} for r in default_specialties[:self.num_experts_intermediate]]
 
+            specialties = [e['specialty'] for e in experts]
             print(f"Recruited Experts: {[e['specialty'] for e in experts]}")
+            step_log["specialties"] = specialties
             step_log["recruited_personnel"] = experts
             return experts, step_log
 
@@ -573,6 +573,7 @@ class MDAgentsFramework:
                         }
                         validated_teams.append(validated_team)
                 teams = validated_teams
+                
             except Exception as e:
                 print(f"Error parsing team recruitment response: {e}. Raw response: {recruitment_response}")
                 print("Warning: Failed to parse any teams. Using default structure.")
@@ -593,10 +594,10 @@ class MDAgentsFramework:
                     ]}
                 ]
                 teams = teams[:self.num_teams_advanced]
-                specialties = []
-                for team in teams:
-                    for member in team['members']:
-                        specialties.append(member['specialty'])
+            specialties = []
+            for team in teams:
+                for member in team['members']:
+                    specialties.append(member['specialty'])
             print(f"Recruited Teams: {[t['goal'] for t in teams]}")
             step_log["recruited_personnel"] = teams
             step_log["specialties"] = specialties
@@ -606,20 +607,8 @@ class MDAgentsFramework:
     def _process_basic_query(self, data_item: Dict) -> Dict:
         print("\n--- Processing Basic Query ---")
         case_history = {"rounds": []}
-        audit = {"rounds": []}
-        audit_round_data = {
-            "round": 1,
-            "2_1_1_role_assignment": [], 
-            "2_1_2_domain_specific_knowledge_activation": [], 
-            
-            "2_2_1_repetition_of_initial_views": [], 
-            "2_2_2_unresolved_conflicts": [],
-            
-            "3_1_1_suppression_of_minority_views": [],
-            "3_1_2_authority_bias": [],
-            "3_1_3_neglect_of_contradictions": [],
-            "3_2_1_self_contradiction_when_decision": []
-        }
+        round_data = {"round": 1, "opinions": [], "decision": None}
+        case_history["rounds"].append(round_data)
         agent_model_key = self.model_config.get('default_agent', DEFAULT_AGENT_MODEL)
         agent = Agent(
             agent_id="basic_solver",
@@ -663,19 +652,7 @@ class MDAgentsFramework:
                     predicted_answer = predicted_answer[0]
 
             
-            # audit 3.1.3: Neglect of Contradictions in Reasoning Process for decision-maker
-            audit_results_of_neglect_of_contradictions_in_reasoning_process_for_decision_maker = self.auditor_agent.audit_contradictions_during_decision(
-                question = data_item['question'], current_agent_id = agent.agent_id, explanation = explanation, case_history = case_history, options=options
-            ) 
-
-            audit_round_data["3_1_3_neglect_of_contradictions"].append({
-                "agent_id": agent.agent_id,
-                "step": "decision",
-                "audit_result": audit_results_of_neglect_of_contradictions_in_reasoning_process_for_decision_maker
-            })
-            audit.append(audit_round_data)
             case_history["rounds"][-1]["decision"] = {"parsed_output": result}
-            case_history["audit"] = audit
         except Exception as e:
             print(f"Error parsing basic response: {e}. Raw response: {response}")
             predicted_answer = "Could not parse answer."
@@ -694,6 +671,8 @@ class MDAgentsFramework:
 
     def _process_intermediate_query(self, data_item: Dict, expert_configs: List[Dict], audit_results_of_role_assignment: Dict, specialties: List) -> Dict:
         case_history = {"rounds": []}
+        round_data = {"round": 1, "opinions": [], "synthesis": None, "reviews": [], "decision": None}
+        case_history["rounds"].append(round_data)
         audit = {"rounds": []}
         audit_round_data = {
         "round": 1,
@@ -785,7 +764,7 @@ class MDAgentsFramework:
                         ans = ans[0]
 
                 # audit 2.1.2 domain-specific knowledge activation
-                audit_results_of_domain_specific_knowledge_activation = self.auditor_agent.audit_domain_specific_knowledge_activation(question, image_path, agent.agent_id, agent.role, ans, explanation)
+                audit_results_of_domain_specific_knowledge_activation = self.auditor_agent.audit_domain_specific_knowledge_activation(question = question, image_path=image_path, agent_id=agent.agent_id, specialty=agent.specialty, answer=ans, explanation=expl)
                 audit_round_data["2_1_2_domain_specific_knowledge_activation"].append({
                     "agent_id": agent.agent_id,
                     "specialty": agent.specialty,
@@ -854,7 +833,7 @@ class MDAgentsFramework:
                 elif len(final_answer) > 1 and final_answer[0].isalpha() and (final_answer[1] == '.' or final_answer[1] == ')'):
                     final_answer = final_answer[0]
 
-            # audtit 3.1.1 : Suppression of Correct Minority Views by Incorrect Consensus for decision-maker
+            # audit 3.1.1 : Suppression of Correct Minority Views by Incorrect Consensus for decision-maker
             audit_results_of_suppression_of_correct_minority_views_by_incorrect_consensus_for_decision_maker = self.auditor_agent.audit_suppression_by_majority(
                 question = question, options = options, image_path = image_path, current_agent_id = self.decision_maker_agent.agent_id, answer = final_answer, explanation = final_explanation, case_history = case_history
             )
@@ -884,8 +863,9 @@ class MDAgentsFramework:
                 "step": "decision",
                 "audit_result": audit_results_of_neglect_of_contradictions_in_reasoning_process_for_decision_maker
             })
-
+            audit["rounds"].append(audit_round_data)
             case_history["rounds"][-1]["decision"] = decision_log # after synthesizer then log, in case repetition
+            case_history["audit"] = audit
 
         except Exception as e:
             print(f"Error parsing final decision: {e}. Raw response: {final_response}")
@@ -902,9 +882,9 @@ class MDAgentsFramework:
     
     def _process_advanced_query(self, data_item: Dict, team_configs: List[Dict], audit_results_of_role_assignment: Dict, specialties: List) -> Dict:
         print("\n--- Processing Advanced Query ---")
-
+        options = data_item.get('options')
         case_history = {"rounds": []}
-        round_data = {"round": 1, "opinions": [], "synthesis": [], "reviews": [], "decision": None} # TODO , here the synthesis is not a single dict, is a list, the auditor needs to handle this
+        round_data = {"round": 1, "opinions": [], "synthesis": [], "reviews": [], "decision": None}
         case_history["rounds"].append(round_data)
         audit = {"rounds": []}
         audit_round_data = {
@@ -912,7 +892,7 @@ class MDAgentsFramework:
         "2_1_1_role_assignment": [], 
         "2_1_2_domain_specific_knowledge_activation": [], 
         
-        "2_2_1_repetition_of_initial_views": [], 
+        "2_2_1_repetition_of_initial_views": [],
         "2_2_2_unresolved_conflicts": [],
         
         "3_1_1_suppression_of_minority_views": [],
@@ -968,7 +948,7 @@ class MDAgentsFramework:
 
         for group in ordered_groups:
             print(f"\n-- Processing Team: {group.group_id} ({group.goal}) --")
-            raw_report, case_history, audit_round_data = group.perform_internal_discussion(
+            raw_report = group.perform_internal_discussion( # not return audit_round_data and case_history
                 auditor_agent=self.auditor_agent,
                 audit_round_data = audit_round_data,
                 case_history = case_history
@@ -1021,7 +1001,6 @@ class MDAgentsFramework:
             final_answer = response_json.get("answer", "")
             final_explanation = response_json.get("explanation", "No explanation provided.")
 
-            options = data_item.get('options')
             if options and isinstance(final_answer, str):
                 if final_answer.startswith('(') and final_answer.endswith(')'):
                     final_answer = final_answer[1:-1].strip()
@@ -1066,7 +1045,7 @@ class MDAgentsFramework:
             "audit_result": audit_results_of_neglect_of_contradictions_in_reasoning_process_for_decision_maker
         })
 
-        audit.append(audit_round_data)
+        audit["rounds"].append(audit_round_data)
         case_history['rounds'][-1]['decision'] = {'parsed_output': response_json}
         case_history["audit"] = audit
         return {
@@ -1174,7 +1153,7 @@ def main():
 
     framework = MDAgentsFramework(
         log_dir=logs_dir, dataset_name=args.dataset, model_config=model_config,
-        auditor_model_key=args.auditor_model, conflict_model_key=args.auditor_model,
+        auditor_model_key=args.auditor_model,
         num_experts_intermediate=args.num_experts, num_teams_advanced=args.num_teams,
         config_path = args.config_path
     )
