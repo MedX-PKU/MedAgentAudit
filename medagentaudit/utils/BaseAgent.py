@@ -55,13 +55,13 @@ class BaseAgent:
             try:
                 print(f"Agent {self.agent_id} calling LLM, system message: {system_message['content'][:50]}...")
                 print(f'the llm model name is {self.model_name}')
-                if hasattr(self.llm, 'reasoning') and self.llm.reasoning: # for model like gpt-5.1
+                if hasattr(self.llm, 'reasoning') and self.llm.reasoning: # for model like gpt-5.2
                     completion = self.client.chat.completions.create(
                         model=self.model_name,
                         messages=[system_message, user_message],
                         response_format={"type": "json_object"},
-                        extra_body={"enable_thinking": True},
-                        reasoning_effort=self.llm.reasoning.effort,
+                        extra_body={"enable_thinking": True}, # qwen3-8b and qwen3-vl-8b need this parameter
+                        reasoning = {"effort": self.llm.reasoning.effort},
                         stream=self.llm.stream,
                         timeout=self.llm.timeout # just in case timeout error!
                     )
@@ -70,7 +70,7 @@ class BaseAgent:
                         model=self.model_name,
                         messages=[system_message, user_message],
                         response_format={"type": "json_object"},
-                        extra_body={"enable_thinking": True},
+                        extra_body={"enable_thinking": True}, # qwen3-8b and qwen3-vl-8b need this parameter
                         stream=self.llm.stream,
                         timeout=self.llm.timeout # just in case timeout error!
                     )

@@ -3,7 +3,7 @@ import random
 import argparse
 from typing import List, Dict, Any
 import pandas as pd
-from medagentboard.utils.json_utils import save_json, load_json, load_jsonl
+from medagentaudit.utils.json_utils import save_json, load_json, load_jsonl
 
 # Define paths
 RAW_DATA_DIR = "./my_datasets/raw/medqa"

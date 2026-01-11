@@ -24,7 +24,7 @@ class MedagentAudit(BaseModel):
 def get_config(config_path: str, active_llm: str) -> MedagentAudit:
     """
     Loads configuration from a TOML file, validates it, selects the active LLM's
-    settings, and returns a unified HealthFlowConfig object.
+    settings, and returns a unified object.
     """
     if not Path(config_path).exists():
         raise FileNotFoundError(f"Configuration file not found at '{config_path}'.")
