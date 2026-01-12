@@ -17,6 +17,9 @@ from collections import defaultdict
 current_file_path = Path(__file__).resolve()
 current_file_name = Path(__file__).stem
 utils_root = current_file_path.parents[1] / "utils"
+auditor_root = current_file_path.parents[1] / "auditor"
+common_root = current_file_path.parents[1] / "common"
+core_root = current_file_path.parents[1] / "core"
 project_root = current_file_path.parents[2]
 sys.path.extend([str(utils_root), str(project_root)])
 
@@ -24,8 +27,8 @@ from encode_image import encode_image
 from json_utils import load_json, save_json, preprocess_response_string
 from dual_logger import DualLogger
 from auditor_agent import AuditorAgent
-from BaseAgent import BaseAgent
-from config import get_config
+from base_agent import BaseAgent
+from config_loader import get_config
 from agent_type import AgentType
 from medical_specialty import MedicalSpecialty
 from parse_structured_output import parse_structured_output

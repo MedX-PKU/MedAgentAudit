@@ -1,7 +1,7 @@
 from typing import Dict, Any, Tuple
 import time
 from openai import OpenAI
-from config import get_config
+from config_loader import get_config
 class BaseAgent:
     """Base class for all agents."""
 

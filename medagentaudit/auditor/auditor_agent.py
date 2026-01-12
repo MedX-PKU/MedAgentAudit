@@ -11,12 +11,13 @@ from pathlib import Path
 # Ensure project root is in path
 current_file_path = Path(__file__).resolve()
 project_root = current_file_path.parents[2]
-utils_root = current_file_path.parents[0]
-sys.path.extend([str(project_root),str(utils_root)])
-from config import get_config
+utils_root = current_file_path.parents[1] / 'utils'
+core_root = current_file_path.parents[1] / 'core'
+sys.path.extend([str(project_root),str(utils_root), str(core_root)])
+from config_loader import get_config
 from encode_image import encode_image
 from json_utils import load_json, save_json, preprocess_response_string
-from BaseAgent import BaseAgent
+from base_agent import BaseAgent
 AUDITOR_PROMPTS = {
 # 2.1.1 
 "Role_Assignment_Prompts" : """You are a medical consultant auditing a multidisciplinary medical AI team. Your task is to evaluate the appropriateness of the assigned specialist based on the clinical question and the diagnostic data provided (text and/or medical imaging).
