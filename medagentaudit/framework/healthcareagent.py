@@ -21,7 +21,7 @@ auditor_root = current_file_path.parents[1] / "auditor"
 common_root = current_file_path.parents[1] / "common"
 core_root = current_file_path.parents[1] / "core"
 project_root = current_file_path.parents[2]
-sys.path.extend([str(utils_root), str(project_root)])
+sys.path.extend([str(utils_root), str(project_root), str(auditor_root), str(common_root), str(core_root)])
 
 from encode_image import encode_image
 from json_utils import load_json, save_json, preprocess_response_string

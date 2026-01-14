@@ -451,7 +451,7 @@ class MDTConsultation:
                     "3_2_1_self_contradiction_when_decision": []
                 }
                 audit_round_data["2_1_1_role_assignment"].append({
-                    "specialties": specialties,
+                    "specialties": [s.value for s in specialties],
                     "step": "role_assignment",
                     "audit_result": audit_results_of_role_assignment
                 })

@@ -68,15 +68,15 @@ echo "Starting experiments..."
 #         cmd="python -m medagentaudit.framework.colacare --dataset $dataset --qa_type $qa_type --meta_model $vqa_llm --doctor_models $vqa_llm $vqa_llm $vqa_llm --auditor_model $AUDITOR --config_path config.toml --num_samples $num --time_stamp $time_stamp"
 #         run_command "$cmd"
 #     done
-# done
+# done` `
 
-# 3. MedAgent QA
-for dataset in "${QA_DATASETS[@]}"; do
-    for qa_llm in "${QA_LLM[@]}"; do
-        cmd="python -m medagentaudit.framework.medagent --dataset $dataset --qa_type $qa_type --model $qa_llm --meta_model $qa_llm --decision_model $qa_llm --auditor_model $AUDITOR --config_path config.toml --num_samples $num --time_stamp $time_stamp"
-        run_command "$cmd"
-    done
-done
+# # 3. MedAgent QA fixed
+# for dataset in "${QA_DATASETS[@]}"; do
+#     for qa_llm in "${QA_LLM[@]}"; do
+#         cmd="python -m medagentaudit.framework.medagent --dataset $dataset --qa_type $qa_type --model $qa_llm --meta_model $qa_llm --decision_model $qa_llm --auditor_model $AUDITOR --config_path config.toml --num_samples $num --time_stamp $time_stamp"
+#         run_command "$cmd"
+#     done
+# done
 
 # # 4. MedAgent VQA
 # for dataset in "${VQA_DATASETS[@]}"; do
@@ -87,13 +87,13 @@ done
 # done
 
 
-# # 5. MDAgents QA
-# for dataset in "${QA_DATASETS[@]}"; do
-#     for qa_llm in "${QA_LLM[@]}"; do
-#         cmd="python -m medagentaudit.framework.mdagents --dataset $dataset --qa_type $qa_type --moderator_model $qa_llm --recruiter_model $qa_llm --agent_model $qa_llm --auditor_model $AUDITOR --config_path config.toml --num_samples $num --time_stamp $time_stamp"
-#         run_command "$cmd"
-#     done
-# done
+# 5. MDAgents QA
+for dataset in "${QA_DATASETS[@]}"; do
+    for qa_llm in "${QA_LLM[@]}"; do
+        cmd="python -m medagentaudit.framework.mdagents --dataset $dataset --qa_type $qa_type --moderator_model $qa_llm --recruiter_model $qa_llm --agent_model $qa_llm --auditor_model $AUDITOR --config_path config.toml --num_samples $num --time_stamp $time_stamp"
+        run_command "$cmd"
+    done
+done
 
 # # 6. MDAgents VQA
 # for dataset in "${VQA_DATASETS[@]}"; do

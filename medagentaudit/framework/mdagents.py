@@ -19,7 +19,7 @@ auditor_root = current_file_path.parents[1] / "auditor"
 common_root = current_file_path.parents[1] / "common"
 core_root = current_file_path.parents[1] / "core"
 project_root = current_file_path.parents[2]
-sys.path.extend([str(utils_root), str(project_root)])
+sys.path.extend([str(utils_root), str(project_root), str(auditor_root), str(common_root), str(core_root)])
 from config_loader import get_config
 from logger import DualLogger
 from encode_image import encode_image
@@ -543,7 +543,7 @@ class MDAgentsFramework:
 
             specialties = [e['specialty'] for e in experts]
             print(f"Recruited Experts: {[e['specialty'] for e in experts]}")
-            step_log["specialties"] = specialties
+            step_log["specialties"] = [s.value for s in specialties]
             step_log["recruited_personnel"] = experts
             return experts, step_log
 
@@ -603,7 +603,7 @@ class MDAgentsFramework:
                     specialties.append(member['specialty'])
             print(f"Recruited Teams: {[t['goal'] for t in teams]}")
             step_log["recruited_personnel"] = teams
-            step_log["specialties"] = specialties
+            step_log["specialties"] = [s.value for s in specialties]
             return teams, step_log
         return [], step_log
 
@@ -1133,6 +1133,7 @@ def main():
     timestamp = args.time_stamp
     current_model_name = current_file_name
     main_llm = args.agent_model
+    qa_type = args.qa_type
 
     terminal_log_dir = project_root / "logs" / "audit_results" / timestamp / current_model_name / dataset_name / main_llm / "terminal_log"
     terminal_log_dir.mkdir(parents=True, exist_ok=True)
