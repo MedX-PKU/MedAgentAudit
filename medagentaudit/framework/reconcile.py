@@ -548,15 +548,16 @@ def main():
 
     timestamp = args.time_stamp
     current_model_name = current_file_name
+    main_llm = args.agents[0]
 
-    terminal_log_dir = project_root / "logs" / "audit_results" / timestamp / current_model_name / dataset_name / "terminal_log"
+    terminal_log_dir = project_root / "logs" / "audit_results" / timestamp / current_model_name / dataset_name / main_llm / "terminal_log"
     terminal_log_dir.mkdir(parents=True, exist_ok=True)
     terminal_log_file = terminal_log_dir / f"{dataset_name}_full_terminal.log"
     print(f"!!! Terminal output is being captured to: {terminal_log_file} !!!")
     sys.stdout = DualLogger(terminal_log_file, sys.stdout)
     sys.stderr = DualLogger(terminal_log_file, sys.stderr)
 
-    logs_dir = project_root / "logs" / "audit_results" / timestamp / current_model_name / dataset_name
+    logs_dir = project_root / "logs" / "audit_results" / timestamp / current_model_name / dataset_name / main_llm
     logs_dir.mkdir(parents=True, exist_ok=True)
     print(f"Logs will be saved to: {logs_dir}")
 

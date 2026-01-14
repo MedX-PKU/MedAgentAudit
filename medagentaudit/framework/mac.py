@@ -376,8 +376,9 @@ def main():
     timestamp = args.time_stamp
     dataset_name = args.dataset
     qa_type = args.qa_type
+    main_llm = args.doctor_model
 
-    terminal_log_dir = project_root / "logs" / "audit_results" / timestamp / current_model_name / dataset_name / "terminal_log"
+    terminal_log_dir = project_root / "logs" / "audit_results" / timestamp / current_model_name / dataset_name / main_llm / "terminal_log"
     terminal_log_dir.mkdir(parents=True, exist_ok=True)
     terminal_log_file = terminal_log_dir / f"{dataset_name}_full_terminal.log"
     print(f"!!! Terminal output is being captured to: {terminal_log_file} !!!")
@@ -386,7 +387,7 @@ def main():
     
     data_path = project_root / "datasets" / dataset_name / f"medqa_{qa_type}_test.json"
 
-    logs_dir = project_root / "logs" / "audit_results" / timestamp / current_model_name / dataset_name
+    logs_dir = project_root / "logs" / "audit_results" / timestamp / current_model_name / dataset_name / main_llm
     logs_dir.mkdir(parents=True, exist_ok=True)
     print(f"Using Log Directory: {logs_dir}")
 

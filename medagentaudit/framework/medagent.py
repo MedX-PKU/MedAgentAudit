@@ -223,8 +223,8 @@ Your output must be a JSON object with three fields:
             # Normalize agree field
             if isinstance(result.get("agree"), str):
                 result["agree"] = result["agree"].lower() in ["true", "yes"]
-
-            return result
+            log = {"parsed_output": result}
+            return log
         except json.JSONDecodeError:
             # Fallback parsing
             print(f"Doctor {self.agent_id} review is not valid JSON, using fallback parsing")
@@ -398,7 +398,7 @@ class MDTConsultation:
         self.expert_gatherer = ExpertGathererAgent(agent_id="expert_gatherer", model_key=model_key, config_path=config_path)
         self.meta_agent = MetaAgent(agent_id="meta", model_key=meta_model_key, config_path=config_path)
         self.decision_agent = DecisionMakingAgent(agent_id="decision", model_key=decision_model_key, config_path=config_path)
-        self.auditor_agent = AuditorAgent(agent_id="auditor", model_key=auditor_model_key, config_path=config_path)
+        self.auditor_agent = AuditorAgent(agent_id="auditor", model_key=auditor_model_key, config_path=config_path, agent_type = AgentType.AUDITOR)
 
         self.doctor_agents: List[DoctorAgent] = []
         self.doctor_specialties: List[MedicalSpecialty] = []
@@ -637,7 +637,7 @@ class MDTConsultation:
 
             # audit 3.1.2: Reasoning Distorted by Authority Bias for decision-maker
             audit_results_of_authority_bias_for_decision_maker = self.auditor_agent.audit_authority_bias(
-                question = question, options = options, image_path = image_path, current_agent_id = self.decision_agent.agent_id, explanation = decision_explanation, case_history = case_history
+                question = question, options = options, image_path = image_path, current_agent_id = self.decision_agent.agent_id, explanation = decision_explanation, case_history = case_history, answer = decision_answer
             ) # here the discussion_context must include the role of domain agent and their answer and explanation before this decision
 
             # audit 3.1.3: Neglect of Contradictions in Reasoning Process for decision-maker
@@ -707,7 +707,7 @@ def main():
     parser = argparse.ArgumentParser(description="Run MDT consultation on medical datasets")
     parser.add_argument("--dataset", type=str, required=True, help="Specify dataset name")
     parser.add_argument("--qa_type", type=str, choices=["mc", "ff"], default="mc", help="QA type")
-    parser.add_argument("--model", required=True, type=str, help="Model for doctor agents") # meta model = domain model
+    parser.add_argument("--model", required=True, type=str, help="Model for doctor agents")
     parser.add_argument("--meta_model", required=True, type=str, help="Model for meta agent")
     parser.add_argument("--decision_model", required=True, type=str, help="Model for decision agent")
     parser.add_argument("--auditor_model", type=str, required=True, help="Model for auditor agent")
@@ -722,15 +722,16 @@ def main():
     timestamp = args.time_stamp
     qa_type = args.qa_type
     current_model_name = current_file_name
+    main_llm = args.model
     
-    terminal_log_dir = project_root / "logs" / "audit_results" / timestamp / current_model_name / dataset_name / "terminal_log"
+    terminal_log_dir = project_root / "logs" / "audit_results" / timestamp / current_model_name / dataset_name / main_llm / "terminal_log"
     terminal_log_dir.mkdir(parents=True, exist_ok=True)
     terminal_log_file = terminal_log_dir / f"{dataset_name}_full_terminal.log"
     print(f"!!! Terminal output is being captured to: {terminal_log_file} !!!")
     sys.stdout = DualLogger(terminal_log_file, sys.stdout)
     sys.stderr = DualLogger(terminal_log_file, sys.stderr) # 捕获报错和tqdm进度条
 
-    logs_dir = project_root / "logs" / "audit_results" / timestamp / current_model_name / dataset_name
+    logs_dir = project_root / "logs" / "audit_results" / timestamp / current_model_name / dataset_name / main_llm
     logs_dir.mkdir(parents=True, exist_ok=True)
     print(f"Logs will be saved to: {logs_dir}")
 
