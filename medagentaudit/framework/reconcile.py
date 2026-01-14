@@ -26,7 +26,7 @@ sys.path.extend([str(utils_root), str(project_root)])
 from json_utils import load_json, save_json, preprocess_response_string
 from encode_image import encode_image
 from config_loader import get_config  
-from dual_logger import DualLogger
+from logger import DualLogger
 from auditor_agent import AuditorAgent
 from base_agent import BaseAgent
 from agent_type import AgentType
@@ -547,20 +547,21 @@ def main():
     print(f"QA Format: {qa_type}")
 
     timestamp = args.time_stamp
-    current_model_name = current_file_name.split("_")[2]
+    current_model_name = current_file_name
 
-    terminal_log_dir = project_root / "logs" / "observation" / timestamp / current_model_name / dataset_name / "terminal_log"
+    terminal_log_dir = project_root / "logs" / "audit_results" / timestamp / current_model_name / dataset_name / "terminal_log"
     terminal_log_dir.mkdir(parents=True, exist_ok=True)
     terminal_log_file = terminal_log_dir / f"{dataset_name}_full_terminal.log"
     print(f"!!! Terminal output is being captured to: {terminal_log_file} !!!")
     sys.stdout = DualLogger(terminal_log_file, sys.stdout)
     sys.stderr = DualLogger(terminal_log_file, sys.stderr)
 
-    logs_dir = project_root / "logs" / "observation" / timestamp / current_model_name / dataset_name
+    logs_dir = project_root / "logs" / "audit_results" / timestamp / current_model_name / dataset_name
     logs_dir.mkdir(parents=True, exist_ok=True)
     print(f"Logs will be saved to: {logs_dir}")
 
-    data_path = f"./my_datasets/processed/medqa/{args.dataset}/medqa_{args.qa_type}_test.json"
+    data_path = project_root / "datasets" / dataset_name / f"medqa_{qa_type}_test.json"
+
     data = load_json(data_path)
     print(f"Loaded {len(data)} samples from {data_path}")
 

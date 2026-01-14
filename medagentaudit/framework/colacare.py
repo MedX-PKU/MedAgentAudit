@@ -21,7 +21,7 @@ common_root = current_file_path.parents[1] / "common"
 core_root = current_file_path.parents[1] / "core"
 project_root = current_file_path.parents[2]
 sys.path.extend([str(utils_root), str(project_root), str(auditor_root), str(common_root)])
-from dual_logger import DualLogger
+from logger import DualLogger
 from encode_image import encode_image
 from json_utils import load_json, save_json, preprocess_response_string
 from auditor_agent import AuditorAgent
@@ -574,7 +574,7 @@ class MDTConsultation:
             })
             for i, doctor in enumerate(self.doctor_agents):
                 print(f"Doctor {i+1} ({doctor.specialty.value}) analyzing case")
-                opinion_log = doctor.analyze_case(question, options, image_path)
+                opinion_log = doctor.analyze_case(question = question, options = options, image_path=image_path)
                 parsed_output = opinion_log["parsed_output"]
                 explanation = parsed_output.get("explanation", "")
                 answer = parsed_output.get("answer", "")
@@ -632,7 +632,7 @@ class MDTConsultation:
 
             # audit 2.2.2 : Unresolved Conflicts during Collaborative discussion for synthesizer
             audit_results_of_unresolved_conflicts_during_collaboration_for_synthesizer = self.auditor_agent.audit_unresolved_conflicts_during_Collaboration(
-                question=question, current_agent_id=self.meta_agent.agent_id, current_explanation=synthesis_explanation, case_history=case_history
+                question=question, current_agent_id=self.meta_agent.agent_id, current_explanation=synthesis_explanation, case_history=case_history, current_answer = synthesis_answer
             )
 
             # audtit 3.1.1 : Suppression of Correct Minority Views by Incorrect Consensus for synthesizer
@@ -747,7 +747,7 @@ class MDTConsultation:
 
             # audit 3.1.2: Reasoning Distorted by Authority Bias for decision-maker
             audit_results_of_authority_bias_for_decision_maker = self.auditor_agent.audit_authority_bias(
-                question = question, options = options, image_path = image_path, current_agent_id = self.meta_agent.agent_id, explanation = decision_explanation, case_history = case_history
+                question = question, options = options, image_path = image_path, current_agent_id = self.meta_agent.agent_id, explanation = decision_explanation, case_history = case_history, answer = decision_answer
             ) # here the discussion_context must include the role of domain agent and their answer and explanation before this decision
 
             # audit 3.1.3: Neglect of Contradictions in Reasoning Process for decision-maker
@@ -757,7 +757,7 @@ class MDTConsultation:
             if current_round > 1:
                 # audit 3.2.1: Self-Contradiction in Viewpoints Across Rounds for decision-maker
                 audit_results_of_self_contradiction_in_viewpoints_across_rounds_for_decision_maker = self.auditor_agent.audit_contradictions_across_rounds(
-                    question = question, options = options, answer = decision_answer, current_agent_id = self.meta_agent.agent_id, explanation = decision_explanation, case_history = case_history, options = options, current_agent_id = self.meta_agent.agent_id
+                    question = question, options = options, answer = decision_answer, current_agent_id = self.meta_agent.agent_id, explanation = decision_explanation, case_history = case_history
                 ) # here the meta agent's memory includes all its previous decisions and syntheses!
                 audit_round_data["3_2_1_self_contradiction_when_decision"].append({
                     "agent_id": self.meta_agent.agent_id,
@@ -866,20 +866,20 @@ def main():
     print(f"QA Format: {qa_type}")
 
     timestamp = args.time_stamp
-    current_model_name = current_file_name.split("_")[2]
+    current_model_name = current_file_name
 
-    terminal_log_dir = project_root / "logs" / "observation" / timestamp / current_model_name / dataset_name / "terminal_log"
+    terminal_log_dir = project_root / "logs" / "audit_results" / timestamp / current_model_name / dataset_name / "terminal_log"
     terminal_log_dir.mkdir(parents=True, exist_ok=True)
     terminal_log_file = terminal_log_dir / f"{dataset_name}_full_terminal.log"
     print(f"!!! Terminal output is being captured to: {terminal_log_file} !!!")
     sys.stdout = DualLogger(terminal_log_file, sys.stdout)
     sys.stderr = DualLogger(terminal_log_file, sys.stderr) # 捕获报错和tqdm进度条
 
-    logs_dir = project_root / "logs" / "observation" / timestamp / current_model_name / dataset_name
+    logs_dir = project_root / "logs" / "audit_results" / timestamp / current_model_name / dataset_name
     logs_dir.mkdir(parents=True, exist_ok=True)
     print(f"Logs will be saved to: {logs_dir}")
 
-    data_path = f"./my_datasets/processed/medqa/{dataset_name}/medqa_{qa_type}_test.json"
+    data_path = project_root / "datasets" / dataset_name / f"medqa_{qa_type}_test.json"
     data = load_json(data_path)
     print(f"Loaded {len(data)} samples from {data_path}")
 

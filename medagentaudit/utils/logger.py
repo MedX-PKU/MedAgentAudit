@@ -6,7 +6,7 @@ class DualLogger:
         self.terminal = stream
         self.filepath = os.path.abspath(filepath)
         log_dir = os.path.dirname(self.filepath)
-        self.log = open(self.filepath, "a", encoding="utf-8")
+        self.log = open(self.filepath, "w", encoding="utf-8")
         self._rotate_logs(log_dir, max_logs)
     def write(self, message):
         # 写入终端（保持原有显示）

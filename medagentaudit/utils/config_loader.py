@@ -10,6 +10,8 @@ class LLMProviderConfig(BaseModel):
     base_url: str = Field(..., description="Base URL for the LLM API.")
     model_name: str = Field(..., description="Model name to use.")
     timeout: int = Field(180, description="Request timeout in seconds.")
+    stream: bool = Field(False, description="Whether to use streaming responses.")
+    timeout: int = Field(180, description="Request timeout in seconds.")
 
 class SystemConfig(BaseModel):
     max_retries: int = Field(2, description="Maximum number of retries for a failing task.")

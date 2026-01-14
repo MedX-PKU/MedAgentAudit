@@ -43,30 +43,32 @@ run_command() {
 # 定义数据集和任务类型
 QA_DATASETS=("MedQA" "PubMedQA" "MedXpertQA-text")
 VQA_DATASETS=("PathVQA" "VQA-RAD" "Slake")
-QA_LLM=("deepseek-reasoner" "gpt-5.2" "gemini-2.5-flash" "qwen3-8b")
-VQA_LLM=("glm-4.6v" "gpt-5.2" "gemini-2.5-flash" "qwen3-vl-8b-thinking")
+# QA_LLM=("deepseek-reasoner" "gpt-5.2" "gemini-2.5-flash" "qwen3-8b")
+QA_LLM=("qwen3-8b")
+# VQA_LLM=("glm-4.6v" "gpt-5.2" "gemini-2.5-flash" "qwen3-vl-8b-thinking")
+VQA_LLM=("qwen3-vl-8b-thinking")
 # this experiment‘s samples' num
-num=100
+num=1
 time_stamp="20260112"
 qa_type="mc"
 AUDITOR="gemini-3-flash-preview"
 echo "Starting experiments..."
 
-# 1. ColaCare QA
-for dataset in "${QA_DATASETS[@]}"; do
-    for qa_llm in "${QA_LLM[@]}"; do
-        cmd="python -m medagentaudit.framework.colacare --dataset $dataset --qa_type $qa_type --meta_model $qa_llm --doctor_models $qa_llm $qa_llm $qa_llm --auditor_model $AUDITOR --config_path config.toml --num_samples $num --time_stamp $time_stamp" 
-        run_command "$cmd"
-    done
-done
+# # 1. ColaCare QA fixed
+# for dataset in "${QA_DATASETS[@]}"; do
+#     for qa_llm in "${QA_LLM[@]}"; do
+#         cmd="python -m medagentaudit.framework.colacare --dataset $dataset --qa_type $qa_type --meta_model $qa_llm --doctor_models $qa_llm $qa_llm $qa_llm --auditor_model $AUDITOR --config_path config.toml --num_samples $num --time_stamp $time_stamp" 
+#         run_command "$cmd"
+#     done
+# done
 
-# 2. ColaCare VQA
-for dataset in "${VQA_DATASETS[@]}"; do
-    for vqa_llm in "${VQA_LLM[@]}"; do
-        cmd="python -m medagentaudit.framework.colacare --dataset $dataset --qa_type $qa_type --meta_model $vqa_llm --doctor_models $vqa_llm $vqa_llm $vqa_llm --auditor_model $AUDITOR --config_path config.toml --num_samples $num --time_stamp $time_stamp"
-        run_command "$cmd"
-    done
-done
+# # 2. ColaCare VQA fixed
+# for dataset in "${VQA_DATASETS[@]}"; do
+#     for vqa_llm in "${VQA_LLM[@]}"; do
+#         cmd="python -m medagentaudit.framework.colacare --dataset $dataset --qa_type $qa_type --meta_model $vqa_llm --doctor_models $vqa_llm $vqa_llm $vqa_llm --auditor_model $AUDITOR --config_path config.toml --num_samples $num --time_stamp $time_stamp"
+#         run_command "$cmd"
+#     done
+# done
 
 # 3. MedAgent QA
 for dataset in "${QA_DATASETS[@]}"; do
@@ -76,78 +78,78 @@ for dataset in "${QA_DATASETS[@]}"; do
     done
 done
 
-# 4. MedAgent VQA
-for dataset in "${VQA_DATASETS[@]}"; do
-    for vqa_llm in "${VQA_LLM[@]}"; do
-        cmd="python -m medagentaudit.framework.medagent --dataset $dataset --qa_type $qa_type --model $vqa_llm --meta_model $vqa_llm --decision_model $vqa_llm --auditor_model $AUDITOR --config_path config.toml --num_samples $num --time_stamp $time_stamp"
-        run_command "$cmd"
-    done
-done
+# # 4. MedAgent VQA
+# for dataset in "${VQA_DATASETS[@]}"; do
+#     for vqa_llm in "${VQA_LLM[@]}"; do
+#         cmd="python -m medagentaudit.framework.medagent --dataset $dataset --qa_type $qa_type --model $vqa_llm --meta_model $vqa_llm --decision_model $vqa_llm --auditor_model $AUDITOR --config_path config.toml --num_samples $num --time_stamp $time_stamp"
+#         run_command "$cmd"
+#     done
+# done
 
 
-# 5. MDAgents QA
-for dataset in "${QA_DATASETS[@]}"; do
-    for qa_llm in "${QA_LLM[@]}"; do
-        cmd="python -m medagentaudit.framework.mdagents --dataset $dataset --qa_type $qa_type --moderator_model $qa_llm --recruiter_model $qa_llm --agent_model $qa_llm --auditor_model $AUDITOR --config_path config.toml --num_samples $num --time_stamp $time_stamp"
-        run_command "$cmd"
-    done
-done
+# # 5. MDAgents QA
+# for dataset in "${QA_DATASETS[@]}"; do
+#     for qa_llm in "${QA_LLM[@]}"; do
+#         cmd="python -m medagentaudit.framework.mdagents --dataset $dataset --qa_type $qa_type --moderator_model $qa_llm --recruiter_model $qa_llm --agent_model $qa_llm --auditor_model $AUDITOR --config_path config.toml --num_samples $num --time_stamp $time_stamp"
+#         run_command "$cmd"
+#     done
+# done
 
-# 6. MDAgents VQA
-for dataset in "${VQA_DATASETS[@]}"; do
-    for vqa_llm in "${VQA_LLM[@]}"; do
-        cmd="python -m medagentaudit.framework.mdagents --dataset $dataset --qa_type $qa_type --moderator_model $vqa_llm --recruiter_model $vqa_llm --agent_model $vqa_llm --auditor_model $AUDITOR --config_path config.toml --num_samples $num --time_stamp $time_stamp"
-        run_command "$cmd"
-    done
-done
+# # 6. MDAgents VQA
+# for dataset in "${VQA_DATASETS[@]}"; do
+#     for vqa_llm in "${VQA_LLM[@]}"; do
+#         cmd="python -m medagentaudit.framework.mdagents --dataset $dataset --qa_type $qa_type --moderator_model $vqa_llm --recruiter_model $vqa_llm --agent_model $vqa_llm --auditor_model $AUDITOR --config_path config.toml --num_samples $num --time_stamp $time_stamp"
+#         run_command "$cmd"
+#     done
+# done
 
-# 7. ReConcile QA
-for dataset in "${QA_DATASETS[@]}"; do
-    for qa_llm in "${QA_LLM[@]}"; do
-        cmd="python -m medagentaudit.medqa.multi_agent_reconcile_audit --dataset $dataset --qa_type $qa_type --agents $qa_llm $qa_llm $qa_llm --auditor_model $AUDITOR --config_path config.toml --num_samples $num --time_stamp $time_stamp --max_rounds 3"
-        run_command "$cmd"
-    done
-done
+# # 7. ReConcile QA
+# for dataset in "${QA_DATASETS[@]}"; do
+#     for qa_llm in "${QA_LLM[@]}"; do
+#         cmd="python -m medagentaudit.medqa.multi_agent_reconcile_audit --dataset $dataset --qa_type $qa_type --agents $qa_llm $qa_llm $qa_llm --auditor_model $AUDITOR --config_path config.toml --num_samples $num --time_stamp $time_stamp --max_rounds 3"
+#         run_command "$cmd"
+#     done
+# done
 
-# 8. ReConcile VQA
-for dataset in "${VQA_DATASETS[@]}"; do
-    for vqa_llm in "${VQA_LLM[@]}"; do
-        cmd="python -m medagentaudit.medqa.multi_agent_reconcile_audit --dataset $dataset --qa_type $qa_type --agents $vqa_llm $vqa_llm $vqa_llm --auditor_model $AUDITOR --config_path config.toml --num_samples $num --time_stamp $time_stamp --max_rounds 3"
-        run_command "$cmd"
-    done
-done
+# # 8. ReConcile VQA
+# for dataset in "${VQA_DATASETS[@]}"; do
+#     for vqa_llm in "${VQA_LLM[@]}"; do
+#         cmd="python -m medagentaudit.medqa.multi_agent_reconcile_audit --dataset $dataset --qa_type $qa_type --agents $vqa_llm $vqa_llm $vqa_llm --auditor_model $AUDITOR --config_path config.toml --num_samples $num --time_stamp $time_stamp --max_rounds 3"
+#         run_command "$cmd"
+#     done
+# done
 
-# 9. MAC QA
-for dataset in "${QA_DATASETS[@]}"; do
-    for qa_llm in "${QA_LLM[@]}"; do
-        cmd="python -m medagentaudit.medqa.multi_agent_mac_audit --dataset $dataset --qa_type $qa_type --doctor_model $qa_llm --supervisor_model $qa_llm --auditor_model $AUDITOR --config_path config.toml --num_samples $num --time_stamp $time_stamp --max_rounds 3"
-        run_command "$cmd"
-    done
-done
+# # 9. MAC QA
+# for dataset in "${QA_DATASETS[@]}"; do
+#     for qa_llm in "${QA_LLM[@]}"; do
+#         cmd="python -m medagentaudit.medqa.multi_agent_mac_audit --dataset $dataset --qa_type $qa_type --doctor_model $qa_llm --supervisor_model $qa_llm --auditor_model $AUDITOR --config_path config.toml --num_samples $num --time_stamp $time_stamp --max_rounds 3"
+#         run_command "$cmd"
+#     done
+# done
 
-# 10. MAC VQA
-for dataset in "${VQA_DATASETS[@]}"; do
-    for vqa_llm in "${VQA_LLM[@]}"; do
-        cmd="python -m medagentaudit.medqa.multi_agent_mac_audit --dataset $dataset --qa_type $qa_type --doctor_model $vqa_llm --supervisor_model $vqa_llm --auditor_model $AUDITOR --config_path config.toml --num_samples $num --time_stamp $time_stamp --max_rounds 3"
-        run_command "$cmd"
-    done
-done
+# # 10. MAC VQA
+# for dataset in "${VQA_DATASETS[@]}"; do
+#     for vqa_llm in "${VQA_LLM[@]}"; do
+#         cmd="python -m medagentaudit.medqa.multi_agent_mac_audit --dataset $dataset --qa_type $qa_type --doctor_model $vqa_llm --supervisor_model $vqa_llm --auditor_model $AUDITOR --config_path config.toml --num_samples $num --time_stamp $time_stamp --max_rounds 3"
+#         run_command "$cmd"
+#     done
+# done
 
-# 11. HealthcareAgent QA
-for dataset in "${QA_DATASETS[@]}"; do
-    for qa_llm in "${QA_LLM[@]}"; do
-        cmd="python -m medagentaudit.medqa.multi_agent_healthcareagent_audit --dataset $dataset --qa_type $qa_type --model $qa_llm --auditor_model $AUDITOR --config_path config.toml --num_samples $num --time_stamp $time_stamp"
-        run_command "$cmd"
-    done
-done
+# # 11. HealthcareAgent QA
+# for dataset in "${QA_DATASETS[@]}"; do
+#     for qa_llm in "${QA_LLM[@]}"; do
+#         cmd="python -m medagentaudit.medqa.multi_agent_healthcareagent_audit --dataset $dataset --qa_type $qa_type --model $qa_llm --auditor_model $AUDITOR --config_path config.toml --num_samples $num --time_stamp $time_stamp"
+#         run_command "$cmd"
+#     done
+# done
 
-# 12. HealthcareAgent VQA
-for dataset in "${VQA_DATASETS[@]}"; do
-    for vqa_llm in "${VQA_LLM[@]}"; do
-        cmd="python -m medagentaudit.medqa.multi_agent_healthcareagent_audit --dataset $dataset --qa_type $qa_type --model $vqa_llm --auditor_model $AUDITOR --config_path config.toml --num_samples $num --time_stamp $time_stamp"
-        run_command "$cmd"
-    done
-done
+# # 12. HealthcareAgent VQA
+# for dataset in "${VQA_DATASETS[@]}"; do
+#     for vqa_llm in "${VQA_LLM[@]}"; do
+#         cmd="python -m medagentaudit.medqa.multi_agent_healthcareagent_audit --dataset $dataset --qa_type $qa_type --model $vqa_llm --auditor_model $AUDITOR --config_path config.toml --num_samples $num --time_stamp $time_stamp"
+#         run_command "$cmd"
+#     done
+# done
 # 等待所有任务完成
 wait
 

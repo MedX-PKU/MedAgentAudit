@@ -60,7 +60,7 @@ class BaseAgent:
                         model=self.model_name,
                         messages=[system_message, user_message],
                         response_format={"type": "json_object"},
-                        extra_body={"enable_thinking": True}, # qwen3-8b and qwen3-vl-8b need this parameter
+                        extra_body={"enable_thinking": False}, # qwen3-8b and qwen3-vl-8b need this parameter
                         reasoning = {"effort": self.llm.reasoning.effort},
                         stream=self.llm.stream,
                         timeout=self.llm.timeout # just in case timeout error!
@@ -70,7 +70,7 @@ class BaseAgent:
                         model=self.model_name,
                         messages=[system_message, user_message],
                         response_format={"type": "json_object"},
-                        extra_body={"enable_thinking": True}, # qwen3-8b and qwen3-vl-8b need this parameter
+                        extra_body={"enable_thinking": False}, # qwen3-8b and qwen3-vl-8b need this parameter
                         stream=self.llm.stream,
                         timeout=self.llm.timeout # just in case timeout error!
                     )
