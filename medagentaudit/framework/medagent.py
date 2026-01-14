@@ -21,11 +21,11 @@ auditor_root = current_file_path.parents[1] / "auditor"
 common_root = current_file_path.parents[1] / "common"
 core_root = current_file_path.parents[1] / "core"
 project_root = current_file_path.parents[2]
-sys.path.extend([str(utils_root), str(project_root)])
+sys.path.extend([str(utils_root), str(project_root), str(auditor_root), str(common_root), str(core_root)])
 
 from encode_image import encode_image
 from json_utils import load_json, save_json, preprocess_response_string
-from dual_logger import DualLogger
+from logger import DualLogger
 from config_loader import get_config
 from auditor_agent import AuditorAgent
 from base_agent import BaseAgent
@@ -685,7 +685,7 @@ class MDTConsultation:
 
             return case_history
 
-def process_input(item, model_key, meta_model_key, decision_model_key, auditor_model_key, conflict_analysis_model_key, config_path):
+def process_input(item, model_key, meta_model_key, decision_model_key, auditor_model_key, config_path):
     """Process a single input data item."""
     mdt = MDTConsultation(
         max_rounds=3,
@@ -693,7 +693,6 @@ def process_input(item, model_key, meta_model_key, decision_model_key, auditor_m
         meta_model_key=meta_model_key,
         decision_model_key=decision_model_key,
         auditor_model_key=auditor_model_key,
-        conflict_analysis_model_key=conflict_analysis_model_key,
         config_path=config_path
     )
     return mdt.run_consultation(
@@ -721,20 +720,22 @@ def main():
     print(f"Dataset: {dataset_name}")
 
     timestamp = args.time_stamp
-    current_model_name = current_file_name.split("_")[2]
+    qa_type = args.qa_type
+    current_model_name = current_file_name
     
-    terminal_log_dir = project_root / "logs" / "observation" / timestamp / current_model_name / dataset_name / "terminal_log"
+    terminal_log_dir = project_root / "logs" / "audit_results" / timestamp / current_model_name / dataset_name / "terminal_log"
     terminal_log_dir.mkdir(parents=True, exist_ok=True)
     terminal_log_file = terminal_log_dir / f"{dataset_name}_full_terminal.log"
     print(f"!!! Terminal output is being captured to: {terminal_log_file} !!!")
     sys.stdout = DualLogger(terminal_log_file, sys.stdout)
     sys.stderr = DualLogger(terminal_log_file, sys.stderr) # 捕获报错和tqdm进度条
 
-    logs_dir = project_root / "logs" / "observation" / timestamp / current_model_name / dataset_name
+    logs_dir = project_root / "logs" / "audit_results" / timestamp / current_model_name / dataset_name
     logs_dir.mkdir(parents=True, exist_ok=True)
     print(f"Logs will be saved to: {logs_dir}")
 
-    data_path = f"./my_datasets/processed/medqa/{args.dataset}/medqa_{args.qa_type}_test.json"
+    data_path = project_root / "datasets" / dataset_name / f"medqa_{qa_type}_test.json"
+
     data = load_json(data_path)
     print(f"Loaded {len(data)} samples from {data_path}")
 
@@ -752,7 +753,6 @@ def main():
                 meta_model_key=args.meta_model,
                 decision_model_key=args.decision_model,
                 auditor_model_key=args.auditor_model,
-                conflict_analysis_model_key=args.auditor_model,
                 config_path=args.config_path
             )
 
