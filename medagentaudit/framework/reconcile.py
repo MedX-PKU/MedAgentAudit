@@ -1,5 +1,5 @@
 """
-[2025NM] MEDAGENTAUDIT-CODE/medagentaudit/medqa/multi_agent_reconcile_audit.py
+[2025NM] MEDAGENTAUDIT-CODE/medagentaudit/framework/reconcile.py
 """ 
 from openai import OpenAI
 import os
@@ -98,10 +98,14 @@ class ReconcileAgent(BaseAgent):
         user_content.append({"type": "text", "text": prompt_text})
         user_message = {"role": "user", "content": user_content}
 
-        response_text, call_log = self.call_llm(system_message, user_message)
-        result, parse_log = self._parse_response(response_text)
-
-        step_log = {**call_log, **parse_log}
+        response_text, system_message, user_message = self.call_llm(system_message = system_message, user_message = user_message, response_format={"type": "json_object"})
+        result = self._parse_response(response_text)
+        step_log = {
+            "llm_input":{
+                "system_message": system_message,
+                "user_message": user_message
+            }
+        }
         self.memory.append({"phase": DiscussionPhase.INITIAL.value, "response": result})
         return result, step_log
 
@@ -157,10 +161,15 @@ class ReconcileAgent(BaseAgent):
         user_content.append({"type": "text", "text": prompt_text})
         user_message = {"role": "user", "content": user_content}
         
-        response_text, call_log = self.call_llm(system_message, user_message)
-        result, parse_log = self._parse_response(response_text)
+        response_text, system_message, user_message = self.call_llm(system_message = system_message, user_message = user_message, response_format={"type": "json_object"})
+        result = self._parse_response(response_text)
 
-        step_log = {**call_log, **parse_log}
+        step_log = {
+            "llm_input":{
+                "system_message": system_message,
+                "user_message": user_message
+            }
+        }
         step_log["discussion_context_provided"] = discussion_prompt
 
         self.memory.append({

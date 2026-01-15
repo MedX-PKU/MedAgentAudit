@@ -1,7 +1,6 @@
 """
 ./medagentaudit/framework/single_llm.py
 """
-
 from openai import OpenAI
 import json
 from enum import Enum
@@ -20,7 +19,7 @@ auditor_root = current_file_path.parents[1] / "auditor"
 common_root = current_file_path.parents[1] / "common"
 core_root = current_file_path.parents[1] / "core"
 project_root = current_file_path.parents[2]
-sys.path.extend([str(utils_root), str(project_root), str(auditor_root), str(common_root)])
+sys.path.extend([str(utils_root), str(project_root), str(auditor_root), str(common_root), str(core_root)])
 from logger import DualLogger
 from encode_image import encode_image
 from json_utils import load_json, save_json, preprocess_response_string
@@ -34,8 +33,8 @@ class SingleModelInference(BaseAgent):
     using various prompting techniques.
     """
 
-    def __init__(self, model_key: str, sample_size: int):
-        super().__init__(agent_id="single_llm", agent_type=AgentType.SINGLELLM, config_path="config.toml", model_key=model_key)
+    def __init__(self, model_key: str, sample_size: int, config_path: str):
+        super().__init__(agent_id="single_llm", agent_type=AgentType.SINGLELLM, config_path=config_path, model_key=model_key)
         """
         Initialize the inference handler.
 
@@ -44,69 +43,6 @@ class SingleModelInference(BaseAgent):
             sample_size: Number of samples for self-consistency methods
         """
         self.sample_size = sample_size
-
-    def _call_llm(self,
-                 system_message: str,
-                 user_message: str | List,
-                 n_samples: int = 1,
-                 max_retries: int = 3,
-                 response_format: Dict | None = None) -> List[str]:
-        """
-        Call the LLM with messages and handle retries.
-
-        Args:
-            system_message: System message setting context
-            user_message: User message (text or multimodal content)
-            response_format: Optional format specification for response
-            n_samples: Number of samples to generate
-            max_retries: Maximum number of retry attempts
-
-        Returns:
-            List of LLM response texts
-        """
-        retries = 0
-        all_responses = []
-
-        # For each sample we need
-        remaining_samples = n_samples
-
-        while remaining_samples > 0 and retries < max_retries:
-            try:
-                messages = [
-                    {"role": "system", "content": system_message},
-                    {"role": "user", "content": user_message}
-                ]
-
-                # Some models might not properly support n > 1, so we make multiple calls if needed
-                current_n = min(remaining_samples, 1)  # Request just 1 at a time to be safe
-
-                completion = self.client.chat.completions.create(
-                    model=self.model_name,
-                    messages=messages,
-                    response_format=response_format,
-                    n=current_n,
-                    stream=False
-                )
-
-                responses = [choice.message.content for choice in completion.choices]
-                all_responses.extend(responses)
-                remaining_samples -= len(responses)
-
-                # Reset retry counter on successful API call
-                retries = 0
-
-            except Exception as e:
-                retries += 1
-                print(f"LLM API call error (attempt {retries}/{max_retries}): {e}")
-                if retries >= max_retries:
-                    if all_responses:  # If we have some responses, use those rather than failing
-                        print(f"Warning: Only obtained {len(all_responses)}/{n_samples} samples after max retries")
-                        break
-                    else:
-                        raise Exception(f"LLM API call failed after {max_retries} attempts: {e}")
-                time.sleep(1)  # Brief pause before retrying
-
-        return all_responses
 
     def _prepare_user_message(self,
                             prompt: str,
@@ -167,16 +103,13 @@ class SingleModelInference(BaseAgent):
 
 
     def process_item(self,
-                    item: Dict[str, Any],
-                    prompt_type: str,
-                    dataset: str) -> Dict[str, Any]:
+                    item: Dict[str, Any]) -> Dict[str, Any]:
         """
         Process a single item using the specified prompting technique.
 
         Args:
             item: Input data dictionary with question, options, etc.
             prompt_type: Type of prompting to use
-            dataset: Dataset name
 
         Returns:
             Result dictionary with predicted answer and metadata
@@ -190,39 +123,33 @@ class SingleModelInference(BaseAgent):
         image_path = item.get("image_path")
         ground_truth = item.get("answer", "")
 
-        print(f"Processing {qid} with {prompt_type} prompting")
+        print(f"Processing {qid}")
 
         # Determine if it's a multiple-choice or free-form question
         is_mc = options is not None
 
         # Set system message based on task type
         if image_path:
-            system_message = "You are a medical vision expert analyzing medical images and answering questions about them."
+            system_message = {"role": "system", "content": "You are a medical vision expert analyzing medical images and answering questions about them."}
         else:
-            system_message = "You are a medical expert answering medical questions with precise and accurate information."
+            system_message = {"role": "system", "content": "You are a medical expert answering medical questions with precise and accurate information."}
 
         prompt = self.zero_shot_prompt(question, options)
-        response_format = None
-        n_samples = 1
 
         # Prepare user message (text-only or multimodal)
-        user_message = self._prepare_user_message(prompt, image_path)
-
+        user_content = self._prepare_user_message(prompt, image_path)
+        user_message = {"role": "user", "content": user_content}
         # Call LLM to get responses
-        responses = self._call_llm(
+        response, system_message, user_message = self.call_llm(
             system_message=system_message,
             user_message=user_message,
-            response_format=response_format,
-            n_samples=n_samples
         )
 
-        voting_details = None
-        # Process responses based on prompt type
 
         # For zero-shot and few-shot, use the first response
-        predicted_answer = responses[0].strip()
+        predicted_answer = response.strip()
         reasoning = "Direct answer, no explicit reasoning"
-        individual_responses = [{"answer": predicted_answer, "full_response": responses[0]}]
+        individual_responses = [{"answer": predicted_answer, "full_response": response}]
 
         # Clean up the predicted answer (extract just the option letter for MC)
         if is_mc and len(predicted_answer) > 1:
@@ -246,11 +173,9 @@ class SingleModelInference(BaseAgent):
             "predicted_answer": predicted_answer,
             "case_history": {
                 "reasoning": reasoning,
-                "prompt_type": prompt_type,
                 "model": self.model_key,
-                "raw_responses": responses,
+                "raw_responses": response,
                 "individual_responses": individual_responses,
-                "voting_details": voting_details,
                 "processing_time": processing_time
             }
         }
@@ -263,28 +188,24 @@ def main():
     parser.add_argument("--dataset", type=str, required=True, help="Dataset name (MedQA, PubMedQA, PathVQA, VQA-RAD)")
     parser.add_argument("--qa_type", type=str, choices=["mc", "ff"], required=True,
                        help="QA type: multiple-choice (mc) or free-form (ff)")
-    parser.add_argument("--prompt_type", type=str, required=True,
-                       choices=["zero_shot", "few_shot", "cot", "self_consistency", "cot_sc"],
-                       help="Prompting technique to use")
     parser.add_argument("--model_key", type=str, default="qwen-max-latest",
                        help="Model key from LLM_MODELS_SETTINGS")
     parser.add_argument("--num_samples", type=int, default=5,
                         help="Number of samples for self-consistency methods")
     parser.add_argument("--time_stamp", type=str, required=True, help="Timestamp for logging purposes")
+    parser.add_argument("--config_path", type=str, required=True, help="Path to the configuration file")
 
     args = parser.parse_args()
 
     # Dataset and QA type
     dataset_name = args.dataset
     qa_type = args.qa_type
-    prompt_type = args.prompt_type
     model_key = args.model_key
     num_samples = args.num_samples
     timestamp = args.time_stamp
-
+    config_path = args.config_path
     print(f"Dataset: {dataset_name}")
     print(f"QA Type: {qa_type}")
-    print(f"Prompt Type: {prompt_type}")
     print(f"Model: {model_key}")
     print(f"Sample Size: {num_samples}")
 
@@ -297,9 +218,6 @@ def main():
     sys.stdout = DualLogger(terminal_log_file, sys.stdout)
     sys.stderr = DualLogger(terminal_log_file, sys.stderr) # 捕获报错和tqdm进度条
 
-    # Method name for logging
-    method = f"SingleLLM_{prompt_type}"
-
     # Set up data path
     data_path = project_root / "datasets" / dataset_name / f"medqa_{qa_type}_test.json"
 
@@ -310,7 +228,7 @@ def main():
     print(f"Data path: {data_path}")
 
     # Initialize the model
-    model = SingleModelInference(model_key=model_key, sample_size=num_samples)
+    model = SingleModelInference(model_key=model_key, sample_size=num_samples, config_path=config_path)
 
     # Load the data
     data = load_json(data_path)
@@ -323,7 +241,7 @@ def main():
     correct_count = 0
 
     # Process each item
-    for item in tqdm(data, desc=f"Processing {dataset_name} with {prompt_type}"):
+    for item in tqdm(data[:num_samples], desc=f"Processing {dataset_name}"):
         qid = item["qid"]
 
         # Skip if already processed
@@ -336,9 +254,7 @@ def main():
         try:
             # Process the item
             result = model.process_item(
-                item=item,
-                prompt_type=prompt_type,
-                dataset=dataset_name
+                item=item
             )
 
             # Save the result
@@ -355,7 +271,7 @@ def main():
 
     # Print summary
     print("\n" + "="*50)
-    print(f"Processing Summary for {dataset_name} ({qa_type}) with {prompt_type}:")
+    print(f"Processing Summary for {dataset_name} ({qa_type}):")
     print(f"Total items: {len(data)}")
     print(f"Processed: {processed_count}")
     print(f"Skipped (already processed): {skipped_count}")

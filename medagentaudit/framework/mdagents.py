@@ -74,7 +74,7 @@ class Agent(BaseAgent):
         if use_memory and self.memory:
             messages.extend(self.memory)
         messages.append(user_message)
-        response, system_message, user_message = self.call_llm(messages, response_format=response_format)
+        response, system_message, user_message = self.call_llm(system_message = system_message, user_message = user_message, response_format=response_format)
         return response, system_message, user_message
 
     def clear_memory(self):
@@ -138,6 +138,7 @@ class Group:
         lead_request, system_message, user_message = self.lead_agent.chat(
             prompt=delivery_prompt,
             image_path=self.question_context.get('image_path'),
+            response_format={"type": "text"}
         )
 
         lead_request_log = {
@@ -543,7 +544,7 @@ class MDAgentsFramework:
 
             specialties = [e['specialty'] for e in experts]
             print(f"Recruited Experts: {[e['specialty'] for e in experts]}")
-            step_log["specialties"] = [s.value for s in specialties]
+            step_log["specialties"] = specialties
             step_log["recruited_personnel"] = experts
             return experts, step_log
 
@@ -704,6 +705,7 @@ class MDAgentsFramework:
             agent = Agent(
                 agent_id=agent_id,
                 specialty=config['specialty'],
+                config_path=self.config_path,
                 model_key=agent_model_key,
                 instruction=f"You are a {config['specialty']} with expertise in {config['expertise']}. Collaborate with other medical experts to answer the medical query. Maintain your persona and provide insights based on your specialty. Respond in JSON format."
             )
@@ -1063,26 +1065,22 @@ class MDAgentsFramework:
         start_time = time.time()
         process_log = []
         result_data = {}
-        try:
-            complexity, complexity_log = self._determine_complexity(data_item["question"], data_item.get("options"), data_item.get("image_path"))
-            process_log.append(complexity_log)
 
-            if complexity == ComplexityLevel.BASIC:
-                result_data = self._process_basic_query(data_item=data_item)
-            else:
-                recruited, recruitment_log = self._recruit_experts(data_item["question"], data_item.get("options"), complexity, data_item.get("image_path"))
-                process_log.append(recruitment_log)
-                specialties = recruitment_log.get("specialties", [])
-                # audit 2.1.1 role assignment
-                audit_results_of_role_assignment = self.auditor_agent.audit_role_assignment(question=data_item["question"], image_path=data_item.get("image_path"), specialties=specialties)
-                if complexity == ComplexityLevel.INTERMEDIATE:
-                    result_data = self._process_intermediate_query(data_item, recruited, audit_results_of_role_assignment, specialties)
-                elif complexity == ComplexityLevel.ADVANCED:
-                    result_data = self._process_advanced_query(data_item, recruited, audit_results_of_role_assignment, specialties)
+        complexity, complexity_log = self._determine_complexity(data_item["question"], data_item.get("options"), data_item.get("image_path"))
+        process_log.append(complexity_log)
 
-        except Exception as e:
-            print(f"ERROR processing QID {qid}: {e}")
-            result_data = {"predicted_answer": "Error", "explanation": str(e), "complexity": "unknown"}
+        if complexity == ComplexityLevel.BASIC:
+            result_data = self._process_basic_query(data_item=data_item)
+        else:
+            recruited, recruitment_log = self._recruit_experts(data_item["question"], data_item.get("options"), complexity, data_item.get("image_path"))
+            process_log.append(recruitment_log)
+            specialties = recruitment_log.get("specialties", [])
+            # audit 2.1.1 role assignment
+            audit_results_of_role_assignment = self.auditor_agent.audit_role_assignment(question=data_item["question"], image_path=data_item.get("image_path"), specialties=specialties)
+            if complexity == ComplexityLevel.INTERMEDIATE:
+                result_data = self._process_intermediate_query(data_item, recruited, audit_results_of_role_assignment, specialties)
+            elif complexity == ComplexityLevel.ADVANCED:
+                result_data = self._process_advanced_query(data_item, recruited, audit_results_of_role_assignment, specialties)
 
         processing_time = time.time() - start_time
         

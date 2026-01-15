@@ -14,3 +14,5 @@ class AgentType(Enum):
     SPECIALIST = "Specialist"
     TEAM_LEAD = "Team Lead"
     EXPERT_GATHERER = "Expert Gatherer"
+    RECONCILE = "ReConciler"
+    SINGLELLM = "SingleLLM"

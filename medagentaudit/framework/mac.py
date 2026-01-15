@@ -119,201 +119,205 @@ class MACFramework:
         case_history = {"rounds": []}
         final_answer_obj = {"answer": "Error", "explanation": "Processing failed to produce a final answer."}
 
-        try:
-            # The 'Admin Agent' provides the initial information
-            initial_messages = self._format_initial_prompt(data_item)
-            conversation_log.append({
-                "role": "Admin",
-                "content": initial_messages[0]['content']
-            })
+        # The 'Admin Agent' provides the initial information
+        initial_messages = self._format_initial_prompt(data_item)
+        conversation_log.append({
+            "role": "Admin",
+            "content": initial_messages[0]['content']
+        })
 
-            for round_num in range(1, self.max_rounds + 1):
-                print(f"\n--- Starting Round {round_num}/{self.max_rounds} for QID: {qid} ---")
+        for round_num in range(1, self.max_rounds + 1):
+            print(f"\n--- Starting Round {round_num}/{self.max_rounds} for QID: {qid} ---")
 
-                audit_round_data = {
-                    "round": round_num,
-                    "2_1_1_role_assignment": [], 
-                    "2_1_2_domain_specific_knowledge_activation": [], 
+            audit_round_data = {
+                "round": round_num,
+                "2_1_1_role_assignment": [], 
+                "2_1_2_domain_specific_knowledge_activation": [], 
+                
+                "2_2_1_repetition_of_initial_views": [], 
+                "2_2_2_unresolved_conflicts": [],
+                
+                "3_1_1_suppression_of_minority_views": [],
+                "3_1_2_authority_bias": [],
+                "3_1_3_neglect_of_contradictions": [],
+                "3_2_1_self_contradiction_when_decision": []
+            }
+            round_data = {"round": round_num, "opinions": [], "synthesis": None, "reviews": [], "decision": None}
+            case_history["rounds"].append(round_data)
+
+            # --- 1 Doctors' Turn ---
+            round_doctor_responses = []
+            for doctor in self.doctor_agents:
+                history_str = self._format_conversation_history(conversation_log)
+                system_prompt = (
+                    "You are an expert medical professional providing your initial, independent analysis of a case.\n"
+                    "Your output MUST be a JSON object with two fields:\n"
+                    "1. `explanation`: Your detailed reasoning.\n"
+                    "2. `answer`: Your final conclusion (e.g., the option letter 'A', 'B', etc.).\n"
+                )
+                doctor_prompt = (
+                    f"{history_str}\n"
+                    f"This is round {round_num}. Based on the full conversation history, provide your updated analysis. "
+                    "If other doctors have provided compelling arguments, acknowledge them and refine your position. "
+                    "State your current answer and explanation clearly."
+                )
+                
+                system_message = {"role": "system", "content": system_prompt}
+                user_content = []
+                user_content.append({"type": "text", "text": doctor_prompt})
+                if isinstance (initial_messages[0]['content'], list):
+                    user_content.extend([
+                        {
+                            "type": "image_url",
+                            "image_url": initial_messages[0]['content'][1]['image_url']
+                        },
+                        {
+                            "type": "text",
+                            "text": initial_messages[0]['content'][0]['text']
+                        }
+                    ])
+                else:
+                    user_content.append({"type": "text", "text": initial_messages[0]['content']})
+                user_message = {"role": "user", "content": user_content}
+
+                response_str, _, _ = doctor.call_llm(system_message=system_message, user_message=user_message, response_format={"type": "json_object"})
+                parsed_output = json.loads(preprocess_response_string(response_str))
+                opinion_log = {"parsed_output": parsed_output}
+
+                # audit 2.1.2 domain-specific knowledge activation
+                audit_results_of_domain_specific_knowledge_activation = self.auditor_agent.audit_domain_specific_knowledge_activation(question= data_item["question"], 
+                                                                                                                                        image_path = data_item.get("image_path"), 
+                                                                                                                                        agent_id = doctor.agent_id, 
+                                                                                                                                        specialty = MedicalSpecialty.GENERAL_MEDICINE.value, 
+                                                                                                                                        answer = parsed_output["answer"], 
+                                                                                                                                        explanation = parsed_output["explanation"])
+                audit_round_data["2_1_2_domain_specific_knowledge_activation"].append({
+                    "agent_id": doctor.agent_id,
+                    "specialty": MedicalSpecialty.GENERAL_MEDICINE.value,
+                    "step": "analysis",
+                    "audit_result": audit_results_of_domain_specific_knowledge_activation
+                })
+
+                if round_num > 1 :
+                    # audit 2.2.1 Repetition of Initial Views during Collaborative discussion
+                    audit_results_of_repetition_of_initial_views = self.auditor_agent.audit_repetition_of_initial_views(question = data_item["question"], image_path=data_item.get("image_path"), current_agent_id=doctor.agent_id, current_answer = parsed_output["answer"], current_explanation=parsed_output["explanation"], case_history=case_history) 
+
+                    # audit 2.2.2 Unresolved Conflicts during Collaborative discussion
+                    audit_results_of_unresolved_conflicts_during_Collaboration = self.auditor_agent.audit_unresolved_conflicts_during_Collaboration(question = data_item["question"],
+                                                                                                                                                    current_agent_id=doctor.agent_id,
+                                                                                                                                                    current_answer = parsed_output["answer"],
+                                                                                                                                                    current_explanation=parsed_output["explanation"],
+                                                                                                                                                    case_history=case_history)
                     
-                    "2_2_1_repetition_of_initial_views": [], 
-                    "2_2_2_unresolved_conflicts": [],
-                    
-                    "3_1_1_suppression_of_minority_views": [],
-                    "3_1_2_authority_bias": [],
-                    "3_1_3_neglect_of_contradictions": [],
-                    "3_2_1_self_contradiction_when_decision": []
-                }
-                round_data = {"round": round_num, "opinions": [], "synthesis": None, "reviews": [], "decision": None}
-                case_history["rounds"].append(round_data)
-
-                # --- 1 Doctors' Turn ---
-                round_doctor_responses = []
-                for doctor in self.doctor_agents:
-                    history_str = self._format_conversation_history(conversation_log)
-                    system_prompt = (
-                        "You are an expert medical professional providing your initial, independent analysis of a case.\n"
-                        "Your output MUST be a JSON object with two fields:\n"
-                        "1. `explanation`: Your detailed reasoning.\n"
-                        "2. `answer`: Your final conclusion (e.g., the option letter 'A', 'B', etc.).\n"
-                    )
-                    doctor_prompt = (
-                        f"{history_str}\n"
-                        f"This is round {round_num}. Based on the full conversation history, provide your updated analysis. "
-                        "If other doctors have provided compelling arguments, acknowledge them and refine your position. "
-                        "State your current answer and explanation clearly."
-                    )
-
-                    messages_for_llm = [
-                        {"role": "system", "content": system_prompt},
-                        *initial_messages,
-                        {"role": "user", "content": doctor_prompt}
-                    ]
-
-                    response_str, _, _ = doctor.call_llm(messages_for_llm)
-                    parsed_output = json.loads(preprocess_response_string(response_str))
-                    opinion_log = {"parsed_output": parsed_output}
-
-                    # audit 2.1.2 domain-specific knowledge activation
-                    audit_results_of_domain_specific_knowledge_activation = self.auditor_agent.audit_domain_specific_knowledge_activation(question= data_item["question"], 
-                                                                                                                                          image_path = data_item.get("image_path"), 
-                                                                                                                                          agent_id = doctor.agent_id, 
-                                                                                                                                          specialty = MedicalSpecialty.GENERAL_MEDICINE.value, 
-                                                                                                                                          answer = parsed_output["answer"], 
-                                                                                                                                          explanation = parsed_output["explanation"])
-                    audit_round_data["2_1_2_domain_specific_knowledge_activation"].append({
+                    audit_round_data["2_2_1_repetition_of_initial_views"].append({
                         "agent_id": doctor.agent_id,
                         "specialty": MedicalSpecialty.GENERAL_MEDICINE.value,
                         "step": "analysis",
-                        "audit_result": audit_results_of_domain_specific_knowledge_activation
+                        "audit_result": audit_results_of_repetition_of_initial_views
                     })
-
-                    if round_num > 1 :
-                        # audit 2.2.1 Repetition of Initial Views during Collaborative discussion
-                        audit_results_of_repetition_of_initial_views = self.auditor_agent.audit_repetition_of_initial_views(question = data_item["question"], image_path=data_item.get("image_path"), current_agent_id=doctor.agent_id, current_answer = parsed_output["answer"], current_explanation=parsed_output["explanation"], case_history=case_history) 
-
-                        # audit 2.2.2 Unresolved Conflicts during Collaborative discussion
-                        audit_results_of_unresolved_conflicts_during_Collaboration = self.auditor_agent.audit_unresolved_conflicts_during_Collaboration(question = data_item["question"],
-                                                                                                                                                        current_agent_id=doctor.agent_id,
-                                                                                                                                                        current_answer = parsed_output["answer"],
-                                                                                                                                                        current_explanation=parsed_output["explanation"],
-                                                                                                                                                        case_history=case_history)
-                        
-                        audit_round_data["2_2_1_repetition_of_initial_views"].append({
-                            "agent_id": doctor.agent_id,
-                            "specialty": MedicalSpecialty.GENERAL_MEDICINE.value,
-                            "step": "analysis",
-                            "audit_result": audit_results_of_repetition_of_initial_views
-                        })
-                        audit_round_data["2_2_2_unresolved_conflicts"].append({
-                            "agent_id": doctor.agent_id,
-                            "specialty": MedicalSpecialty.GENERAL_MEDICINE.value,
-                            "step": "analysis",
-                            "audit_result": audit_results_of_unresolved_conflicts_during_Collaboration
-                        })
-                        
-                    case_history["rounds"][-1]["opinions"].append({
+                    audit_round_data["2_2_2_unresolved_conflicts"].append({
                         "agent_id": doctor.agent_id,
                         "specialty": MedicalSpecialty.GENERAL_MEDICINE.value,
-                        "log": opinion_log
+                        "step": "analysis",
+                        "audit_result": audit_results_of_unresolved_conflicts_during_Collaboration
                     })
-                    round_doctor_responses.append({
-                        "role": f"Doctor ({doctor.agent_id})",
-                        "content": response_str
-                    })
-                conversation_log.extend(round_doctor_responses)
-
-                # --- 2 Supervisor's Turn ---
-                print(f"\n--- Supervisor Turn for Round {round_num} ---")
-                history_str = self._format_conversation_history(conversation_log)
-                supervisor_prompt = (
-                    f"{history_str}\n"
-                    f"This is the end of round {round_num}. As the Supervisor, please analyze the doctors' latest inputs. "
-                    "Provide your explanation, challenge any weak points, and determine if consensus has been reached. "
-                    f"If consensus is met or if this is the final round ({self.max_rounds}), you must provide the 'answer'."
-                )
-                # Supervisor does not need the image, only the text discussion
-                supervisor_instruction = (
-                    "You are the Supervisor of a medical multi-agent discussion. Your role is to facilitate the conversation and drive towards a consensus. "
-                    "After each round of discussion among the Doctor agents, you will: "
-                    "1. Summarize the current state of the discussion, noting points of agreement and disagreement. "
-                    "2. Challenge the doctors' reasoning if it seems weak or contradictory. "
-                    "3. Evaluate if a consensus has been reached. A consensus is defined as strong agreement among the majority of doctors on both the answer and the core reasoning. "
-                    "4. If consensus is reached or this is the final round, provide the final definitive answer. "
-                    "Respond in JSON format with 'explanation' (your analysis of the round), 'consensus_reached' (boolean), and 'answer' (your final concluded answer, which can be null if consensus is not yet reached)."
-                )
-                messages_for_llm = [
-                    {"role": "system", "content": supervisor_instruction},
-                    {"role": "user", "content": supervisor_prompt}
-                ]
-
-                supervisor_response_str, _, _ = self.supervisor_agent.call_llm(messages=messages_for_llm) 
-                parsed_output = json.loads(preprocess_response_string(supervisor_response_str))
-                conversation_log.append({
-                    "role": "Supervisor",
-                    "content": supervisor_response_str
+                    
+                case_history["rounds"][-1]["opinions"].append({
+                    "agent_id": doctor.agent_id,
+                    "specialty": MedicalSpecialty.GENERAL_MEDICINE.value,
+                    "log": opinion_log
                 })
-                decision_log = {"parsed_output": parsed_output}
-                decision_answer = parsed_output.get("answer", None)
-                decision_explanation = parsed_output.get("explanation", "")
-                # audit 3.1.1: Suppression of Correct Minority Views by Incorrect Consensus during Decision-making for decision-maker
-                audit_results_of_suppression_of_correct_minority_views_by_incorrect_consensus_for_decision_maker = self.auditor_agent.audit_suppression_by_majority(
-                    question = data_item["question"], options = data_item.get("options"), image_path = data_item.get("image_path"), current_agent_id = self.supervisor_agent.agent_id, answer = decision_answer, explanation = decision_explanation, case_history = case_history
-                ) # here the discussion_context includes all the domain agents' answers and explanations before this decision
+                round_doctor_responses.append({
+                    "role": f"Doctor ({doctor.agent_id})",
+                    "content": response_str
+                })
+            conversation_log.extend(round_doctor_responses)
 
-                # audit 3.1.2: Reasoning Distorted by Authority Bias for decision-maker
-                audit_results_of_authority_bias_for_decision_maker = self.auditor_agent.audit_authority_bias(
-                    question = data_item["question"], options = data_item.get("options"), image_path = data_item.get("image_path"), current_agent_id = self.supervisor_agent.agent_id, explanation = decision_explanation, case_history = case_history, answer = decision_answer
-                ) # here the discussion_context must include the role of domain agent and their answer and explanation before this decision
+            # --- 2 Supervisor's Turn ---
+            print(f"\n--- Supervisor Turn for Round {round_num} ---")
+            history_str = self._format_conversation_history(conversation_log)
+            supervisor_prompt = (
+                f"{history_str}\n"
+                f"This is the end of round {round_num}. As the Supervisor, please analyze the doctors' latest inputs. "
+                "Provide your explanation, challenge any weak points, and determine if consensus has been reached. "
+                f"If consensus is met or if this is the final round ({self.max_rounds}), you must provide the 'answer'."
+            )
+            # Supervisor does not need the image, only the text discussion
+            supervisor_instruction = (
+                "You are the Supervisor of a medical multi-agent discussion. Your role is to facilitate the conversation and drive towards a consensus. "
+                "After each round of discussion among the Doctor agents, you will: "
+                "1. Summarize the current state of the discussion, noting points of agreement and disagreement. "
+                "2. Challenge the doctors' reasoning if it seems weak or contradictory. "
+                "3. Evaluate if a consensus has been reached. A consensus is defined as strong agreement among the majority of doctors on both the answer and the core reasoning. "
+                "4. If consensus is reached or this is the final round, provide the final definitive answer. "
+                "Respond in JSON format with 'explanation' (your analysis of the round), 'consensus_reached' (boolean), and 'answer' (your final concluded answer, which can be null if consensus is not yet reached)."
+            )
 
-                # audit 3.1.3: Neglect of Contradictions in Reasoning Process for decision-maker
-                audit_results_of_neglect_of_contradictions_in_reasoning_process_for_decision_maker = self.auditor_agent.audit_contradictions_during_decision(
-                    question = data_item["question"], current_agent_id = self.supervisor_agent.agent_id, explanation = decision_explanation, case_history = case_history, options = data_item.get("options")
-                ) # here the discussion_context includes all the domain agents' answers and explanations before this decision
-                
-                if round_num > 1 :
-                    # audit 3.2.1: Self-Contradiction in Viewpoints Across Rounds for decision-maker
-                    audit_results_of_self_contradiction_in_viewpoints_across_rounds_for_decision_maker = self.auditor_agent.audit_contradictions_across_rounds(
-                        question = data_item["question"], options = data_item.get("options"), answer = decision_answer, current_agent_id = self.supervisor_agent.agent_id, explanation = decision_explanation, case_history = case_history
-                    ) # here the meta agent's memory includes all its previous decisions and syntheses!
-                    audit_round_data["3_2_1_self_contradiction_when_decision"].append({
-                        "agent_id": self.supervisor_agent.agent_id,
-                        "step": "decision",
-                        "audit_result": audit_results_of_self_contradiction_in_viewpoints_across_rounds_for_decision_maker
-                    })
+            supervisor_response_str, _, _ = self.supervisor_agent.call_llm(system_message={"role": "system", "content": supervisor_instruction}, user_message={"role": "user", "content": supervisor_prompt}, response_format={"type": "json_object"})
+            parsed_output = json.loads(preprocess_response_string(supervisor_response_str))
+            conversation_log.append({
+                "role": "Supervisor",
+                "content": supervisor_response_str
+            })
+            decision_log = {"parsed_output": parsed_output}
+            decision_answer = parsed_output.get("answer", None)
+            decision_explanation = parsed_output.get("explanation", "")
+            # audit 3.1.1: Suppression of Correct Minority Views by Incorrect Consensus during Decision-making for decision-maker
+            audit_results_of_suppression_of_correct_minority_views_by_incorrect_consensus_for_decision_maker = self.auditor_agent.audit_suppression_by_majority(
+                question = data_item["question"], options = data_item.get("options"), image_path = data_item.get("image_path"), current_agent_id = self.supervisor_agent.agent_id, answer = decision_answer, explanation = decision_explanation, case_history = case_history
+            ) # here the discussion_context includes all the domain agents' answers and explanations before this decision
 
-                audit_round_data["3_1_1_suppression_of_minority_views"].append({
+            # audit 3.1.2: Reasoning Distorted by Authority Bias for decision-maker
+            audit_results_of_authority_bias_for_decision_maker = self.auditor_agent.audit_authority_bias(
+                question = data_item["question"], options = data_item.get("options"), image_path = data_item.get("image_path"), current_agent_id = self.supervisor_agent.agent_id, explanation = decision_explanation, case_history = case_history, answer = decision_answer
+            ) # here the discussion_context must include the role of domain agent and their answer and explanation before this decision
+
+            # audit 3.1.3: Neglect of Contradictions in Reasoning Process for decision-maker
+            audit_results_of_neglect_of_contradictions_in_reasoning_process_for_decision_maker = self.auditor_agent.audit_contradictions_during_decision(
+                question = data_item["question"], current_agent_id = self.supervisor_agent.agent_id, explanation = decision_explanation, case_history = case_history, options = data_item.get("options")
+            ) # here the discussion_context includes all the domain agents' answers and explanations before this decision
+            
+            if round_num > 1 :
+                # audit 3.2.1: Self-Contradiction in Viewpoints Across Rounds for decision-maker
+                audit_results_of_self_contradiction_in_viewpoints_across_rounds_for_decision_maker = self.auditor_agent.audit_contradictions_across_rounds(
+                    question = data_item["question"], options = data_item.get("options"), answer = decision_answer, current_agent_id = self.supervisor_agent.agent_id, explanation = decision_explanation, case_history = case_history
+                ) # here the meta agent's memory includes all its previous decisions and syntheses!
+                audit_round_data["3_2_1_self_contradiction_when_decision"].append({
                     "agent_id": self.supervisor_agent.agent_id,
                     "step": "decision",
-                    "audit_result": audit_results_of_suppression_of_correct_minority_views_by_incorrect_consensus_for_decision_maker
-                })
-                audit_round_data["3_1_2_authority_bias"].append({
-                    "agent_id": self.supervisor_agent.agent_id,
-                    "step": "decision",
-                    "audit_result": audit_results_of_authority_bias_for_decision_maker
-                })
-                audit_round_data["3_1_3_neglect_of_contradictions"].append({
-                    "agent_id": self.supervisor_agent.agent_id,
-                    "step": "decision",
-                    "audit_result": audit_results_of_neglect_of_contradictions_in_reasoning_process_for_decision_maker
+                    "audit_result": audit_results_of_self_contradiction_in_viewpoints_across_rounds_for_decision_maker
                 })
 
-                audit["rounds"].append(audit_round_data)
-                case_history["rounds"][-1]["decision"] = decision_log
-                                
-                # Check for consensus and end
-                consensus_reached = parsed_output.get("consensus_reached", False)
-                final_answer_from_supervisor = parsed_output.get("answer", None)
-                final_answer_obj["explanation"] = parsed_output.get("explanation", "")
+            audit_round_data["3_1_1_suppression_of_minority_views"].append({
+                "agent_id": self.supervisor_agent.agent_id,
+                "step": "decision",
+                "audit_result": audit_results_of_suppression_of_correct_minority_views_by_incorrect_consensus_for_decision_maker
+            })
+            audit_round_data["3_1_2_authority_bias"].append({
+                "agent_id": self.supervisor_agent.agent_id,
+                "step": "decision",
+                "audit_result": audit_results_of_authority_bias_for_decision_maker
+            })
+            audit_round_data["3_1_3_neglect_of_contradictions"].append({
+                "agent_id": self.supervisor_agent.agent_id,
+                "step": "decision",
+                "audit_result": audit_results_of_neglect_of_contradictions_in_reasoning_process_for_decision_maker
+            })
 
-                if final_answer_from_supervisor:
-                    final_answer_obj["answer"] = final_answer_from_supervisor
-                    if consensus_reached or round_num == self.max_rounds:
-                        print("Final answer provided. Ending conversation.")
-                        break
+            audit["rounds"].append(audit_round_data)
+            case_history["rounds"][-1]["decision"] = decision_log
+                            
+            # Check for consensus and end
+            consensus_reached = parsed_output.get("consensus_reached", False)
+            final_answer_from_supervisor = parsed_output.get("answer", None)
+            final_answer_obj["explanation"] = parsed_output.get("explanation", "")
 
-        except Exception as e:
-            print(f"ERROR processing QID {qid}: {e}")
-            final_answer_obj = {"answer": "Error", "explanation": str(e)}
+            if final_answer_from_supervisor:
+                final_answer_obj["answer"] = final_answer_from_supervisor
+                if consensus_reached or round_num == self.max_rounds:
+                    print("Final answer provided. Ending conversation.")
+                    break
+
 
         processing_time = time.time() - start_time
         print(f"Finished QID: {qid}. Time: {processing_time:.2f}s")

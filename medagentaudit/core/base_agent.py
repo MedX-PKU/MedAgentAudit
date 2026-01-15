@@ -1,3 +1,6 @@
+'''
+./medagentaudit/core/base_agent.py
+'''
 from typing import Dict, Any, Tuple
 import time
 from openai import OpenAI
@@ -34,7 +37,8 @@ class BaseAgent:
     def call_llm(self,
                  system_message: Dict[str, str],
                  user_message: Dict[str, Any],
-                 max_retries: int = 3) -> Tuple[str, Dict[str, str], Dict[str, Any]]:
+                 max_retries: int = 3, 
+                 response_format : Dict | None = None) -> Tuple[str, Dict[str, str], Dict[str, Any]]:
         """
         Call the LLM with messages and handle retries.
 
@@ -59,7 +63,7 @@ class BaseAgent:
                     completion = self.client.chat.completions.create(
                         model=self.model_name,
                         messages=[system_message, user_message],
-                        response_format={"type": "json_object"},
+                        response_format=response_format,
                         extra_body={"enable_thinking": False}, # qwen3-8b and qwen3-vl-8b need this parameter
                         reasoning = {"effort": self.llm.reasoning.effort},
                         stream=self.llm.stream,
@@ -69,7 +73,7 @@ class BaseAgent:
                     completion = self.client.chat.completions.create(
                         model=self.model_name,
                         messages=[system_message, user_message],
-                        response_format={"type": "json_object"},
+                        response_format=response_format,
                         extra_body={"enable_thinking": False}, # qwen3-8b and qwen3-vl-8b need this parameter
                         stream=self.llm.stream,
                         timeout=self.llm.timeout # just in case timeout error!
