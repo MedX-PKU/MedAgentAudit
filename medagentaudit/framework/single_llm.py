@@ -20,12 +20,12 @@ common_root = current_file_path.parents[1] / "common"
 core_root = current_file_path.parents[1] / "core"
 project_root = current_file_path.parents[2]
 sys.path.extend([str(utils_root), str(project_root), str(auditor_root), str(common_root), str(core_root)])
+
 from logger import DualLogger
 from encode_image import encode_image
-from json_utils import load_json, save_json, preprocess_response_string
+from json_utils import load_json, save_json
 from base_agent import BaseAgent
 from agent_type import AgentType
-from parse_structured_output import parse_structured_output
 
 class SingleModelInference(BaseAgent):
     """
