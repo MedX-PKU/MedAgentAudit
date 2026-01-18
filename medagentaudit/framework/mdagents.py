@@ -1,5 +1,5 @@
 '''
-MEDAGENTAUDIT-CODE/medagentaudit/medqa/multi_agent_mdagents_audit.py
+./medagentaudit/framework/mdagents.py
 '''
 
 import os
@@ -282,8 +282,6 @@ class Group:
                 "explanation": synthesis_explanation}
         }
 
-        # audit 2.2.2 Unresolved Conflicts during Collaborative discussion
-        audit_results_of_unresolved_conflicts_during_Collaboration = auditor_agent.audit_unresolved_conflicts_during_Collaboration(question = self.question_context["question"], current_agent_id=self.lead_agent.agent_id, current_answer = synthesis_answer, current_explanation=synthesis_explanation, case_history=case_history) 
 
         # audtit 3.1.1 : Suppression of Correct Minority Views by Incorrect Consensus for synthesizer
         audit_results_of_suppression_of_correct_minority_views_by_incorrect_consensus_for_synthesizer = auditor_agent.audit_suppression_by_majority(
@@ -300,11 +298,6 @@ class Group:
             question = self.question_context["question"], current_agent_id = self.lead_agent.agent_id, explanation = synthesis_explanation, case_history = case_history, options = self.question_context.get('options')
         ) # here the discussion_context includes all the domain agents' answers and explanations before this synthesis
 
-        audit_round_data["2_2_2_unresolved_conflicts"].append({ 
-            "agent_id": self.lead_agent.agent_id,
-            "step": "synthesis",
-            "audit_result": audit_results_of_unresolved_conflicts_during_Collaboration
-        })
         audit_round_data["3_1_1_suppression_of_minority_views"].append({
             "agent_id": self.lead_agent.agent_id,
             "step": "synthesis",
