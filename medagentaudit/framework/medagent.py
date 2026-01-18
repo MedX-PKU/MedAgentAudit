@@ -1,5 +1,5 @@
 """
-MEDAGENTAUDIT-CODE/medagentaudit/framework/medagent.py
+./medagentaudit/framework/medagent.py
 """
 
 from openai import OpenAI
@@ -511,11 +511,6 @@ class MDTConsultation:
                 synthesis_explanation = synthesis_parsed_output.get("explanation", "")
                 synthesis_answer = synthesis_parsed_output.get("answer", "")
                 
-                # audit 2.2.2 : Unresolved Conflicts during Collaborative discussion for synthesizer
-                audit_results_of_unresolved_conflicts_during_collaboration_for_synthesizer = self.auditor_agent.audit_unresolved_conflicts_during_Collaboration(
-                    question=question, current_agent_id=self.meta_agent.agent_id, current_explanation=synthesis_explanation, case_history=case_history, current_answer=synthesis_answer
-                )
-
                 # audtit 3.1.1 : Suppression of Correct Minority Views by Incorrect Consensus for synthesizer
                 audit_results_of_suppression_of_correct_minority_views_by_incorrect_consensus_for_synthesizer = self.auditor_agent.audit_suppression_by_majority(
                     question = question, options = options, image_path = image_path, current_agent_id = self.meta_agent.agent_id, answer = synthesis_answer, explanation = synthesis_explanation, case_history = case_history
@@ -540,11 +535,6 @@ class MDTConsultation:
                         "step": "synthesis",
                         "audit_result": audit_results_of_self_contradiction_in_viewpoints_across_rounds_for_synthesizer
                     })
-                audit_round_data["2_2_2_unresolved_conflicts"].append({ 
-                    "agent_id": self.meta_agent.agent_id,
-                    "step": "synthesis",
-                    "audit_result": audit_results_of_unresolved_conflicts_during_collaboration_for_synthesizer
-                })
                 audit_round_data["3_1_1_suppression_of_minority_views"].append({
                     "agent_id": self.meta_agent.agent_id,
                     "step": "synthesis",
