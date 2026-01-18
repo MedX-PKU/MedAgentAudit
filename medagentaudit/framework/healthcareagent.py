@@ -316,13 +316,38 @@ class HealthcareAgentFramework(BaseAgent):
                                                                                                                                 specialty = MedicalSpecialty.SAFETY_SUPERVISOR.value, 
                                                                                                                                 answer = ethics_feedback, 
                                                                                                                                 explanation = "")
+        # audit 2.2.1 Repetition of Initial Views during Collaborative discussion
+        audit_results_of_repetition_of_initial_views = self.auditor_agent.audit_repetition_of_initial_views(question = question, 
+                                                                                                            image_path=image_path, 
+                                                                                                            current_agent_id="SafetyEthicsAgent", 
+                                                                                                            current_answer = ethics_feedback, 
+                                                                                                            current_explanation="", 
+                                                                                                            case_history=case_history)
+        # audit 2.2.2 Unresolved Conflicts during Collaborative discussion
+        audit_results_of_unresolved_conflicts_during_Collaboration = self.auditor_agent.audit_unresolved_conflicts_during_Collaboration(question = question, 
+                                                                                                                                        current_agent_id="SafetyEthicsAgent", 
+                                                                                                                                        current_answer = ethics_feedback, 
+                                                                                                                                        current_explanation="", 
+                                                                                                                                        case_history=case_history) 
+
         audit_round_data["2_1_2_domain_specific_knowledge_activation"].append({
                 "agent_id": "SafetyEthicsAgent",
                 "specialty": MedicalSpecialty.SAFETY_SUPERVISOR.value,
                 "step": "review",
                 "audit_result": audit_results_of_domain_specific_knowledge_activation
             })
-
+        audit_round_data["2_2_1_repetition_of_initial_views"].append({
+            "agent_id": "SafetyEthicsAgent",
+            "specialty": MedicalSpecialty.SAFETY_SUPERVISOR.value,
+            "step": "review",
+            "audit_result": audit_results_of_repetition_of_initial_views
+        })
+        audit_round_data["2_2_2_unresolved_conflicts"].append({
+            "agent_id": "SafetyEthicsAgent",
+            "specialty": MedicalSpecialty.SAFETY_SUPERVISOR.value,
+            "step": "review",
+            "audit_result": audit_results_of_unresolved_conflicts_during_Collaboration
+        })
 
         case_history["rounds"][-1]["reviews"].append({
             "agent_id": "SafetyEthicsAgent",
@@ -341,12 +366,37 @@ class HealthcareAgentFramework(BaseAgent):
                                                                                                                                 specialty = MedicalSpecialty.SAFETY_SUPERVISOR.value, 
                                                                                                                                 answer = emergency_feedback,
                                                                                                                                 explanation = "")
+        # audit 2.2.1 Repetition of Initial Views during Collaborative discussion
+        audit_results_of_repetition_of_initial_views = self.auditor_agent.audit_repetition_of_initial_views(question = question, 
+                                                                                                            image_path=image_path, 
+                                                                                                            current_agent_id="SafetyEmergencyAgent", 
+                                                                                                            current_answer = emergency_feedback,
+                                                                                                            current_explanation="",
+                                                                                                            case_history=case_history)
+        # audit 2.2.2 Unresolved Conflicts during Collaborative discussion
+        audit_results_of_unresolved_conflicts_during_Collaboration = self.auditor_agent.audit_unresolved_conflicts_during_Collaboration(question = question, 
+                                                                                                                                        current_agent_id="SafetyEmergencyAgent", 
+                                                                                                                                        current_answer = emergency_feedback, 
+                                                                                                                                        current_explanation="", 
+                                                                                                                                        case_history=case_history)
+        audit_round_data["2_2_1_repetition_of_initial_views"].append({
+            "agent_id": "SafetyEmergencyAgent",
+            "specialty": MedicalSpecialty.SAFETY_SUPERVISOR.value,
+            "step": "review",
+            "audit_result": audit_results_of_repetition_of_initial_views
+        })
+        audit_round_data["2_2_2_unresolved_conflicts"].append({
+            "agent_id": "SafetyEmergencyAgent",
+            "specialty": MedicalSpecialty.SAFETY_SUPERVISOR.value,
+            "step": "review",
+            "audit_result": audit_results_of_unresolved_conflicts_during_Collaboration
+        })
         audit_round_data["2_1_2_domain_specific_knowledge_activation"].append({
                 "agent_id": "SafetyEmergencyAgent",
                 "specialty": MedicalSpecialty.SAFETY_SUPERVISOR.value,
                 "step": "review",
                 "audit_result": audit_results_of_domain_specific_knowledge_activation
-            })                                                                                                                                
+            })                                                                                                                
         case_history["rounds"][-1]["reviews"].append({
             "agent_id": "SafetyEmergencyAgent",
             "specialty": MedicalSpecialty.SAFETY_SUPERVISOR.value,
@@ -365,14 +415,37 @@ class HealthcareAgentFramework(BaseAgent):
                                                                                                                                 specialty = MedicalSpecialty.SAFETY_SUPERVISOR.value, 
                                                                                                                                 answer = error_feedback, 
                                                                                                                                 explanation = "")
-
+        # audit 2.2.1 Repetition of Initial Views during Collaborative discussion
+        audit_results_of_repetition_of_initial_views = self.auditor_agent.audit_repetition_of_initial_views(question = question, 
+                                                                                                            image_path=image_path, 
+                                                                                                            current_agent_id="SafetyErrorAgent", 
+                                                                                                            current_answer = error_feedback,
+                                                                                                            current_explanation="",
+                                                                                                            case_history=case_history)
+        # audit 2.2.2 Unresolved Conflicts during Collaborative discussion
+        audit_results_of_unresolved_conflicts_during_Collaboration = self.auditor_agent.audit_unresolved_conflicts_during_Collaboration(question = question, 
+                                                                                                                                        current_agent_id="SafetyErrorAgent", 
+                                                                                                                                        current_answer = error_feedback, 
+                                                                                                                                        current_explanation="", 
+                                                                                                                                        case_history=case_history)
         audit_round_data["2_1_2_domain_specific_knowledge_activation"].append({
                 "agent_id": "SafetyErrorAgent",
                 "specialty": MedicalSpecialty.SAFETY_SUPERVISOR.value,
                 "step": "review",
                 "audit_result": audit_results_of_domain_specific_knowledge_activation
             })
-        
+        audit_round_data["2_2_1_repetition_of_initial_views"].append({
+            "agent_id": "SafetyErrorAgent",
+            "specialty": MedicalSpecialty.SAFETY_SUPERVISOR.value,
+            "step": "review",
+            "audit_result": audit_results_of_repetition_of_initial_views
+        })
+        audit_round_data["2_2_2_unresolved_conflicts"].append({
+            "agent_id": "SafetyErrorAgent",
+            "specialty": MedicalSpecialty.SAFETY_SUPERVISOR.value,
+            "step": "review",
+            "audit_result": audit_results_of_unresolved_conflicts_during_Collaboration
+        })
 
         case_history["rounds"][-1]["reviews"].append({
             "agent_id": "SafetyErrorAgent",
