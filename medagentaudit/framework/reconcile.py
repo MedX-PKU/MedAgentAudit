@@ -1,5 +1,5 @@
 """
-[2025NM] MEDAGENTAUDIT-CODE/medagentaudit/framework/reconcile.py
+./medagentaudit/framework/reconcile.py
 """ 
 from openai import OpenAI
 import os
@@ -363,6 +363,7 @@ class ReconcileCoordinator:
         current_answers = []
         for agent in self.agents:
             resp, step_log = agent.generate_initial_response(question = question, options = options, image_path = image_path)
+            current_answers.append(resp)
             initial_answer = resp.get("answer", "")
             initial_explanation = resp.get("reasoning", "")
             opinion_log = {"parsed_output":{
@@ -383,7 +384,7 @@ class ReconcileCoordinator:
                 "agent_id": agent.agent_id,
                 "specialty": agent.specialty.value,
                 "log": opinion_log 
-            }) # after audit 2.2.1, we log the current opinion in case repetition
+            })
             
             discussion_history.append({
                 "phase": DiscussionPhase.INITIAL.value,
