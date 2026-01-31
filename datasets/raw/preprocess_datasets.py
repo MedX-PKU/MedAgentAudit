@@ -119,7 +119,7 @@ def process_medqa(raw_dir=RAW_DATA_DIR, output_dir=PROCESSED_DATA_DIR, sample_si
     """
     # Define paths
     medqa_path = raw_dir / "MedQA" / "questions" / "US" / "test.jsonl"
-    output_path = output_dir / "MedQA" / "medqa_MedQA.json"
+    output_path = output_dir / "MedQA" / "medqa_medqa.json"
 
     # TODO RETRO Create output directory if it doesn't exist
     Path(output_path).parent.mkdir(parents=True, exist_ok=True)
@@ -161,7 +161,7 @@ def process_pubmedqa(raw_dir=RAW_DATA_DIR, output_dir=PROCESSED_DATA_DIR, sample
     ori_pqal_path = raw_dir / os.path.join(raw_dir, "PubMedQA", "ori_pqal.json")
     test_ground_truth_path = os.path.join(raw_dir, "PubMedQA", "test_ground_truth.json")
     output_path_base = os.path.join(output_dir, "PubMedQA")
-    output_path_mc = os.path.join(output_path_base, "medqa_PubMedQA.json")
+    output_path_mc = os.path.join(output_path_base, "medqa_pubmedqa.json")
 
     # Create output directory if it doesn't exist
     os.makedirs(os.path.dirname(output_path_base), exist_ok=True)
@@ -221,10 +221,10 @@ def process_pathvqa(raw_dir=RAW_DATA_DIR, output_dir=PROCESSED_DATA_DIR, sample_
     """
     path_vqa_path = os.path.join(raw_dir, "PathVQA", "qas", "test", "test.pkl")
     path_vqa_images = os.path.join(raw_dir, "PathVQA", "images", "test")
-    output_path = os.path.join(output_dir, "PathVQA", "medqa_mc_test.json")
+    output_path = os.path.join(output_dir, "PathVQA", "medqa_pathvqa.json")
 
     # Create output directory if it doesn't exist
-    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
 
     # Load the dataset
     data = pd.read_pickle(path_vqa_path)
@@ -275,11 +275,10 @@ def process_vqa_rad(raw_dir=RAW_DATA_DIR, output_dir=PROCESSED_DATA_DIR, sample_
         sample_size: Number of samples to select (None for all samples)
     """
     # Define paths
-    vqa_rad_path = os.path.join(raw_dir, "VQA-RAD", "testset.json")
-    vqa_rad_images = os.path.join(raw_dir, "VQA-RAD", "images")
-    output_path_base = os.path.join(output_dir, "VQA-RAD")
-    output_path_mc = os.path.join(output_path_base, "medqa_mc_test.json")
-    output_path_ff = os.path.join(output_path_base, "medqa_ff_test.json")
+    vqa_rad_path = raw_dir / "VQA-RAD" / "test.json"
+    vqa_rad_images = raw_dir / "VQA-RAD" / "images"
+    output_path_base = output_dir / "VQA-RAD"
+    output_path_mc = output_path_base / "medqa_vqa-rad.json"
 
     # Create output directory if it doesn't exist
     os.makedirs(output_path_base, exist_ok=True)
@@ -288,7 +287,6 @@ def process_vqa_rad(raw_dir=RAW_DATA_DIR, output_dir=PROCESSED_DATA_DIR, sample_
     data = load_json(vqa_rad_path)
 
     processed_data_mc = []
-    processed_data_ff = []
 
     # Define standard options for yes/no questions
     options = {"A": "Yes", "B": "No"}
@@ -301,32 +299,20 @@ def process_vqa_rad(raw_dir=RAW_DATA_DIR, output_dir=PROCESSED_DATA_DIR, sample_
         answer = item["answer"]
         answer_type = item["answer_type"]
 
-        if answer_type == "CLOSED":
-            # Process CLOSED type as multiple choice (yes/no)
-            answer_lower = answer.lower().strip()
-            if answer_lower in ["yes", "no"]:
-                mc_data = {
-                    "qid": f"vqa_rad_mc_{qid}",
-                    "question": question,
-                    "image_path": image_path,
-                    "options": options,
-                    "answer": options_map[answer_lower]
-                }
-                processed_data_mc.append(mc_data)
-        elif answer_type == "OPEN":
-            # Process OPEN type as free-form
-            ff_data = {
-                "qid": f"vqa_rad_ff_{qid}",
+        answer_lower = answer.lower().strip()
+        if answer_lower in ["yes", "no"]:
+            mc_data = {
+                "qid": f"vqa_rad_mc_{qid}",
                 "question": question,
                 "image_path": image_path,
-                "answer": answer
+                "options": options,
+                "answer": options_map[answer_lower]
             }
-            processed_data_ff.append(ff_data)
+            processed_data_mc.append(mc_data)
 
     # Apply sampling if requested
     if sample_size is not None:
         processed_data_mc = random_select_samples(processed_data_mc, sample_size)
-        processed_data_ff = random_select_samples(processed_data_ff, sample_size)
 
     # Save processed data
     save_json(processed_data_mc, output_path_mc)
@@ -336,8 +322,8 @@ def process_medxpert_qa(raw_dir=RAW_DATA_DIR, output_dir=PROCESSED_DATA_DIR, sam
     '''
     this function is to preprocess MedXpertQA dataset from raw to standardized format
     '''
-    default_output_dir = project_root / "datasets" / "processed" / "MedXpertQA-text" # processed dir
-    default_input_dir = project_root / "datasets" / "raw" / "MedXpertQA-text"# raw dir
+    default_output_dir = output_dir / "MedXpertQA-text" # processed dir
+    default_input_dir = raw_dir / "MedXpertQA-text"# raw dir
     default_output_dir.mkdir(parents=True, exist_ok=True)
     input_file = default_input_dir / "test.jsonl"
     all_mc: List[Dict[str, Any]] = []
@@ -348,7 +334,10 @@ def process_medxpert_qa(raw_dir=RAW_DATA_DIR, output_dir=PROCESSED_DATA_DIR, sam
     print(f"Converting {input_file}...")
     mc, idx = convert_items_to_medqa(parse_jsonl(input_file), start_index=idx, prefix="medxpertqa_text")
     all_mc.extend(mc)
-    mc_out = default_output_dir / "medqa_mc.json"
+    # random select samples if needed
+    if sample_size is not None:
+        all_mc = random_select_samples(all_mc, sample_size)
+    mc_out = default_output_dir / "medqa_MedXpertQA-text.json"
     save_json(all_mc, mc_out)
 
 def main():
