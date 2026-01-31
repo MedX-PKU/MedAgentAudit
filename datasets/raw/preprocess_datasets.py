@@ -119,7 +119,7 @@ def process_medqa(raw_dir=RAW_DATA_DIR, output_dir=PROCESSED_DATA_DIR, sample_si
     """
     # Define paths
     medqa_path = raw_dir / "MedQA" / "questions" / "US" / "test.jsonl"
-    output_path = output_dir / "MedQA" / "medqa_mc_test.json"
+    output_path = output_dir / "MedQA" / "medqa_MedQA.json"
 
     # TODO RETRO Create output directory if it doesn't exist
     Path(output_path).parent.mkdir(parents=True, exist_ok=True)
@@ -161,8 +161,7 @@ def process_pubmedqa(raw_dir=RAW_DATA_DIR, output_dir=PROCESSED_DATA_DIR, sample
     ori_pqal_path = raw_dir / os.path.join(raw_dir, "PubMedQA", "ori_pqal.json")
     test_ground_truth_path = os.path.join(raw_dir, "PubMedQA", "test_ground_truth.json")
     output_path_base = os.path.join(output_dir, "PubMedQA")
-    output_path_mc = os.path.join(output_path_base, "medqa_mc_test.json")
-    output_path_ff = os.path.join(output_path_base, "medqa_ff_test.json")
+    output_path_mc = os.path.join(output_path_base, "medqa_PubMedQA.json")
 
     # Create output directory if it doesn't exist
     os.makedirs(os.path.dirname(output_path_base), exist_ok=True)
@@ -176,7 +175,6 @@ def process_pubmedqa(raw_dir=RAW_DATA_DIR, output_dir=PROCESSED_DATA_DIR, sample
     options_map = {"Yes": "A", "No": "B", "Maybe": "C"}
 
     processed_data_mc = []
-    processed_data_ff = []
 
     for qid, item_data in data.items():
         # only qid in labels are test set
@@ -186,24 +184,11 @@ def process_pubmedqa(raw_dir=RAW_DATA_DIR, output_dir=PROCESSED_DATA_DIR, sample
         question = item_data["QUESTION"]
         answer = item_data["final_decision"].capitalize()
 
-        # Free-form version: Concatenate context into the question
-        free_form_question = (
-            f"{question}\n\n"
-            f"Context: {context}"
-        )
-
         # Multiple-choice version: Concatenate context into the question
         mc_question = (
             f"{question}\n\n"
             f"Context: {context}"
         )
-
-        # Add both versions to the processed data
-        free_form_data = {
-            "qid": f"pubmedqa_ff_{qid}",
-            "question": free_form_question,
-            "answer": f"{answer}. {item_data["LONG_ANSWER"]}"  # Use the long answer for free-form
-        }
 
         mc_data = {
             "qid": f"pubmedqa_mc_{qid}",
@@ -212,17 +197,13 @@ def process_pubmedqa(raw_dir=RAW_DATA_DIR, output_dir=PROCESSED_DATA_DIR, sample
             "answer": options_map[answer]  # Map ground truth to option key
         }
 
-        processed_data_ff.append(free_form_data)
         processed_data_mc.append(mc_data)
 
     # Apply sampling if requested
     if sample_size is not None:
-        processed_data_ff = random_select_samples(processed_data_ff, sample_size)
         processed_data_mc = random_select_samples(processed_data_mc, sample_size)
 
     # Save processed data
-    save_json(processed_data_ff, output_path_ff)
-    print(f"PubMedQA dataset (free-form) processed and saved to: {output_path_ff}")
     save_json(processed_data_mc, output_path_mc)
     print(f"PubMedQA dataset (free-form) processed and saved to: {output_path_mc}")
 
