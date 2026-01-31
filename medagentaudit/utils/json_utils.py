@@ -1,7 +1,7 @@
 import json
-import os
 import re
 from typing import Any, List, Dict, Union, Optional, Iterator
+from pathlib import Path
 
 def save_json(data: Any, filepath: str, indent: int = 2) -> None:
     """
@@ -13,9 +13,9 @@ def save_json(data: Any, filepath: str, indent: int = 2) -> None:
         indent: JSON indentation format, defaults to 2
     """
     # Ensure directory exists
-    directory = os.path.dirname(filepath)
-    if directory and not os.path.exists(directory):
-        os.makedirs(directory)
+    directory = Path(filepath).parent
+    if directory and not directory.exists():
+        directory.mkdir(parents=True, exist_ok=True)
 
     # Write JSON file
     with open(filepath, 'w', encoding='utf-8') as f:
@@ -37,7 +37,7 @@ def load_json(filepath: str) -> Any:
         FileNotFoundError: When file doesn't exist
         json.JSONDecodeError: When JSON format is invalid
     """
-    if not os.path.exists(filepath):
+    if not Path(filepath).exists():
         raise FileNotFoundError(f"File not found: {filepath}")
 
     with open(filepath, 'r', encoding='utf-8') as f:
@@ -54,9 +54,9 @@ def save_jsonl(data_list: List[Any], filepath: str) -> None:
         filepath: Save path including filename
     """
     # Ensure directory exists
-    directory = os.path.dirname(filepath)
-    if directory and not os.path.exists(directory):
-        os.makedirs(directory)
+    directory = Path(filepath).parent
+    if directory and not directory.exists():
+        directory.mkdir(parents=True, exist_ok=True)
 
     # Write JSONL file - one JSON object per line
     with open(filepath, 'w', encoding='utf-8') as f:
@@ -79,7 +79,7 @@ def load_jsonl(filepath: str) -> List[Any]:
         FileNotFoundError: When file doesn't exist
         json.JSONDecodeError: When JSON format is invalid
     """
-    if not os.path.exists(filepath):
+    if not Path(filepath).exists():
         raise FileNotFoundError(f"File not found: {filepath}")
 
     data_list = []
@@ -105,7 +105,7 @@ def iter_jsonl(filepath: str) -> Iterator[Any]:
         FileNotFoundError: When file doesn't exist
         json.JSONDecodeError: When JSON format is invalid
     """
-    if not os.path.exists(filepath):
+    if not Path(filepath).exists():
         raise FileNotFoundError(f"File not found: {filepath}")
 
     with open(filepath, 'r', encoding='utf-8') as f:
@@ -142,7 +142,7 @@ def update_json(filepath: str, new_data: Any) -> None:
         filepath: Path to JSON file to update
         new_data: New data (if dict, will merge with existing; if list, will append to existing)
     """
-    if os.path.exists(filepath):
+    if Path(filepath).exists():
         existing_data = load_json(filepath)
 
         if isinstance(existing_data, dict) and isinstance(new_data, dict):
