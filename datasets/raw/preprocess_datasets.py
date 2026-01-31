@@ -18,6 +18,89 @@ RAW_DATA_DIR = project_root / "datasets" / "raw"
 PROCESSED_DATA_DIR = project_root / "datasets" / "processed"
 PROCESSED_DATA_DIR.mkdir(parents=True, exist_ok=True)
 
+def convert_to_mc_format(closed_questions: List[Dict[str, Any]], split_name: str) -> List[Dict[str, Any]]:
+    """Convert CLOSED type questions to medqa_mc_test format"""
+    mc_format_data = []
+    
+    for i, item in enumerate(closed_questions):
+        # Build image path
+        img_name = item.get('img_name', '')
+        Slake_image_path = RAW_DATA_DIR / "SLAKE" / "images"
+        image_path = Slake_image_path / img_name
+        
+        # Build qid
+        qid = f"slake_{split_name}_{item.get('qid', i)}"
+        
+        # Get correct answer
+        correct_answer = item.get('answer', '')
+        
+        # Generate options for multiple choice questions (simplified processing, may need more complex logic)
+        # Common answers are Yes/No, or other options
+        if correct_answer.lower() in ['yes', 'no']:
+            options = {
+                "A": "Yes",
+                "B": "No"
+            }
+            answer = "A" if correct_answer.lower() == "yes" else "B"
+        else:
+            # For other types of answers, create simple options
+            options = {
+                "A": correct_answer,
+                "B": "Other"
+            }
+            answer = "A"
+        
+        mc_item = {
+            "qid": qid,
+            "question": item.get('question', ''),
+            "image_path": image_path,
+            "options": options,
+            "answer": answer
+        }
+        
+        mc_format_data.append(mc_item)
+    
+    return mc_format_data
+
+def process_split(split_name: str, input_file: str):
+    """Process single dataset split and return mc lists"""
+    print(f"\nProcessing {split_name} dataset...")
+    
+    # Load original data
+    data = load_json(input_file)
+    if not data:
+        return [], []
+    
+    # Separate question types
+    open_questions, closed_questions = separate_questions_by_type(data)
+    
+    # Convert to new format
+    mc_data = convert_to_mc_format(closed_questions, split_name)
+    
+    print(f"{split_name} processing completed!")
+    print(f"  - CLOSED questions: {len(mc_data)} records")
+    return mc_data
+
+def separate_questions_by_type(data: List[Dict[str, Any]]) -> tuple:
+    """Separate questions by answer_type field, only keep English data"""
+    open_questions = []
+    closed_questions = []
+    
+    for item in data:
+        # Only keep English data
+        if item.get('q_lang') != 'en':
+            continue
+            
+        if item.get('answer_type') == 'OPEN':
+            open_questions.append(item)
+        elif item.get('answer_type') == 'CLOSED':
+            closed_questions.append(item)
+    
+    print(f"English OPEN type questions: {len(open_questions)} records")
+    print(f"English CLOSED type questions: {len(closed_questions)} records")
+    
+    return open_questions, closed_questions
+
 def parse_jsonl(file_path: str) -> Iterable[Dict[str, Any]]:
     with open(file_path, 'r', encoding='utf-8') as f:
         for line_num, line in enumerate(f, start=1):
@@ -78,7 +161,7 @@ def convert_items_to_medqa(
         if options and label:
             mc_records.append(
                 {
-                    "qid": f"{prefix}_mc_{idx}",
+                    "qid": f"{prefix}_{idx}",
                     "question": question,
                     "options": options,
                     "answer": label,
@@ -131,7 +214,7 @@ def process_medqa(raw_dir=RAW_DATA_DIR, output_dir=PROCESSED_DATA_DIR, sample_si
 
     for i, item in enumerate(medqa_data):
         curated_data = {
-            "qid": f"medqa_mc_{str(i + 1).zfill(3)}",
+            "qid": f"medqa_{str(i + 1).zfill(3)}",
             "question": item["question"],
             "options": item["options"],
             "answer": item["answer_idx"]
@@ -191,7 +274,7 @@ def process_pubmedqa(raw_dir=RAW_DATA_DIR, output_dir=PROCESSED_DATA_DIR, sample
         )
 
         mc_data = {
-            "qid": f"pubmedqa_mc_{qid}",
+            "qid": f"pubmedqa_{qid}",
             "question": mc_question,
             "options": options,
             "answer": options_map[answer]  # Map ground truth to option key
@@ -205,7 +288,7 @@ def process_pubmedqa(raw_dir=RAW_DATA_DIR, output_dir=PROCESSED_DATA_DIR, sample
 
     # Save processed data
     save_json(processed_data_mc, output_path_mc)
-    print(f"PubMedQA dataset (free-form) processed and saved to: {output_path_mc}")
+    print(f"PubMedQA dataset processed and saved to: {output_path_mc}")
 
 
 def process_pathvqa(raw_dir=RAW_DATA_DIR, output_dir=PROCESSED_DATA_DIR, sample_size: int = None):
@@ -246,7 +329,7 @@ def process_pathvqa(raw_dir=RAW_DATA_DIR, output_dir=PROCESSED_DATA_DIR, sample_
         image_path = os.path.join(path_vqa_images, item["image"]) + ".jpg"
 
         curated_data = {
-            "qid": f"pathvqa_mc_{str(i + 1).zfill(6)}",
+            "qid": f"pathvqa_{str(i + 1).zfill(6)}",
             "question": question,
             "image_path": image_path,
             "options": options,
@@ -281,7 +364,7 @@ def process_vqa_rad(raw_dir=RAW_DATA_DIR, output_dir=PROCESSED_DATA_DIR, sample_
     output_path_mc = output_path_base / "medqa_vqa-rad.json"
 
     # Create output directory if it doesn't exist
-    os.makedirs(output_path_base, exist_ok=True)
+    output_path_base.mkdir(parents=True, exist_ok=True)
 
     # Load dataset
     data = load_json(vqa_rad_path)
@@ -302,7 +385,7 @@ def process_vqa_rad(raw_dir=RAW_DATA_DIR, output_dir=PROCESSED_DATA_DIR, sample_
         answer_lower = answer.lower().strip()
         if answer_lower in ["yes", "no"]:
             mc_data = {
-                "qid": f"vqa_rad_mc_{qid}",
+                "qid": f"vqa_rad_{qid}",
                 "question": question,
                 "image_path": image_path,
                 "options": options,
@@ -337,8 +420,43 @@ def process_medxpert_qa(raw_dir=RAW_DATA_DIR, output_dir=PROCESSED_DATA_DIR, sam
     # random select samples if needed
     if sample_size is not None:
         all_mc = random_select_samples(all_mc, sample_size)
-    mc_out = default_output_dir / "medqa_MedXpertQA-text.json"
+    mc_out = default_output_dir / "medqa_medxpertqa-text.json"
     save_json(all_mc, mc_out)
+
+def process_slake (raw_dir=RAW_DATA_DIR, output_dir=PROCESSED_DATA_DIR, sample_size: int = None):
+    '''
+    this function is to process the raw slake dataset, and transform it to the dataset we use to opencoding and multi-agent audit!
+    '''
+    input_dir = raw_dir / "SLAKE"
+    
+    # Create output directory
+    os.makedirs(output_dir, exist_ok=True)
+    
+    # Define files to process
+    splits = [
+        ("train", "train.json"),
+        ("test", "test.json"),
+        ("validate", "validation.json")
+    ]
+    
+    # Process each split
+    all_mc_data: List[Dict[str, Any]] = []
+
+    for split_name, input_file in splits:
+        input_path = os.path.join(input_dir, input_file)
+        if os.path.exists(input_path):
+            ff_data, mc_data = process_split(split_name, input_path)
+            all_mc_data.extend(mc_data)
+        else:
+            print(f"File does not exist: {input_path}")
+
+    # Save unified JSONL files
+    mc_output_path = output_dir / "SLAKE" / "medqa_slake.json"
+    save_json (all_mc_data, mc_output_path)
+
+    print("\nAll data processing completed!")
+    print(f"Unified outputs saved:")
+    print(f"  - MC: {mc_output_path} ({len(all_mc_data)} records)")
 
 def main():
     parser = argparse.ArgumentParser(description="Process medical datasets into a standardized format")
