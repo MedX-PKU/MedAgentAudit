@@ -72,8 +72,9 @@ Available Specialties: {available_specialties}"""
             "content": f"Review this medical question and determine the three most appropriate medical specialties required to provide the answer. Ensure the selected specialties are distinct and cover different aspects of the problem:\n\n{question}"
         }
 
-        response_text, system_msg, user_msg = self.call_llm(system_message = system_message, user_message = user_message, response_format={"type": "json_object"})
+        response_text, reasoning_content, system_msg, user_msg = self.call_llm(system_message = system_message, user_message = user_message, response_format={"type": "json_object"})
         log = {
+            "reasoning_content": reasoning_content,
             "llm_input": {"system_message": system_msg, "user_message": user_msg},
             "raw_output": response_text
         }
@@ -166,7 +167,7 @@ Your output must be a JSON object with three fields:
         })
 
         user_message = {"role": "user", "content": user_content}
-        response_text, system_msg, user_msg = self.call_llm(system_message = system_message, user_message = user_message, response_format={"type": "json_object"})
+        response_text, reasoning_content, system_msg, user_msg = self.call_llm(system_message = system_message, user_message = user_message, response_format={"type": "json_object"})
 
         try:
             result = json.loads(preprocess_response_string(response_text))
@@ -175,7 +176,7 @@ Your output must be a JSON object with three fields:
             print(f"Doctor {self.agent_id} response is not valid JSON, using fallback parsing")
             result = parse_structured_output(response_text)
         
-        return {"parsed_output": result, "llm_input": {"system_message": system_msg, "user_message": user_msg}}
+        return {"parsed_output": result, "llm_input": {"system_message": system_msg, "user_message": user_msg}, "reasoning_content": reasoning_content}
 
     def review_synthesis(self,
                          question: str,
@@ -214,7 +215,7 @@ Your output must be a JSON object with three fields:
         user_content.append(text_content)
 
         user_message = {"role": "user", "content": user_content}
-        response_text, system_msg, user_msg = self.call_llm(system_message = system_message, user_message = user_message, response_format={"type": "json_object"})
+        response_text, reasoning_content, system_msg, user_msg = self.call_llm(system_message = system_message, user_message = user_message, response_format={"type": "json_object"})
 
         try:
             result = json.loads(preprocess_response_string(response_text))
@@ -223,7 +224,7 @@ Your output must be a JSON object with three fields:
             # Normalize agree field
             if isinstance(result.get("agree"), str):
                 result["agree"] = result["agree"].lower() in ["true", "yes"]
-            log = {"parsed_output": result}
+            log = {"parsed_output": result, "reasoning_content": reasoning_content}
             return log
         except json.JSONDecodeError:
             # Fallback parsing
@@ -291,7 +292,7 @@ Your output should be in JSON format, including 'explanation' (synthesized reaso
             "content": f"Round {current_round} Doctors' Opinions:\n{opinions_text}\n\n"
         }
 
-        response_text, system_msg, user_msg = self.call_llm(system_message = system_message, user_message = user_message, response_format={"type": "json_object"})
+        response_text, reasoning_content, system_msg, user_msg = self.call_llm(system_message = system_message, user_message = user_message, response_format={"type": "json_object"})
 
         try:
             result = json.loads(preprocess_response_string(response_text))
@@ -300,7 +301,7 @@ Your output should be in JSON format, including 'explanation' (synthesized reaso
             print("Meta agent synthesis is not valid JSON, using fallback parsing")
             result = parse_structured_output(response_text)
         
-        return {"parsed_output": result, "llm_input": {"system_message": system_msg, "user_message": user_msg}}
+        return {"parsed_output": result, "reasoning_content": reasoning_content, "llm_input": {"system_message": system_msg, "user_message": user_msg}}
 
 
 class DecisionMakingAgent(BaseAgent):
@@ -370,7 +371,7 @@ Based on ALL available information presented above, provide your final decision.
         user_content.append(text_content)
 
         user_message = {"role": "user", "content": user_content}
-        response_text, system_msg, user_msg = self.call_llm(system_message = system_message, user_message = user_message, response_format={"type": "json_object"})
+        response_text, reasoning_content, system_msg, user_msg = self.call_llm(system_message = system_message, user_message = user_message, response_format={"type": "json_object"})
 
         try:
             result = json.loads(preprocess_response_string(response_text))
@@ -379,7 +380,7 @@ Based on ALL available information presented above, provide your final decision.
             print("Decision making agent response is not valid JSON, using fallback parsing")
             result = parse_structured_output(response_text)
             
-        return {"parsed_output": result, "llm_input": {"system_message": system_msg, "user_message": user_msg}}
+        return {"parsed_output": result, "reasoning_content": reasoning_content, "llm_input": {"system_message": system_msg, "user_message": user_msg}}
 
 class MDTConsultation:
     """Multi-disciplinary team consultation coordinator."""
@@ -611,7 +612,7 @@ class MDTConsultation:
                     final_decision_log = self.decision_agent.make_decision(question, synthesis_parsed_output, doctor_review_parsed_outputs, self.doctor_specialties, options, image_path)
                     decision_explanation = final_decision_log.get("parsed_output", {}).get("explanation", "")
                     decision_answer = final_decision_log.get("parsed_output", {}).get("answer", "")
-                    break # 决策已做出，跳出循环
+                    break 
                 else:
                     print("No consensus reached, continuing to next round.")
 
