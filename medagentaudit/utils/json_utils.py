@@ -45,7 +45,7 @@ def load_json(filepath: str) -> Any:
 
     return data
 
-def save_jsonl(data_list: List[Any], filepath: str) -> None:
+def save_jsonl(data: Any, filepath: str) -> None:
     """
     Save a list of items to a JSONL file (each item on a separate line)
 
@@ -59,9 +59,8 @@ def save_jsonl(data_list: List[Any], filepath: str) -> None:
         directory.mkdir(parents=True, exist_ok=True)
 
     # Write JSONL file - one JSON object per line
-    with open(filepath, 'w', encoding='utf-8') as f:
-        for item in data_list:
-            f.write(json.dumps(item, ensure_ascii=False) + '\n')
+    with open(filepath, 'a', encoding='utf-8') as f:
+        f.write(json.dumps(data, ensure_ascii=False) + '\n')
 
     print(f"Data saved to JSONL file: {filepath}")
 
