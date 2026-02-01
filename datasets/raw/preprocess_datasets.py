@@ -201,35 +201,50 @@ def process_medqa(raw_dir=RAW_DATA_DIR, output_dir=PROCESSED_DATA_DIR, sample_si
         sample_size: Number of samples to select (None for all samples)
     """
     # Define paths
-    medqa_path = raw_dir / "MedQA" / "questions" / "US" / "test.jsonl"
-    output_path = output_dir / "MedQA" / "medqa_medqa.json"
+    audit_medqa_path = raw_dir / "MedQA" / "questions" / "US" / "test.jsonl"
+    open_coding_medqa_path = raw_dir / "MedQA" / "questions" / "US" / "train.jsonl"
+    audit_output_path = output_dir / "MedQA" / "audit" / "medqa_medqa.json"
+    open_coding_output_path = output_dir / "MedQA" / "open_coding" / "medqa_medqa_open_coding.json"
 
-    # TODO RETRO Create output directory if it doesn't exist
-    Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+    # Create output directory if it doesn't exist
+    Path(audit_output_path).parent.mkdir(parents=True, exist_ok=True)
+    Path(open_coding_output_path).parent.mkdir(parents=True, exist_ok=True)
 
     # Load JSONL data
-    medqa_data = load_jsonl(medqa_path)
+    audit_medqa_data = load_jsonl(audit_medqa_path)
+    open_coding_medqa_data = load_jsonl(open_coding_medqa_path)
 
-    processed_data = []
+    audit_processed_data = []
+    open_coding_processed_data = []
 
-    for i, item in enumerate(medqa_data):
+    for i, item in enumerate(audit_medqa_data):
         curated_data = {
             "qid": f"medqa_{str(i + 1).zfill(3)}",
             "question": item["question"],
             "options": item["options"],
             "answer": item["answer_idx"]
         }
+        audit_processed_data.append(curated_data)
 
-        processed_data.append(curated_data)
+    for i, item in enumerate(open_coding_medqa_data):
+        curated_data = {
+            "qid": f"medqa_{str(i + 1).zfill(3)}",
+            "question": item["question"],
+            "options": item["options"],
+            "answer": item["answer_idx"]
+        }
+        open_coding_processed_data.append(curated_data)
 
     # Apply sampling if requested
     if sample_size is not None:
-        processed_data = random_select_samples(processed_data, sample_size)
+        audit_processed_data = random_select_samples(audit_processed_data, sample_size)
+        open_coding_processed_data = random_select_samples(open_coding_processed_data, sample_size)
 
     # Save processed data
-    save_json(processed_data, output_path)
-    print(f"MedQA dataset processed and saved to: {output_path}")
-
+    save_json(audit_processed_data, audit_output_path)
+    save_json(open_coding_processed_data, open_coding_output_path)
+    print(f"MedQA audit dataset processed and saved to: {audit_output_path}")
+    print(f"MedQA open coding dataset processed and saved to: {open_coding_output_path}")
 
 def process_pubmedqa(raw_dir=RAW_DATA_DIR, output_dir=PROCESSED_DATA_DIR, sample_size: int = None):
     """
@@ -462,12 +477,14 @@ def main():
     parser = argparse.ArgumentParser(description="Process medical datasets into a standardized format")
     parser.add_argument("--medqa", action="store_true", help="Process MedQA dataset")
     parser.add_argument("--pubmedqa", action="store_true", help="Process PubMedQA dataset")
+    parser.add_argument("--medxpertqa", action="store_true", help="Process MedXpertQA dataset")
     parser.add_argument("--pathvqa", action="store_true", help="Process PathVQA dataset")
     parser.add_argument("--vqa-rad", action="store_true", help="Process VQA-RAD dataset")
+    parser.add_argument("--slake", action="store_true", help="Process SLAKE dataset")
     parser.add_argument("--all", action="store_true", help="Process all datasets")
     parser.add_argument("--raw-dir", type=str, default=RAW_DATA_DIR, help="Directory containing raw datasets")
     parser.add_argument("--output-dir", type=str, default=PROCESSED_DATA_DIR, help="Directory to save processed datasets")
-    parser.add_argument("--sample-size", type=int, default=200, help="Number of samples to randomly select (None for all samples)")
+    parser.add_argument("--sample-size", type=int, default=100, help="Number of samples to randomly select (None for all samples)")
 
     args = parser.parse_args()
 
@@ -483,10 +500,16 @@ def main():
     if args.all or args.pubmedqa:
         process_pubmedqa(args.raw_dir, args.output_dir, args.sample_size)
 
+    if args.all or args.pubmedqa:
+        process_medxpert_qa(args.raw_dir, args.output_dir, args.sample_size)
+
     if args.all or args.pathvqa:
         process_pathvqa(args.raw_dir, args.output_dir, args.sample_size)
 
     if args.all or args.vqa_rad:
+        process_vqa_rad(args.raw_dir, args.output_dir, args.sample_size)
+
+    if args.all or args.slake:
         process_vqa_rad(args.raw_dir, args.output_dir, args.sample_size)
 
     print("All requested datasets processed successfully!")
