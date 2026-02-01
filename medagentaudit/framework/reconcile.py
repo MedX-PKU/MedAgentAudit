@@ -25,7 +25,7 @@ sys.path.extend([str(utils_root), str(project_root), str(auditor_root), str(comm
 
 from json_utils import load_json, save_json, preprocess_response_string
 from encode_image import encode_image
-from config_loader import get_config  
+from config_loader import get_config
 from logger import DualLogger
 from auditor_agent import AuditorAgent
 from base_agent import BaseAgent
@@ -98,13 +98,14 @@ class ReconcileAgent(BaseAgent):
         user_content.append({"type": "text", "text": prompt_text})
         user_message = {"role": "user", "content": user_content}
 
-        response_text, system_message, user_message = self.call_llm(system_message = system_message, user_message = user_message, response_format={"type": "json_object"})
+        response_text, reasoning_content, system_message, user_message = self.call_llm(system_message = system_message, user_message = user_message, response_format={"type": "json_object"})
         result = self._parse_response(response_text)
         step_log = {
             "llm_input":{
                 "system_message": system_message,
                 "user_message": user_message
-            }
+            },
+            "reasoning_content": reasoning_content
         }
         self.memory.append({"phase": DiscussionPhase.INITIAL.value, "response": result})
         return result, step_log
@@ -161,14 +162,15 @@ class ReconcileAgent(BaseAgent):
         user_content.append({"type": "text", "text": prompt_text})
         user_message = {"role": "user", "content": user_content}
         
-        response_text, system_message, user_message = self.call_llm(system_message = system_message, user_message = user_message, response_format={"type": "json_object"})
+        response_text, reasoning_content, system_message, user_message = self.call_llm(system_message = system_message, user_message = user_message, response_format={"type": "json_object"})
         result = self._parse_response(response_text)
 
         step_log = {
             "llm_input":{
                 "system_message": system_message,
                 "user_message": user_message
-            }
+            },
+            "reasoning_content": reasoning_content
         }
         step_log["discussion_context_provided"] = discussion_prompt
 
@@ -366,10 +368,14 @@ class ReconcileCoordinator:
             current_answers.append(resp)
             initial_answer = resp.get("answer", "")
             initial_explanation = resp.get("reasoning", "")
-            opinion_log = {"parsed_output":{
+            opinion_log = {
+            "parsed_output":
+            {
                 "answer": initial_answer,
                 "explanation": initial_explanation,
-            }}
+            },
+            "reasoning_content": step_log.get("reasoning_content", "")
+            }
             doctor_opinions.append(opinion_log["parsed_output"])
             # audit 2.1.2 domain-specific knowledge activation
             audit_results_of_domain_specific_knowledge_activation = self.auditor_agent.audit_domain_specific_knowledge_activation(question = question, image_path=image_path, agent_id=agent.agent_id, specialty=agent.specialty, answer=initial_answer, explanation=initial_explanation)
@@ -429,7 +435,8 @@ class ReconcileCoordinator:
                 review_log = {"parsed_output":{
                     "answer": answer,
                     "explanation": explanation,
-                }}
+                },
+                "reasoning_content": step_log.get("reasoning_content", "")}
                 # audit 2.1.2 Failure to Activate Specialist Knowledge During Role Execution during Collaborative discussion
                 audit_results_of_domain_specific_knowledge_activation = self.auditor_agent.audit_domain_specific_knowledge_activation(question = question, image_path=image_path, agent_id=agent.agent_id, specialty=agent.specialty, answer=answer, explanation=explanation)
 
