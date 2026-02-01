@@ -1,3 +1,4 @@
+'''./MedagentAudit/utils/config_loader.py'''
 import sys
 from pydantic import BaseModel, Field
 from pathlib import Path
@@ -12,16 +13,16 @@ class LLMProviderConfig(BaseModel):
     timeout: int = Field(180, description="Request timeout in seconds.")
     stream: bool = Field(False, description="Whether to use streaming responses.")
     timeout: int = Field(180, description="Request timeout in seconds.")
+    reasoning_effort: str = Field('medium', description="Level of reasoning effort: low, medium, high.")
 
 class SystemConfig(BaseModel):
-    max_retries: int = Field(2, description="Maximum number of retries for a failing task.")
+    max_retries: int = Field(3, description="Maximum number of retries for a failing task.")
 
 class MedagentAudit(BaseModel):
     """The main configuration object, assembled dynamically from the config file."""
     active_llm_name: str
     llm: LLMProviderConfig
     system: SystemConfig
-
 
 def get_config(config_path: str, active_llm: str) -> MedagentAudit:
     """
