@@ -176,11 +176,6 @@ def random_select_samples(data: List[Dict[str, Any]], sample_size: int = 100, se
     """
     Randomly select a subset of samples from the dataset.
 
-    Args:
-        data: The complete dataset to sample from
-        sample_size: Number of samples to select (default: 200)
-        seed: Random seed for reproducibility (default: 42)
-
     Returns:
         A randomly selected subset of the input data
     """
@@ -191,19 +186,20 @@ def random_select_samples(data: List[Dict[str, Any]], sample_size: int = 100, se
     return random.sample(data, sample_size)
 
 
-def process_medqa(raw_dir=RAW_DATA_DIR, output_dir=PROCESSED_DATA_DIR, sample_size: int = None):
+def process_medqa(raw_dir=RAW_DATA_DIR, output_dir=PROCESSED_DATA_DIR, audit_size: int = None, open_coding_size: int = None):
     """
     Process the MedQA dataset from raw format to standardized format.
 
     Args:
         raw_dir: Directory containing raw dataset
         output_dir: Directory to save processed dataset
-        sample_size: Number of samples to select (None for all samples)
+        audit_size: Number of audit samples to select (None for all samples)
+        open_coding_size: Number of open coding samples to select (None for all samples)
     """
     # Define paths
     audit_medqa_path = raw_dir / "MedQA" / "questions" / "US" / "test.jsonl"
     open_coding_medqa_path = raw_dir / "MedQA" / "questions" / "US" / "train.jsonl"
-    audit_output_path = output_dir / "MedQA" / "audit" / "medqa_medqa.json"
+    audit_output_path = output_dir / "MedQA" / "audit" / "medqa_medqa_audit.json"
     open_coding_output_path = output_dir / "MedQA" / "open_coding" / "medqa_medqa_open_coding.json"
 
     # Create output directory if it doesn't exist
@@ -236,9 +232,10 @@ def process_medqa(raw_dir=RAW_DATA_DIR, output_dir=PROCESSED_DATA_DIR, sample_si
         open_coding_processed_data.append(curated_data)
 
     # Apply sampling if requested
-    if sample_size is not None:
-        audit_processed_data = random_select_samples(audit_processed_data, sample_size)
-        open_coding_processed_data = random_select_samples(open_coding_processed_data, sample_size)
+    if audit_size is not None:
+        audit_processed_data = random_select_samples(audit_processed_data, audit_size)
+    if open_coding_size is not None:
+        open_coding_processed_data = random_select_samples(open_coding_processed_data, open_coding_size)
 
     # Save processed data
     save_json(audit_processed_data, audit_output_path)
@@ -246,23 +243,29 @@ def process_medqa(raw_dir=RAW_DATA_DIR, output_dir=PROCESSED_DATA_DIR, sample_si
     print(f"MedQA audit dataset processed and saved to: {audit_output_path}")
     print(f"MedQA open coding dataset processed and saved to: {open_coding_output_path}")
 
-def process_pubmedqa(raw_dir=RAW_DATA_DIR, output_dir=PROCESSED_DATA_DIR, sample_size: int = None):
+def process_pubmedqa(raw_dir=RAW_DATA_DIR, output_dir=PROCESSED_DATA_DIR, audit_size: int = None, open_coding_size: int = None):
     """
     Process the PubMedQA dataset from raw format to standardized format.
+    in order to randomly extracting two non-overlapping subsets from the same data source, we firstly perform a globaly random shuffle on the
+    entire dataset, and then slice it according to the required quantities.
 
     Args:
         raw_dir: Directory containing raw dataset
         output_dir: Directory to save processed dataset
-        sample_size: Number of samples to select (None for all samples)
+        audit_size: Number of audit samples to select (None for all samples)
+        open_coding_size: Number of open coding samples to select (None for all samples)
     """
     # Define paths
-    ori_pqal_path = raw_dir / os.path.join(raw_dir, "PubMedQA", "ori_pqal.json")
-    test_ground_truth_path = os.path.join(raw_dir, "PubMedQA", "test_ground_truth.json")
-    output_path_base = os.path.join(output_dir, "PubMedQA")
-    output_path_mc = os.path.join(output_path_base, "medqa_pubmedqa.json")
+    ori_pqal_path = raw_dir / "PubMedQA" / "ori_pqal.json"
+    test_ground_truth_path = raw_dir / "PubMedQA" / "test_ground_truth.json"
+    audit_output_path_base = output_dir / "PubMedQA" / "audit"
+    open_coding_output_path_base = output_dir / "PubMedQA" / "open_coding"
+    audit_output_path = audit_output_path_base / "medqa_pubmedqa_audit.json"
+    open_coding_output_path = open_coding_output_path_base / "medqa_pubmedqa_open_coding.json"
 
     # Create output directory if it doesn't exist
-    os.makedirs(os.path.dirname(output_path_base), exist_ok=True)
+    audit_output_path_base.mkdir(parents=True, exist_ok=True)
+    open_coding_output_path_base.mkdir(parents=True, exist_ok=True)
 
     # Load datasets
     data = load_json(ori_pqal_path)
@@ -272,7 +275,7 @@ def process_pubmedqa(raw_dir=RAW_DATA_DIR, output_dir=PROCESSED_DATA_DIR, sample
     options = {"A": "Yes", "B": "No", "C": "Maybe"}
     options_map = {"Yes": "A", "No": "B", "Maybe": "C"}
 
-    processed_data_mc = []
+    all_processed_data = []
 
     for qid, item_data in data.items():
         # only qid in labels are test set
@@ -295,18 +298,30 @@ def process_pubmedqa(raw_dir=RAW_DATA_DIR, output_dir=PROCESSED_DATA_DIR, sample
             "answer": options_map[answer]  # Map ground truth to option key
         }
 
-        processed_data_mc.append(mc_data)
+        all_processed_data.append(mc_data)
 
-    # Apply sampling if requested
-    if sample_size is not None:
-        processed_data_mc = random_select_samples(processed_data_mc, sample_size)
+    # randomly shuffle the entire dataset
+    total_needed = audit_size + open_coding_size
+    if total_needed > len(all_processed_data):
+        raise ValueError(f"the total data num requested ({total_needed})exceeds the total amount of avaliable data: ({len(all_processed_data)})")
+    
+    # fixed random seed for reproducibility
+    random.seed(42)
+    # copy raw table to avoid messing up the original order
+    shuffled_data = all_processed_data.copy()
+    random.shuffle(shuffled_data)
+    # slice the shuffled data into two non-overlapping subsets
+    audit_data = shuffled_data[:audit_size]
+    open_coding_data = shuffled_data[audit_size:audit_size + open_coding_size]
 
     # Save processed data
-    save_json(processed_data_mc, output_path_mc)
-    print(f"PubMedQA dataset processed and saved to: {output_path_mc}")
+    save_json(audit_data, audit_output_path)
+    save_json(open_coding_data, open_coding_output_path)
+    print(f"PubMedQA open coding dataset processed and saved to: {open_coding_output_path}")
+    print(f"PubMedQA audit dataset processed and saved to: {audit_output_path}")
 
 
-def process_pathvqa(raw_dir=RAW_DATA_DIR, output_dir=PROCESSED_DATA_DIR, sample_size: int = None):
+def process_pathvqa(raw_dir=RAW_DATA_DIR, output_dir=PROCESSED_DATA_DIR, audit_size: int = None, open_coding_size: int = None):
     """
     Process the PathVQA dataset from raw format to standardized format.
     This function expects the dataset to be in JSON format (converted from .pkl),
@@ -315,9 +330,10 @@ def process_pathvqa(raw_dir=RAW_DATA_DIR, output_dir=PROCESSED_DATA_DIR, sample_
     Args:
         raw_dir: Directory containing raw dataset
         output_dir: Directory to save processed dataset
-        sample_size: Number of samples to select (None for all samples)
+        audit_size: Number of audit samples to select (None for all samples)
+        open_coding_size: Number of open coding samples to select (None for all samples)
     """
-    path_vqa_path = os.path.join(raw_dir, "PathVQA", "qas", "test", "test.pkl")
+    path_vqa_path = raw_dir / "PathVQA" / "qas" / "test" / "test.pkl"
     path_vqa_images = os.path.join(raw_dir, "PathVQA", "images", "test")
     output_path = os.path.join(output_dir, "PathVQA", "medqa_pathvqa.json")
 
@@ -354,8 +370,10 @@ def process_pathvqa(raw_dir=RAW_DATA_DIR, output_dir=PROCESSED_DATA_DIR, sample_
         processed_data.append(curated_data)
 
     # Apply sampling if requested
-    if sample_size is not None:
-        processed_data = random_select_samples(processed_data, sample_size)
+    if audit_size is not None:
+        processed_data = random_select_samples(processed_data, audit_size)
+    if open_coding_size is not None:
+        processed_data = random_select_samples(processed_data, open_coding_size)
 
     # Save processed data
     save_json(processed_data, output_path)
@@ -363,14 +381,15 @@ def process_pathvqa(raw_dir=RAW_DATA_DIR, output_dir=PROCESSED_DATA_DIR, sample_
     print(f"Total yes/no questions found: {len(processed_data)}")
 
 
-def process_vqa_rad(raw_dir=RAW_DATA_DIR, output_dir=PROCESSED_DATA_DIR, sample_size: int = None):
+def process_vqa_rad(raw_dir=RAW_DATA_DIR, output_dir=PROCESSED_DATA_DIR, audit_size: int = None, open_coding_size: int = None):
     """
     Process the VQA-RAD dataset from raw format to standardized format.
 
     Args:
         raw_dir: Directory containing raw dataset
         output_dir: Directory to save processed dataset
-        sample_size: Number of samples to select (None for all samples)
+        audit_size: Number of audit samples to select (None for all samples)
+        open_coding_size: Number of open coding samples to select (None for all samples)
     """
     # Define paths
     vqa_rad_path = raw_dir / "VQA-RAD" / "test.json"
@@ -409,14 +428,16 @@ def process_vqa_rad(raw_dir=RAW_DATA_DIR, output_dir=PROCESSED_DATA_DIR, sample_
             processed_data_mc.append(mc_data)
 
     # Apply sampling if requested
-    if sample_size is not None:
-        processed_data_mc = random_select_samples(processed_data_mc, sample_size)
+    if audit_size is not None:
+        processed_data_mc = random_select_samples(processed_data_mc, audit_size)
+    if open_coding_size is not None:
+        processed_data_mc = random_select_samples(processed_data_mc, open_coding_size)
 
     # Save processed data
     save_json(processed_data_mc, output_path_mc)
     print(f"VQA-RAD dataset (multiple-choice) processed and saved to: {output_path_mc}")
 
-def process_medxpert_qa(raw_dir=RAW_DATA_DIR, output_dir=PROCESSED_DATA_DIR, sample_size: int = None):
+def process_medxpert_qa(raw_dir=RAW_DATA_DIR, output_dir=PROCESSED_DATA_DIR, audit_size: int = None, open_coding_size: int = None):
     '''
     this function is to preprocess MedXpertQA dataset from raw to standardized format
     '''
@@ -433,12 +454,14 @@ def process_medxpert_qa(raw_dir=RAW_DATA_DIR, output_dir=PROCESSED_DATA_DIR, sam
     mc, idx = convert_items_to_medqa(parse_jsonl(input_file), start_index=idx, prefix="medxpertqa_text")
     all_mc.extend(mc)
     # random select samples if needed
-    if sample_size is not None:
-        all_mc = random_select_samples(all_mc, sample_size)
+    if audit_size is not None:
+        all_mc = random_select_samples(all_mc, audit_size)
+    if open_coding_size is not None:
+        all_mc = random_select_samples(all_mc, open_coding_size)
     mc_out = default_output_dir / "medqa_medxpertqa-text.json"
     save_json(all_mc, mc_out)
 
-def process_slake (raw_dir=RAW_DATA_DIR, output_dir=PROCESSED_DATA_DIR, sample_size: int = None):
+def process_slake (raw_dir=RAW_DATA_DIR, output_dir=PROCESSED_DATA_DIR, audit_size: int = None, open_coding_size: int = None):
     '''
     this function is to process the raw slake dataset, and transform it to the dataset we use to opencoding and multi-agent audit!
     '''
@@ -484,33 +507,34 @@ def main():
     parser.add_argument("--all", action="store_true", help="Process all datasets")
     parser.add_argument("--raw-dir", type=str, default=RAW_DATA_DIR, help="Directory containing raw datasets")
     parser.add_argument("--output-dir", type=str, default=PROCESSED_DATA_DIR, help="Directory to save processed datasets")
-    parser.add_argument("--sample-size", type=int, default=100, help="Number of samples to randomly select (None for all samples)")
+    parser.add_argument("--audit-size", type=int, default=100, help="Number of samples to randomly select for audit (None for all samples)")
+    parser.add_argument("--open-coding-size", type=int, default=100, help="Number of samples to randomly select for open coding (None for all samples)")
 
     args = parser.parse_args()
 
     # If no dataset is specified, show help
-    if not (args.medqa or args.pubmedqa or args.pathvqa or args.vqa_rad or args.all):
+    if not (args.medqa or args.pubmedqa or args.pathvqa or args.vqa_rad or args.slake or args.all):
         parser.print_help()
         return
 
     # Process requested datasets
     if args.all or args.medqa:
-        process_medqa(args.raw_dir, args.output_dir, args.sample_size)
+        process_medqa(args.raw_dir, args.output_dir, args.audit_size, args.open_coding_size)
 
     if args.all or args.pubmedqa:
-        process_pubmedqa(args.raw_dir, args.output_dir, args.sample_size)
+        process_pubmedqa(args.raw_dir, args.output_dir, args.audit_size, args.open_coding_size)
 
-    if args.all or args.pubmedqa:
-        process_medxpert_qa(args.raw_dir, args.output_dir, args.sample_size)
+    if args.all or args.medxpertqa:
+        process_medxpert_qa(args.raw_dir, args.output_dir, args.audit_size, args.open_coding_size)
 
     if args.all or args.pathvqa:
-        process_pathvqa(args.raw_dir, args.output_dir, args.sample_size)
+        process_pathvqa(args.raw_dir, args.output_dir, args.audit_size, args.open_coding_size)
 
     if args.all or args.vqa_rad:
-        process_vqa_rad(args.raw_dir, args.output_dir, args.sample_size)
-
+        process_vqa_rad(args.raw_dir, args.output_dir, args.audit_size, args.open_coding_size)
+        
     if args.all or args.slake:
-        process_vqa_rad(args.raw_dir, args.output_dir, args.sample_size)
+        process_slake(args.raw_dir, args.output_dir, args.audit_size, args.open_coding_size)
 
     print("All requested datasets processed successfully!")
 
