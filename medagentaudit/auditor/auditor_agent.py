@@ -346,13 +346,13 @@ class AuditorAgent(BaseAgent):
             "role": "user",
             "content": user_content
         }
-        response_text, _, _ = self.call_llm(system_message, user_message)
+        response_text, _, _, _ = self.call_llm(system_message, user_message)
         try:
             return json.loads(preprocess_response_string(response_text))
         except (json.JSONDecodeError, TypeError):
             return {}
 
-    def neglect_or_misinterpretation_of_modality_info(self, question: str, answer: str, agent_id: str, specialty, explanation: str, image_path: str | None) -> Dict[str, Any]:
+    def audit_neglect_or_misinterpretation_of_modality_info(self, question: str, answer: str, agent_id: str, specialty, explanation: str, image_path: str | None) -> Dict[str, Any]:
         """
         audit failure mode 1.2.1
         after domain agent give their initial response, we need to audit whether they obey the instruction to answer the question (instruction level).
@@ -384,7 +384,7 @@ class AuditorAgent(BaseAgent):
             "role": "user",
             "content": user_content
         }
-        response_text, _, _ = self.call_llm(system_message, user_message)
+        response_text, _, _, _ = self.call_llm(system_message, user_message)
         try:
             return json.loads(preprocess_response_string(response_text))
         except (json.JSONDecodeError, TypeError):
@@ -425,12 +425,12 @@ class AuditorAgent(BaseAgent):
             "role": "user",
             "content": user_content
         }
-        response_text, _, _ = self.call_llm(system_message, user_message)
+        response_text, _, _, _ = self.call_llm(system_message, user_message)
         try:
             return json.loads(preprocess_response_string(response_text))
         except (json.JSONDecodeError, TypeError):
             return {}
-
+        
     def audit_domain_specific_knowledge_activation(self, question: str, answer: str, agent_id: str, specialty, explanation: str, image_path: str | None, case_history: dict | None = None) -> Dict[str, Any]:
         """
         audit failure mode 2.1.2
@@ -475,12 +475,12 @@ class AuditorAgent(BaseAgent):
             "role": "user",
             "content": user_content
         }
-        response_text, _, _ = self.call_llm(system_message, user_message)
+        response_text, _, _, _ = self.call_llm(system_message, user_message)
         try:
             return json.loads(preprocess_response_string(response_text))
         except (json.JSONDecodeError, TypeError):
             return {}
-
+        
     def audit_repetition_of_initial_views(self, question: str, image_path: str | None, current_agent_id: str, current_answer:str, current_explanation: str, case_history: Dict) -> Dict[str, Any]:
         """
         audit failure mode 2.2.1
@@ -568,7 +568,7 @@ class AuditorAgent(BaseAgent):
             "role": "user",
             "content": user_content
         }
-        response_text, _, _ = self.call_llm(system_message, user_message)
+        response_text, _, _, _ = self.call_llm(system_message, user_message)
         try:
             return json.loads(preprocess_response_string(response_text))
         except (json.JSONDecodeError, TypeError):
@@ -685,7 +685,7 @@ class AuditorAgent(BaseAgent):
             "role": "user",
             "content": user_content
         }
-        response_text, _, _ = self.call_llm(system_message, user_message)
+        response_text, _, _, _ = self.call_llm(system_message, user_message)
         try:
             return json.loads(preprocess_response_string(response_text))
         except (json.JSONDecodeError, TypeError):
@@ -814,7 +814,7 @@ class AuditorAgent(BaseAgent):
             "role": "user",
             "content": user_content
         }
-        response_text, _, _ = self.call_llm(system_message, user_message)
+        response_text, _, _, _ = self.call_llm(system_message, user_message)
         try:
             return json.loads(preprocess_response_string(response_text))
         except (json.JSONDecodeError, TypeError):
@@ -943,7 +943,7 @@ class AuditorAgent(BaseAgent):
             "role": "user",
             "content": user_content
         }
-        response_text, _, _ = self.call_llm(system_message, user_message)
+        response_text, _, _, _ = self.call_llm(system_message, user_message)
         try:
             return json.loads(preprocess_response_string(response_text))
         except (json.JSONDecodeError, TypeError):
@@ -1030,7 +1030,7 @@ class AuditorAgent(BaseAgent):
             "role": "user",
             "content": user_content
         }
-        response_text, _, _ = self.call_llm(system_message, user_message)
+        response_text, _, _, _ = self.call_llm(system_message, user_message)
         try:
             return json.loads(preprocess_response_string(response_text))
         except (json.JSONDecodeError, TypeError):
@@ -1109,7 +1109,7 @@ class AuditorAgent(BaseAgent):
             "role": "user",
             "content": user_content
         }
-        response_text, _, _ = self.call_llm(system_message, user_message)
+        response_text, _, _, _ = self.call_llm(system_message, user_message)
         try:
             return json.loads(preprocess_response_string(response_text))
         except (json.JSONDecodeError, TypeError):

@@ -23,7 +23,7 @@ project_root = current_file_path.parents[2]
 sys.path.extend([str(utils_root), str(project_root), str(auditor_root), str(common_root)])
 from logger import DualLogger
 from encode_image import encode_image
-from json_utils import load_json, save_json, preprocess_response_string
+from json_utils import load_json, save_jsonl, preprocess_response_string
 from auditor_agent import AuditorAgent
 from base_agent import BaseAgent
 from agent_type import AgentType
@@ -101,7 +101,7 @@ class DoctorAgent(BaseAgent):
             "content": user_content,
         }
 
-        response_text, system_msg, user_msg = self.call_llm(system_message = system_message, user_message = user_message, response_format={"type": "json_object"})
+        response_text, reasoning_content, system_msg, user_msg = self.call_llm(system_message = system_message, user_message = user_message, response_format={"type": "json_object"})
 
         try:
             result = json.loads(preprocess_response_string(response_text))
@@ -114,6 +114,7 @@ class DoctorAgent(BaseAgent):
             })
             analysis_log = {
             "parsed_output": result,
+            "reasoning_content": reasoning_content,
             "llm_input": {
                 "system_message": system_msg,
                 "user_message": user_msg
@@ -131,6 +132,7 @@ class DoctorAgent(BaseAgent):
             })
             analysis_log = {
             "parsed_output": result,
+            "reasoning_content": reasoning_content,
             "llm_input": {
                 "system_message": system_msg,
                 "user_message": user_msg
@@ -209,7 +211,7 @@ class DoctorAgent(BaseAgent):
             "content": user_content,
         }
 
-        response_text, system_msg, user_msg = self.call_llm(system_message = system_message, user_message = user_message, response_format={"type": "json_object"}) 
+        response_text, reasoning_content, system_msg, user_msg = self.call_llm(system_message = system_message, user_message = user_message, response_format={"type": "json_object"}) 
 
         try:
             result = json.loads(preprocess_response_string(response_text))
@@ -245,6 +247,7 @@ class DoctorAgent(BaseAgent):
 
         review_log = {
             "parsed_output": result,
+            "reasoning_content": reasoning_content,
             "llm_input": {
                 "system_message": system_msg,
                 "user_message": user_msg
@@ -323,7 +326,7 @@ class MetaAgent(BaseAgent):
             "role":"user",
             "content": user_content
         }
-        response_text, system_msg, user_msg = self.call_llm(system_message = system_message, user_message = user_message, response_format={"type": "json_object"})
+        response_text, reasoning_content, system_msg, user_msg = self.call_llm(system_message = system_message, user_message = user_message, response_format={"type": "json_object"})
 
         try:
             result = json.loads(preprocess_response_string(response_text))
@@ -340,6 +343,7 @@ class MetaAgent(BaseAgent):
 
         synthesis_log = {
             "parsed_output": result,
+            "reasoning_content": reasoning_content,
             "llm_input": {
                 "system_message": system_msg,
                 "user_message": user_msg
@@ -453,7 +457,7 @@ class MetaAgent(BaseAgent):
             "content": user_content
         }
 
-        response_text, system_msg, user_msg = self.call_llm(system_message = system_message, user_message = user_message, response_format={"type": "json_object"})
+        response_text, reasoning_content, system_msg, user_msg = self.call_llm(system_message = system_message, user_message = user_message, response_format={"type": "json_object"})
 
         try:
             result = json.loads(preprocess_response_string(response_text))
@@ -471,6 +475,7 @@ class MetaAgent(BaseAgent):
 
         decision_log = {
             "parsed_output": result,
+            "reasoning_content": reasoning_content,
             "llm_input": {
                 "system_message": system_msg,
                 "user_message": user_msg
@@ -579,6 +584,7 @@ class MDTConsultation:
                 print(f"Doctor {i+1} ({doctor.specialty.value}) analyzing case")
                 opinion_log = doctor.analyze_case(question = question, options = options, image_path=image_path)
                 parsed_output = opinion_log["parsed_output"]
+                reasoning_content = opinion_log["reasoning_content"]
                 explanation = parsed_output.get("explanation", "")
                 answer = parsed_output.get("answer", "")
                 # audit 1.1.1 facutal hallucination
@@ -634,7 +640,7 @@ class MDTConsultation:
                 case_history["rounds"][-1]["opinions"].append({
                     "agent_id": doctor.agent_id,
                     "specialty": doctor.specialty.value,
-                    "log": opinion_log 
+                    "log": opinion_log
                 }) # after audit 2.2.1, we log the current opinion in case repetition 
                 
                 print(f"Doctor {i+1} opinion: {opinion_log['parsed_output'].get('answer', '')}")
@@ -902,6 +908,25 @@ def main():
     print(f"Logs will be saved to: {logs_dir}")
 
     data_path = project_root / "datasets" / dataset_name / f"medqa_{qa_type}_test.json"
+    
+    output_file = project_root / "logs" / "audit_results" / f"{timestamp}_{current_model_name}_{dataset_name}.jsonl"
+    error_output_file = project_root / "logs" / "audit_results" / f"{timestamp}_{current_model_name}_{dataset_name}_errors.jsonl"
+    
+    existing_qids = set()
+    if output_file.exists():
+        print(f"Output file {output_file} already exists. Appending new results.")
+        with open(output_file, 'r', encoding='utf-8') as f:
+            for line in f:
+                line = line.strip()
+                if not line: continue
+                try:
+                    record = json.loads(line)
+                    if "qid" in record:
+                        existing_qids.add(record["qid"])
+                except json.JSONDecodeError:
+                    print("Warning: Found a corrupted line in jsonl file, skipping.")
+        print(f"Found {len(existing_qids)} already processed cases. They will be skipped.")
+
     data = load_json(data_path)
     print(f"Loaded {len(data)} samples from {data_path}")
 
@@ -927,10 +952,8 @@ def main():
 
     for item in tqdm(data[:args.num_samples], desc=f"Running MDT consultation on {dataset_name}"): 
         qid = item["qid"]
-        
-        log_file_path = logs_dir / f"{qid}-result.json"
 
-        if log_file_path.exists():
+        if qid in existing_qids:
             print(f"Skipping {qid} - already processed")
             continue
 
@@ -962,7 +985,8 @@ def main():
                 "case_history": full_case_history, # This now contains the full, detailed log
             }
 
-            save_json(item_result, log_file_path)
+            save_jsonl(item_result, str(output_file))
+            existing_qids.add(qid)
 
         except Exception as e:
             print(f"Error processing item {qid}: {e}")
@@ -971,7 +995,6 @@ def main():
                 "qid": qid,
                 "error": str(e)
             }
-            save_json(error_log, logs_dir / f"{qid}-error.json")
-
+            save_jsonl(error_log, str(error_output_file))
 if __name__ == "__main__":
     main()
