@@ -4,6 +4,12 @@
 from typing import Dict, Any, Tuple
 import time
 from openai import OpenAI
+import sys
+from pathlib import Path
+import json
+current_file_path = Path(__file__).resolve()
+utils_root = current_file_path.parents[1] / "utils"
+sys.path.append(str(utils_root))
 from config_loader import get_config
 class BaseAgent:
     """Base class for all agents."""
@@ -53,44 +59,90 @@ class BaseAgent:
             - The system message sent to the LLM
             - The user message sent to the LLM
         """
-    # MODIFICATION END
         retries = 0
         while retries < max_retries:
             try:
                 print(f"Agent {self.agent_id} calling LLM, system message: {system_message['content'][:50]}...")
                 print(f'the llm model name is {self.model_name}')
-                if hasattr(self.llm, 'reasoning') and self.llm.reasoning: # for model like gpt-5.2
-                    completion = self.client.chat.completions.create(
-                        model=self.model_name,
-                        messages=[system_message, user_message],
-                        response_format=response_format,
-                        extra_body={"enable_thinking": False}, # qwen3-8b and qwen3-vl-8b need this parameter
-                        reasoning = {"effort": self.llm.reasoning.effort},
-                        stream=self.llm.stream,
-                        timeout=self.llm.timeout # just in case timeout error!
-                    )
-                else:
-                    completion = self.client.chat.completions.create(
-                        model=self.model_name,
-                        messages=[system_message, user_message],
-                        response_format=response_format,
-                        extra_body={"enable_thinking": False}, # qwen3-8b and qwen3-vl-8b need this parameter
-                        stream=self.llm.stream,
-                        timeout=self.llm.timeout # just in case timeout error!
-                    )
+                request_kwargs = {
+                    "model": self.model_name,
+                    "stream": self.llm.stream,
+                    "timeout": self.llm.timeout,
+                }
+
+                if self.model_key in ['gpt-5.2-high','o3','gpt-5.2']: # specifically for openai close source model
+                    request_kwargs["messages"] = [system_message, user_message]
+                    request_kwargs['response_format'] = response_format
+                    request_kwargs["reasoning_effort"] = getattr(self.llm, 'reasoning_effort', 'medium')
+                
+                elif 'gemini' in self.model_key.lower():
+                    # Gemini Special Handling
+                    request_kwargs["messages"] = [system_message, user_message]
+                    request_kwargs['response_format'] = response_format
+                    thinking_config = {"include_thoughts": True}
+                    
+                    raw_effort = getattr(self.llm, 'reasoning_effort', "high")
+                    
+                    if "2.5" in self.model_name:
+                        # Gemini 2.5 use thinking_budget (int)
+                        if isinstance(raw_effort, int):
+                            thinking_config["thinking_budget"] = raw_effort
+                        elif raw_effort == "low":
+                            thinking_config["thinking_budget"] = 1024
+                        elif raw_effort == "medium":
+                            thinking_config["thinking_budget"] = 8192
+                        elif raw_effort == "high":
+                            thinking_config["thinking_budget"] = 24576
+                        else:
+                            # Default to dynamic thinking (-1)
+                            thinking_config["thinking_budget"] = -1 
+                    else:
+                        # Gemini 3 use thinking_level (str)
+                        thinking_config["thinking_level"] = raw_effort if isinstance(raw_effort, str) else "high"
+
+                    request_kwargs["extra_body"] = {
+                        "google": {
+                            "thinking_config": thinking_config
+                        }
+                    }
+                
+                else: # qwen
+                    request_kwargs["messages"] = [system_message, user_message]
+                    request_kwargs['response_format'] = response_format
+                    # Qwen / Default handling
+                    request_kwargs["extra_body"] = {"enable_thinking": True}
+
+                completion = self.client.chat.completions.create(**request_kwargs)
+
                 if not self.llm.stream:
-                    response = completion.choices[0].message.content
+                    data_dict = completion.model_dump()
+                    print(json.dumps(data_dict, indent=2, ensure_ascii=False)) # Debug usage
+                    message = completion.choices[0].message
+                    response = message.content
+                    reasoning_content = getattr(message, 'reasoning_content', None)
                 else:
                     response_chunks = []
+                    reasoning_chunks = []
                     for chunk in completion:
-                        if chunk.choices[0].delta.content is not None:
-                            response_chunks.append(chunk.choices[0].delta.content)
+                        delta = chunk.choices[0].delta
+                        if delta.content is not None:
+                            response_chunks.append(delta.content)
+                        # defensive programming for reasoning content
+                        r_content = getattr(delta, "reasoning_content", None)
+                        if r_content is not None:
+                            reasoning_chunks.append(r_content)
                     response = "".join(response_chunks)
+                    reasoning_content = "".join(reasoning_chunks)
+
                 # check if the response is empty
                 if not response.strip():
                     raise ValueError("Empty response received from LLM")
+                
+                if reasoning_content is not None and len(reasoning_content) > 50:
+                    print(f"Agent {self.agent_id} received reasoning: {reasoning_content[:50]}...")
+
                 print(f"Agent {self.agent_id} received response: {response[:50]}...")
-                return response, system_message, user_message
+                return response, reasoning_content, system_message, user_message
             except Exception as e:
                 retries += 1
                 print(f"LLM API call error (attempt {retries}/{max_retries}): {e}")
