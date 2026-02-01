@@ -177,7 +177,7 @@ class HealthcareAgentFramework(BaseAgent):
 
         user_message = {"role": "user", "content": user_content}
 
-        response_text, system_msg, user_msg = self.call_llm(system_message, user_message)
+        response_text, reasoning_content,  system_msg, user_msg = self.call_llm(system_message, user_message)
 
         try:
             result = json.loads(preprocess_response_string(response_text))
@@ -190,6 +190,7 @@ class HealthcareAgentFramework(BaseAgent):
             })
             analysis_log = {
             "parsed_output": result,
+            "reasoning_content": reasoning_content,
             "llm_input": {
                 "system_message": system_msg,
                 "user_message": user_msg
@@ -208,6 +209,7 @@ class HealthcareAgentFramework(BaseAgent):
             })
             analysis_log = {
             "parsed_output": result,
+            "reasoning_content": reasoning_content,
             "llm_input": {
                 "system_message": system_msg,
                 "user_message": user_msg
