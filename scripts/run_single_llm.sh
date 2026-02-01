@@ -1,3 +1,8 @@
+:<< 'END_OF_DOCS'
+./scripts/run_single_llm.sh
+this file is used to run single LLM experiments in parallel
+END_OF_DOCS
+
 #!/bin/bash
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
 cd "$SCRIPT_DIR/.." || exit
@@ -47,8 +52,8 @@ QA_LLM=("deepseek-reasoner" "gpt-5.2" "gemini-2.5-flash" "qwen3-8b")
 VQA_LLM=("glm-4.6v" "gpt-5.2" "gemini-2.5-flash" "qwen3-vl-8b-thinking")
 # this experiment‘s samples' num
 num=1
-time_stamp="20260115"
-qa_type="mc"
+time_stamp= "20260115"
+qa_type= "mc"
 config_path="config.toml"
 echo "Starting experiments..."
 

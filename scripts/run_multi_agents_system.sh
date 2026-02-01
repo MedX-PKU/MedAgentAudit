@@ -1,3 +1,8 @@
+:<< 'END_OF_DOCS'
+./scripts/run_multi_agents_system.sh
+this file is used to run multi-agent systems experiments in parallel
+END_OF_DOCS
+
 #!/bin/bash
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
 cd "$SCRIPT_DIR/.." || exit
