@@ -74,8 +74,8 @@ class Agent(BaseAgent):
         if use_memory and self.memory:
             messages.extend(self.memory)
         messages.append(user_message)
-        response, system_message, user_message = self.call_llm(system_message = system_message, user_message = user_message, response_format=response_format)
-        return response, system_message, user_message
+        response, reasoning_content, system_message, user_message = self.call_llm(system_message = system_message, user_message = user_message, response_format=response_format)
+        return response, reasoning_content, system_message, user_message
 
     def clear_memory(self):
         self.memory = []
@@ -135,7 +135,7 @@ class Group:
 
         delivery_prompt += "--- End Query ---\n\nProvide a concise summary of required investigations or your direct analysis if no assistants."
 
-        lead_request, system_message, user_message = self.lead_agent.chat(
+        lead_request, reasoning_content, system_message, user_message = self.lead_agent.chat(
             prompt=delivery_prompt,
             image_path=self.question_context.get('image_path'),
             response_format={"type": "text"}
@@ -155,6 +155,7 @@ class Group:
                 "agent_specialty": self.lead_agent.specialty,
                 "prompt": delivery_prompt,
                 "response": lead_request,
+                "reasoning_content": reasoning_content,
                 "llm_log": lead_request_log
             }
         )
@@ -181,7 +182,7 @@ class Group:
 
             investigation_prompt += "\nKeep your response focused and relevant to the group's goal."
 
-            investigation_json_str, system_message, user_message = a_mem.chat(
+            investigation_json_str, reasoning_content, system_message, user_message = a_mem.chat(
                 prompt=investigation_prompt,
                 image_path=self.question_context.get('image_path'),
                 response_format={"type": "json_object"}
@@ -217,7 +218,8 @@ class Group:
             case_history["rounds"][-1]["opinions"].append({
                 "agent_id": a_mem.agent_id,
                 "specialty": a_mem.specialty,
-                "log": {"parsed_output": investigation}
+                "log": {"parsed_output": investigation, 
+                        "reasoning_content": reasoning_content}
             })
             investigation_log = {"llm_input":{
                 "system_message": system_message,
@@ -258,7 +260,7 @@ class Group:
             synthesis_prompt += f"(Image provided)\n"
         
         
-        final_report_str, system_message, user_message = self.lead_agent.chat(
+        final_report_str, reasoning_content, system_message, user_message = self.lead_agent.chat(
             prompt=synthesis_prompt,
             image_path=self.question_context.get('image_path'),
             response_format={"type": "json_object"},
@@ -277,6 +279,7 @@ class Group:
                 "system_message": system_message,
                 "user_message": user_message,
             },
+            "reasoning_content": reasoning_content,
             "parsed_output": {
                 "answer": synthesis_answer, 
                 "explanation": synthesis_explanation}
@@ -388,7 +391,7 @@ class MDAgentsFramework:
             f"3) advanced: A complex case requiring multiple teams (e.g., initial assessment, diagnostics, final review) collaborating across departments.\n\n"
             f"Respond with a JSON object containing a 'complexity' field with one of these values: 'basic', 'intermediate', or 'advanced'."
         )        
-        response, system_message, user_message = self.moderator_agent.chat(
+        response, _, system_message, user_message = self.moderator_agent.chat(
             prompt=prompt,
             image_path=None,
             response_format={"type": "json_object"},
@@ -494,7 +497,7 @@ class MDAgentsFramework:
                 f"]}}"
             )
 
-        recruitment_response, system_message, user_message = self.recruiter_agent.chat(
+        recruitment_response, reasoning_content, system_message, user_message = self.recruiter_agent.chat(
             prompt=prompt,
             image_path=None,
             response_format={"type": "json_object"},
@@ -625,16 +628,10 @@ class MDAgentsFramework:
         else:
             main_prompt += "\nProvide your answer as a JSON object with 'answer', 'explanation', "
 
-        response, system_message, user_message = agent.chat(prompt=main_prompt, 
+        response, reasoning_content, _, _ = agent.chat(prompt=main_prompt, 
                                        image_path=data_item.get('image_path'), 
                                        response_format={"type": "json_object"})
     
-        llm_log = {
-            "llm_input": {
-                "system_message": system_message,
-                "user_message": user_message
-        }
-        }
 
         try:
             result = json.loads(preprocess_response_string(response))
@@ -649,7 +646,7 @@ class MDAgentsFramework:
                     predicted_answer = predicted_answer[0]
 
             
-            case_history["rounds"][-1]["decision"] = {"parsed_output": result}
+            case_history["rounds"][-1]["decision"] = {"parsed_output": result, "reasoning_content": reasoning_content}
         except Exception as e:
             print(f"Error parsing basic response: {e}. Raw response: {response}")
             predicted_answer = "Could not parse answer."
@@ -733,13 +730,14 @@ class MDAgentsFramework:
                 f"Based on your expertise as a {agent.specialty}, provide your initial analysis and answer.\n"
                 f"Respond with a JSON object containing 'answer' and 'explanation' fields."
             )
-            response, system_message, user_message = agent.chat(
+            response, reasoning_content, system_message, user_message = agent.chat(
                 prompt=prompt,
                 image_path=image_path,
                 response_format={"type": "json_object"},
             )
 
             opinion_log = {
+                "reasoning_content": reasoning_content,
                 "llm_input": {
                     "system_message": system_message,
                     "user_message": user_message
@@ -807,12 +805,13 @@ class MDAgentsFramework:
             f"Respond with a JSON object containing 'answer' (letter for multiple-choice) and 'explanation' fields."
         )
         
-        final_response, final_system_message, final_user_message = self.decision_maker_agent.chat(
+        final_response, reasoning_content, final_system_message, final_user_message = self.decision_maker_agent.chat(
             prompt=synthesis_prompt,
             response_format={"type": "json_object"},
             image_path=image_path
         )
         decision_log = {
+            "reasoning_content": reasoning_content,
             "llm_input": {"system_message": final_system_message, "user_message": final_user_message}
         }
 
@@ -987,7 +986,7 @@ class MDAgentsFramework:
             f"Synthesize all this information into one final, definitive answer and explanation.\n"
             f"Respond with a JSON object containing 'answer' (letter for multiple-choice) and 'explanation' fields."
         )
-        final_response, final_system_message, final_user_message = self.decision_maker_agent.chat(
+        final_response, reasoning_content, final_system_message, final_user_message = self.decision_maker_agent.chat(
             prompt=synthesis_prompt,
             response_format={"type": "json_object"},
             image_path=data_item.get("image_path")
@@ -1044,7 +1043,7 @@ class MDAgentsFramework:
         })
 
         audit["rounds"].append(audit_round_data)
-        case_history['rounds'][-1]['decision'] = {'parsed_output': response_json}
+        case_history['rounds'][-1]['decision'] = {'parsed_output': response_json, "reasoning_content": reasoning_content}
         case_history["audit"] = audit
         return {
             "predicted_answer": final_answer,
