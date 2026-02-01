@@ -327,12 +327,14 @@ def process_pathvqa(raw_dir=RAW_DATA_DIR, output_dir=PROCESSED_DATA_DIR, audit_s
         audit_size: Number of audit samples to select (None for all samples)
         open_coding_size: Number of open coding samples to select (None for all samples)
     """
-    path_vqa_path = raw_dir / "PathVQA" / "qas" / "test" / "test.pkl"
-    path_vqa_images = os.path.join(raw_dir, "PathVQA", "images", "test")
-    output_path = os.path.join(output_dir, "PathVQA", "medqa_pathvqa.json")
+    path_vqa_path = raw_dir / "PathVQA" / "qas" / "test" / "test_qa.pkl"
+    path_vqa_images = raw_dir / "PathVQA" / "images" / "test"
+    audit_output_path = output_dir / "PathVQA" / "audit" / "medqa_pathvqa.json"
+    open_coding_output_path = output_dir / "PathVQA" / "open_coding" / "medqa_pathvqa.json"
 
     # Create output directory if it doesn't exist
-    output_path.parent.mkdir(parents=True, exist_ok=True)
+    audit_output_path.parent.mkdir(parents=True, exist_ok=True)
+    open_coding_output_path.parent.mkdir(parents=True, exist_ok=True)
 
     # Load the dataset
     data = pd.read_pickle(path_vqa_path)
@@ -362,18 +364,24 @@ def process_pathvqa(raw_dir=RAW_DATA_DIR, output_dir=PROCESSED_DATA_DIR, audit_s
         }
 
         processed_data.append(curated_data)
-
-    # Apply sampling if requested
-    if audit_size is not None:
-        processed_data = random_select_samples(processed_data, audit_size)
-    if open_coding_size is not None:
-        processed_data = random_select_samples(processed_data, open_coding_size)
+    print(f"Total PathVQA yes/no questions processed: {len(processed_data)}")
+    # randomly shuffle the entire dataset
+    total_needed = audit_size + open_coding_size
+    if total_needed > len(processed_data):  
+        raise ValueError(f"the total data num requested ({total_needed})exceeds the total amount of avaliable data: ({len(processed_data)})")
+    random.seed(42)
+    # copy raw table to avoid messing up the original order
+    shuffled_data = processed_data.copy()
+    random.shuffle(shuffled_data)
+    # slice the shuffled data into two non-overlapping subsets
+    audit_data = shuffled_data[:audit_size]
+    open_coding_data = shuffled_data[audit_size:audit_size + open_coding_size]
 
     # Save processed data
-    save_json(processed_data, output_path)
-    print(f"PathVQA dataset (yes/no questions only) processed and saved to: {output_path}")
-    print(f"Total yes/no questions found: {len(processed_data)}")
-
+    save_json(audit_data, audit_output_path)
+    save_json(open_coding_data, open_coding_output_path)
+    print(f"PathVQA audit dataset processed and saved to: {audit_output_path}")
+    print(f"PathVQA open coding dataset processed and saved to: {open_coding_output_path}")
 
 def process_vqa_rad(raw_dir=RAW_DATA_DIR, output_dir=PROCESSED_DATA_DIR, audit_size: int = None, open_coding_size: int = None):
     """
