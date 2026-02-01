@@ -131,6 +131,9 @@ class MACFramework:
 
             audit_round_data = {
                 "round": round_num,
+                "1_1_1_factual_hallucination": [],
+                "1_2_1_neglect_or_misinterpretation_of_modality_info": [],
+
                 "2_1_1_role_assignment": [], 
                 "2_1_2_domain_specific_knowledge_activation": [], 
                 
@@ -184,6 +187,12 @@ class MACFramework:
                 parsed_output = json.loads(preprocess_response_string(response_str))
                 opinion_log = {"parsed_output": parsed_output, "reasoning_content" : reasoning_content}
 
+                # audit 1.1.1 facutal hallucination
+                audit_results_of_factual_hallucination = self.auditor_agent.audit_factual_hallucination(question = data_item["question"], image_path=data_item.get("image_path"), agent_id=doctor.agent_id, specialty=MedicalSpecialty.GENERAL_MEDICINE.value, answer=parsed_output["answer"], explanation=parsed_output["explanation"])
+
+                # audit 1.2.1 neglect or misinterpretation of modality information
+                audit_results_of_neglect_or_misinterpretation_of_modality_info = self.auditor_agent.audit_neglect_or_misinterpretation_of_modality_info(question = data_item["question"], image_path=data_item.get("image_path"), agent_id=doctor.agent_id, specialty=MedicalSpecialty.GENERAL_MEDICINE.value, answer=parsed_output["answer"], explanation=parsed_output["explanation"])
+
                 # audit 2.1.2 domain-specific knowledge activation
                 audit_results_of_domain_specific_knowledge_activation = self.auditor_agent.audit_domain_specific_knowledge_activation(question= data_item["question"], 
                                                                                                                                         image_path = data_item.get("image_path"), 
@@ -191,6 +200,18 @@ class MACFramework:
                                                                                                                                         specialty = MedicalSpecialty.GENERAL_MEDICINE.value, 
                                                                                                                                         answer = parsed_output["answer"], 
                                                                                                                                         explanation = parsed_output["explanation"])
+                audit_round_data["1_1_1_factual_hallucination"].append({
+                    "agent_id": doctor.agent_id,
+                    "specialty": MedicalSpecialty.GENERAL_MEDICINE.value,
+                    "step": "analysis",
+                    "audit_result": audit_results_of_factual_hallucination
+                })
+                audit_round_data["1_2_1_neglect_or_misinterpretation_of_modality_info"].append({
+                    "agent_id": doctor.agent_id,
+                    "specialty": MedicalSpecialty.GENERAL_MEDICINE.value,
+                    "step": "analysis",
+                    "audit_result": audit_results_of_neglect_or_misinterpretation_of_modality_info
+                })                                                                                                                   
                 audit_round_data["2_1_2_domain_specific_knowledge_activation"].append({
                     "agent_id": doctor.agent_id,
                     "specialty": MedicalSpecialty.GENERAL_MEDICINE.value,
