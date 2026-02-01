@@ -313,6 +313,82 @@ Return your response in JSON format:
 class AuditorAgent(BaseAgent):
     def __init__(self, agent_id, config_path, model_key,agent_type):
         super().__init__(agent_id, agent_type, config_path, model_key)
+
+    def audit_factual_hallucination(self, question: str, answer: str, agent_id: str, specialty, explanation: str, image_path: str | None) -> Dict[str, Any]:
+        """
+        audit failure mode 1.1.1
+        after domain agent give their initial response, we need to audit whether they perceive the information correctly (input level).
+        """
+        print(f"Auditor Agent: Auditing factual hallucination for {agent_id}...")
+        system_message = {
+            "role": "system",
+            "content": AUDITOR_PROMPTS["Factual_Hallucination_Prompts"]
+        }
+        specialty_name = specialty.value if hasattr(specialty, 'value') else specialty
+        user_content = []
+        if image_path:
+            base64_image = encode_image(image_path)
+            user_content.append({
+                "type":"image_url",
+                "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}
+            })
+        text_content = (
+            f"Medical Question: {question}\n"
+            f"Agent: {agent_id}, (Assigned Specialty: {specialty_name})\n"
+            f"Answer: {answer}\n"
+            f"Agent Explanation: {explanation}\n\n"
+        )
+        user_content.append({
+            "type":"text",
+            "text": text_content
+        })
+        user_message = {
+            "role": "user",
+            "content": user_content
+        }
+        response_text, _, _ = self.call_llm(system_message, user_message)
+        try:
+            return json.loads(preprocess_response_string(response_text))
+        except (json.JSONDecodeError, TypeError):
+            return {}
+
+    def neglect_or_misinterpretation_of_modality_info(self, question: str, answer: str, agent_id: str, specialty, explanation: str, image_path: str | None) -> Dict[str, Any]:
+        """
+        audit failure mode 1.2.1
+        after domain agent give their initial response, we need to audit whether they obey the instruction to answer the question (instruction level).
+        """
+        print(f"Auditor Agent: Auditing neglect or misinterpretation of modality info for {agent_id}...")
+        system_message = {
+            "role": "system",
+            "content": AUDITOR_PROMPTS["Neglect_or_Misinterpretation_of_Modality_Info_Prompts"]
+        }
+        specialty_name = specialty.value if hasattr(specialty, 'value') else specialty
+        user_content = []
+        if image_path:
+            base64_image = encode_image(image_path)
+            user_content.append({
+                "type":"image_url",
+                "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}
+            })
+        text_content = (
+            f"Medical Question: {question}\n"
+            f"Agent: {agent_id}, (Assigned Specialty: {specialty_name})\n"
+            f"Answer: {answer}\n"
+            f"Agent Explanation: {explanation}\n\n"
+        )
+        user_content.append({
+            "type":"text",
+            "text": text_content
+        })
+        user_message = {
+            "role": "user",
+            "content": user_content
+        }
+        response_text, _, _ = self.call_llm(system_message, user_message)
+        try:
+            return json.loads(preprocess_response_string(response_text))
+        except (json.JSONDecodeError, TypeError):
+            return {}
         
     def audit_role_assignment(self, question: str, specialties: list[str], image_path: str | None) -> Dict[str, Any]:
         """
