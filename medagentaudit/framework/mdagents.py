@@ -202,6 +202,13 @@ class Group:
             initial_opinions_parsed.append(parsed_opinion)
             investigations.append({"specialty": a_mem.specialty, "id": a_mem.agent_id, "report": investigation})
 
+
+            # audit 1.1.1 facutal hallucination
+            audit_results_of_factual_hallucination = self.auditor_agent.audit_factual_hallucination(question = self.question_context['question'], image_path=self.question_context.get('image_path'), agent_id=a_mem.agent_id, specialty=a_mem.specialty, answer=investigation.get("answer"), explanation=investigation.get("explanation", ""))
+
+            # audit 1.2.1 neglect or misinterpretation of modality information
+            audit_results_of_neglect_or_misinterpretation_of_modality_info = self.auditor_agent.audit_neglect_or_misinterpretation_of_modality_info(question = self.question_context['question'], image_path=self.question_context.get('image_path'), agent_id=a_mem.agent_id, specialty=a_mem.specialty, answer=investigation.get("answer"), explanation=investigation.get("explanation", ""))
+
             # audit 2.1.2 domain-specific knowledge activation
             audit_results_of_domain_specific_knowledge_activation = auditor_agent.audit_domain_specific_knowledge_activation(question = self.question_context['question'], 
                                                                                                                                   image_path = self.question_context.get('image_path'), 
@@ -209,6 +216,20 @@ class Group:
                                                                                                                                   specialty = a_mem.specialty, 
                                                                                                                                   answer = investigation.get("answer"), 
                                                                                                                                   explanation = investigation.get("explanation", ""))
+            audit_round_data["1_1_1_factual_hallucination"].append({
+                "agent_id": a_mem.agent_id,
+                "specialty": a_mem.specialty,
+                "step": "analysis",
+                "audit_result": audit_results_of_factual_hallucination
+            })
+            
+            audit_round_data["1_2_1_neglect_or_misinterpretation_of_modality_info"].append({
+                "agent_id": a_mem.agent_id,
+                "specialty": a_mem.specialty,
+                "step": "analysis",
+                "audit_result": audit_results_of_neglect_or_misinterpretation_of_modality_info
+            })
+                                                                                                                   
             audit_round_data["2_1_2_domain_specific_knowledge_activation"].append({
                 "agent_id": a_mem.agent_id,
                 "specialty": a_mem.specialty,
@@ -886,6 +907,9 @@ class MDAgentsFramework:
         audit = {"rounds": []}
         audit_round_data = {
         "round": 1,
+        "1_1_1_factual_hallucination": [],
+        "1_2_1_neglect_or_misinterpretation_of_modality_info": [],
+
         "2_1_1_role_assignment": [], 
         "2_1_2_domain_specific_knowledge_activation": [], 
         
