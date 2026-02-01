@@ -197,8 +197,7 @@ def process_medqa(raw_dir=RAW_DATA_DIR, output_dir=PROCESSED_DATA_DIR, audit_siz
         open_coding_size: Number of open coding samples to select (None for all samples)
     """
     # Define paths
-    audit_medqa_path = raw_dir / "MedQA" / "questions" / "US" / "test.jsonl"
-    open_coding_medqa_path = raw_dir / "MedQA" / "questions" / "US" / "train.jsonl"
+    medqa_path = raw_dir / "MedQA" / "questions" / "US" / "test.jsonl"
     audit_output_path = output_dir / "MedQA" / "audit" / "medqa_medqa_audit.json"
     open_coding_output_path = output_dir / "MedQA" / "open_coding" / "medqa_medqa_open_coding.json"
 
@@ -207,35 +206,30 @@ def process_medqa(raw_dir=RAW_DATA_DIR, output_dir=PROCESSED_DATA_DIR, audit_siz
     Path(open_coding_output_path).parent.mkdir(parents=True, exist_ok=True)
 
     # Load JSONL data
-    audit_medqa_data = load_jsonl(audit_medqa_path)
-    open_coding_medqa_data = load_jsonl(open_coding_medqa_path)
+    medqa_data = load_jsonl(medqa_path)
 
-    audit_processed_data = []
-    open_coding_processed_data = []
+    all_processed_data = []
 
-    for i, item in enumerate(audit_medqa_data):
+    for i, item in enumerate(medqa_data):
         curated_data = {
             "qid": f"medqa_{str(i + 1).zfill(3)}",
             "question": item["question"],
             "options": item["options"],
             "answer": item["answer_idx"]
         }
-        audit_processed_data.append(curated_data)
-
-    for i, item in enumerate(open_coding_medqa_data):
-        curated_data = {
-            "qid": f"medqa_{str(i + 1).zfill(3)}",
-            "question": item["question"],
-            "options": item["options"],
-            "answer": item["answer_idx"]
-        }
-        open_coding_processed_data.append(curated_data)
-
-    # Apply sampling if requested
-    if audit_size is not None:
-        audit_processed_data = random_select_samples(audit_processed_data, audit_size)
-    if open_coding_size is not None:
-        open_coding_processed_data = random_select_samples(open_coding_processed_data, open_coding_size)
+        all_processed_data.append(curated_data)
+    print(f"Total MedQA questions processed: {len(all_processed_data)}")
+    # randomly shuffle the entire dataset
+    total_needed = audit_size + open_coding_size
+    if total_needed > len(all_processed_data):
+        raise ValueError(f"the total data num requested ({total_needed})exceeds the total amount of avaliable data: ({len(all_processed_data)})")
+    random.seed(42)
+    # copy raw table to avoid messing up the original order
+    shuffled_data = all_processed_data.copy()
+    random.shuffle(shuffled_data)
+    # slice the shuffled data into two non-overlapping subsets
+    audit_processed_data = shuffled_data[:audit_size]
+    open_coding_processed_data = shuffled_data[audit_size:audit_size + open_coding_size]
 
     # Save processed data
     save_json(audit_processed_data, audit_output_path)
@@ -299,7 +293,7 @@ def process_pubmedqa(raw_dir=RAW_DATA_DIR, output_dir=PROCESSED_DATA_DIR, audit_
         }
 
         all_processed_data.append(mc_data)
-
+    print (f"Total PubMedQA MC questions processed: {len(all_processed_data)}")
     # randomly shuffle the entire dataset
     total_needed = audit_size + open_coding_size
     if total_needed > len(all_processed_data):
@@ -441,10 +435,12 @@ def process_medxpert_qa(raw_dir=RAW_DATA_DIR, output_dir=PROCESSED_DATA_DIR, aud
     '''
     this function is to preprocess MedXpertQA dataset from raw to standardized format
     '''
-    default_output_dir = output_dir / "MedXpertQA-text" # processed dir
-    default_input_dir = raw_dir / "MedXpertQA-text"# raw dir
-    default_output_dir.mkdir(parents=True, exist_ok=True)
-    input_file = default_input_dir / "test.jsonl"
+    audit_output_dir = output_dir / "MedXpertQA-text" / "audit"
+    open_coding_output_dir = output_dir / "MedXpertQA-text" / "open_coding"
+    input_dir = raw_dir / "MedXpertQA-text"# raw dir
+    audit_output_dir.mkdir(parents=True, exist_ok=True)
+    open_coding_output_dir.mkdir(parents=True, exist_ok=True)
+    input_file = input_dir / "test.jsonl"
     all_mc: List[Dict[str, Any]] = []
     idx = 0
     if not input_file.exists():
@@ -453,13 +449,23 @@ def process_medxpert_qa(raw_dir=RAW_DATA_DIR, output_dir=PROCESSED_DATA_DIR, aud
     print(f"Converting {input_file}...")
     mc, idx = convert_items_to_medqa(parse_jsonl(input_file), start_index=idx, prefix="medxpertqa_text")
     all_mc.extend(mc)
-    # random select samples if needed
-    if audit_size is not None:
-        all_mc = random_select_samples(all_mc, audit_size)
-    if open_coding_size is not None:
-        all_mc = random_select_samples(all_mc, open_coding_size)
-    mc_out = default_output_dir / "medqa_medxpertqa-text.json"
-    save_json(all_mc, mc_out)
+    print(f"Total MedXpertQA-text MC questions processed: {len(all_mc)}")
+    # shuffle the entire dataset
+    total_needed = audit_size + open_coding_size
+    if total_needed > len(all_mc):
+        raise ValueError(f"the total data num requested ({total_needed})exceeds the total amount of avaliable data: ({len(all_mc)})")
+    random.seed(42)
+    shuffled_data = all_mc.copy()
+    random.shuffle(shuffled_data)
+    # slice the shuffled data into two non-overlapping subsets
+    audit_data = shuffled_data[:audit_size]
+    open_coding_data = shuffled_data[audit_size:audit_size + open_coding_size]
+    # save audit data
+    audit_out = audit_output_dir / "medqa_medxpertqa-text_audit.json"
+    save_json(audit_data, audit_out)
+    # save open coding data
+    open_coding_out = open_coding_output_dir / "medqa_medxpertqa-text_open_coding.json"
+    save_json(open_coding_data, open_coding_out)
 
 def process_slake (raw_dir=RAW_DATA_DIR, output_dir=PROCESSED_DATA_DIR, audit_size: int = None, open_coding_size: int = None):
     '''
@@ -513,7 +519,7 @@ def main():
     args = parser.parse_args()
 
     # If no dataset is specified, show help
-    if not (args.medqa or args.pubmedqa or args.pathvqa or args.vqa_rad or args.slake or args.all):
+    if not (args.medqa or args.pubmedqa or args.pathvqa or args.vqa_rad or args.slake or args.medxpertqa or args.all):
         parser.print_help()
         return
 
@@ -532,7 +538,7 @@ def main():
 
     if args.all or args.vqa_rad:
         process_vqa_rad(args.raw_dir, args.output_dir, args.audit_size, args.open_coding_size)
-        
+
     if args.all or args.slake:
         process_slake(args.raw_dir, args.output_dir, args.audit_size, args.open_coding_size)
 
