@@ -72,7 +72,7 @@ Available Specialties: {available_specialties}"""
             "content": f"Review this medical question and determine the three most appropriate medical specialties required to provide the answer. Ensure the selected specialties are distinct and cover different aspects of the problem:\n\n{question}"
         }
 
-        response_text, reasoning_content, system_msg, user_msg = self.call_llm(system_message = system_message, user_message = user_message, response_format={"type": "json_object"})
+        response_text, reasoning_content, system_msg, user_msg = self.call_llm(system_message = system_message, user_message = user_message)
         log = {
             "reasoning_content": reasoning_content,
             "llm_input": {"system_message": system_msg, "user_message": user_msg},
@@ -167,7 +167,7 @@ Your output must be a JSON object with three fields:
         })
 
         user_message = {"role": "user", "content": user_content}
-        response_text, reasoning_content, system_msg, user_msg = self.call_llm(system_message = system_message, user_message = user_message, response_format={"type": "json_object"})
+        response_text, reasoning_content, system_msg, user_msg = self.call_llm(system_message = system_message, user_message = user_message)
 
         try:
             result = json.loads(preprocess_response_string(response_text))
@@ -215,7 +215,7 @@ Your output must be a JSON object with three fields:
         user_content.append(text_content)
 
         user_message = {"role": "user", "content": user_content}
-        response_text, reasoning_content, system_msg, user_msg = self.call_llm(system_message = system_message, user_message = user_message, response_format={"type": "json_object"})
+        response_text, reasoning_content, system_msg, user_msg = self.call_llm(system_message = system_message, user_message = user_message)
 
         try:
             result = json.loads(preprocess_response_string(response_text))
@@ -292,7 +292,7 @@ Your output should be in JSON format, including 'explanation' (synthesized reaso
             "content": f"Round {current_round} Doctors' Opinions:\n{opinions_text}\n\n"
         }
 
-        response_text, reasoning_content, system_msg, user_msg = self.call_llm(system_message = system_message, user_message = user_message, response_format={"type": "json_object"})
+        response_text, reasoning_content, system_msg, user_msg = self.call_llm(system_message = system_message, user_message = user_message)
 
         try:
             result = json.loads(preprocess_response_string(response_text))
@@ -371,7 +371,7 @@ Based on ALL available information presented above, provide your final decision.
         user_content.append(text_content)
 
         user_message = {"role": "user", "content": user_content}
-        response_text, reasoning_content, system_msg, user_msg = self.call_llm(system_message = system_message, user_message = user_message, response_format={"type": "json_object"})
+        response_text, reasoning_content, system_msg, user_msg = self.call_llm(system_message = system_message, user_message = user_message)
 
         try:
             result = json.loads(preprocess_response_string(response_text))

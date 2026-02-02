@@ -98,7 +98,7 @@ class ReconcileAgent(BaseAgent):
         user_content.append({"type": "text", "text": prompt_text})
         user_message = {"role": "user", "content": user_content}
 
-        response_text, reasoning_content, system_message, user_message = self.call_llm(system_message = system_message, user_message = user_message, response_format={"type": "json_object"})
+        response_text, reasoning_content, system_message, user_message = self.call_llm(system_message = system_message, user_message = user_message)
         result = self._parse_response(response_text)
         step_log = {
             "llm_input":{
@@ -162,7 +162,7 @@ class ReconcileAgent(BaseAgent):
         user_content.append({"type": "text", "text": prompt_text})
         user_message = {"role": "user", "content": user_content}
         
-        response_text, reasoning_content, system_message, user_message = self.call_llm(system_message = system_message, user_message = user_message, response_format={"type": "json_object"})
+        response_text, reasoning_content, system_message, user_message = self.call_llm(system_message = system_message, user_message = user_message)
         result = self._parse_response(response_text)
 
         step_log = {

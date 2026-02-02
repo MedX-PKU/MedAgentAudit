@@ -101,7 +101,7 @@ class DoctorAgent(BaseAgent):
             "content": user_content,
         }
 
-        response_text, reasoning_content, system_msg, user_msg = self.call_llm(system_message = system_message, user_message = user_message, response_format={"type": "json_object"})
+        response_text, reasoning_content, system_msg, user_msg = self.call_llm(system_message = system_message, user_message = user_message)
 
         try:
             result = json.loads(preprocess_response_string(response_text))
@@ -211,7 +211,7 @@ class DoctorAgent(BaseAgent):
             "content": user_content,
         }
 
-        response_text, reasoning_content, system_msg, user_msg = self.call_llm(system_message = system_message, user_message = user_message, response_format={"type": "json_object"}) 
+        response_text, reasoning_content, system_msg, user_msg = self.call_llm(system_message = system_message, user_message = user_message) 
 
         try:
             result = json.loads(preprocess_response_string(response_text))
@@ -326,7 +326,7 @@ class MetaAgent(BaseAgent):
             "role":"user",
             "content": user_content
         }
-        response_text, reasoning_content, system_msg, user_msg = self.call_llm(system_message = system_message, user_message = user_message, response_format={"type": "json_object"})
+        response_text, reasoning_content, system_msg, user_msg = self.call_llm(system_message = system_message, user_message = user_message)
 
         try:
             result = json.loads(preprocess_response_string(response_text))
@@ -457,7 +457,7 @@ class MetaAgent(BaseAgent):
             "content": user_content
         }
 
-        response_text, reasoning_content, system_msg, user_msg = self.call_llm(system_message = system_message, user_message = user_message, response_format={"type": "json_object"})
+        response_text, reasoning_content, system_msg, user_msg = self.call_llm(system_message = system_message, user_message = user_message)
 
         try:
             result = json.loads(preprocess_response_string(response_text))
