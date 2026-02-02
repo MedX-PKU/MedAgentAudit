@@ -23,7 +23,7 @@ project_root = current_file_path.parents[2]
 sys.path.extend([str(utils_root), str(project_root), str(auditor_root), str(common_root), str(core_root)])
 # Ensure project root is in path
 from encode_image import encode_image
-from json_utils import load_json, save_json, preprocess_response_string
+from json_utils import load_json, save_jsonl, preprocess_response_string
 from config_loader import get_config
 from logger import DualLogger
 from auditor_agent import AuditorAgent
@@ -42,7 +42,8 @@ class MACFramework:
     """Orchestrates the Multi-Agent Conversation (MAC) workflow with integrated quantitative observation."""
 
     def __init__(self,
-                 log_dir: str,
+                 log_file: str,
+                 err_log_file: str,
                  dataset_name: str,
                  doctor_model_key: str = DEFAULT_DOCTOR_MODEL,
                  supervisor_model_key: str = DEFAULT_SUPERVISOR_MODEL,
@@ -50,7 +51,8 @@ class MACFramework:
                  num_doctors: int = DEFAULT_NUM_DOCTORS,
                  max_rounds: int = DEFAULT_MAX_ROUNDS, 
                  config_path: str = "config.toml"):
-        self.log_dir = log_dir
+        self.log_file = log_file
+        self.err_log_file = err_log_file
         self.dataset_name = dataset_name
         self.num_doctors = num_doctors
         self.max_rounds = max_rounds
@@ -359,26 +361,38 @@ class MACFramework:
         }
         return final_result
 
-    def run_dataset(self, data: List[Dict]):
+    def run_dataset(self, data: List[Dict], task: str):
         """Runs the MAC framework over an entire dataset."""
         print(f"\nStarting MAC framework processing for {len(data)} items in dataset '{self.dataset_name}'.")
 
         for item in tqdm(data, desc=f"Running MAC on {self.dataset_name}"):
             qid = item.get("qid", "unknown_qid")
-            result_path = self.log_dir / f"{qid}-result.json"
 
-            if result_path.exists():
-                print(f"Skipping {qid} - result file already exists.")
+            existing_qids = set()
+            if self.log_file.exists():
+                print(f"Output file {self.log_file} already exists. Appending new results.")
+                with open(self.log_file, 'r', encoding='utf-8') as f:
+                    for line in f:
+                        line = line.strip()
+                        if not line: continue
+                        try:
+                            record = json.loads(line)
+                            if "qid" in record:
+                                existing_qids.add(record["qid"])
+                        except json.JSONDecodeError:
+                            print("Warning: Found a corrupted line in jsonl file, skipping.")
+                print(f"Found {len(existing_qids)} already processed cases. They will be skipped.")
+
+            if qid in existing_qids:
+                print(f"Skipping {qid} - already processed")
                 continue
-
             try:
                 result = self.run_query(item)
-                save_json(result, result_path)
+                save_jsonl(result, self.log_file)
             except Exception as e:
                 print(f"FATAL ERROR during run_query for QID {qid}: {e}")
                 error_result = {"qid": qid, "error": str(e)}
-                save_json(error_result, self.log_dir / f"{qid}-error.json")
-
+                save_jsonl(error_result, self.err_log_file)
         print(f"Finished processing dataset '{self.dataset_name}'. Results saved in {self.log_dir}")
 
 
@@ -425,7 +439,8 @@ def main():
     print(f"Loaded {len(data)} samples from {data_path}")
 
     framework = MACFramework(
-        log_dir=logs_dir,
+        log_file=output_file,
+        err_log_file=error_output_file,
         dataset_name=args.dataset,
         doctor_model_key=args.doctor_model,
         supervisor_model_key=args.supervisor_model,
@@ -435,7 +450,7 @@ def main():
         config_path = args.config_path
     )
 
-    framework.run_dataset(data[:args.num_samples])
+    framework.run_dataset(data = data[:args.num_samples], task = task)
 
 if __name__ == "__main__":
     main()
