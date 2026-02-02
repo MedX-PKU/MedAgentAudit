@@ -621,7 +621,7 @@ class MDTConsultation:
                     "step": "analysis",
                     "audit_result": audit_results_of_factual_hallucination
                 })
-                
+
                 audit_round_data["1_2_1_neglect_or_misinterpretation_of_modality_info"].append({
                     "agent_id": doctor.agent_id,
                     "specialty": doctor.specialty.value,
@@ -877,7 +877,6 @@ def process_input(item, doctor_configs=None, config_path=None, meta_model_key="q
 def main():
     parser = argparse.ArgumentParser(description="Run MDT consultation on medical datasets")
     parser.add_argument("--dataset", type=str, required=True, help="Specify dataset name,like PathVQA,VQA-RAD")
-    parser.add_argument("--qa_type", type=str, choices=["mc", "ff"], default="mc", help="QA type: multiple-choice (mc) or free-form (ff)")
     parser.add_argument("--doctor_models", nargs='+', required=True, help="for qa, use deepseek-reasoner,for vqa,use qwen3-vl")
     parser.add_argument("--meta_model", type=str, required=True, help="same as doctor agent")
     parser.add_argument("--auditor_model", type=str, required=True, help="gemini-3-pro-preview") # auditor model is the conflict model

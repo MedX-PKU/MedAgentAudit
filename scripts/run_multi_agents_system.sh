@@ -48,19 +48,18 @@ run_command() {
 # 定义数据集和任务类型
 QA_DATASETS=("MedQA" "PubMedQA" "MedXpertQA-text")
 VQA_DATASETS=("PathVQA" "VQA-RAD" "Slake")
-QA_LLM=("deepseek-reasoner" "gpt-5.2" "gemini-2.5-flash" "qwen3-8b")
-VQA_LLM=("glm-4.6v" "gpt-5.2" "gemini-2.5-flash" "qwen3-vl-8b-thinking")
+QA_LLM=("deepseek-reasoner" "gpt-5.2" "gemini-3-flash-preview" "qwen3-8b")
+VQA_LLM=("glm-4.6v" "gpt-5.2" "gemini-3-flash-preview" "qwen3-vl-8b-thinking")
 # this experiment‘s samples' num
 num=1
-time_stamp="20260112"
-qa_type="mc"
+time_stamp="20260202"
 AUDITOR="gemini-3-flash-preview"
 echo "Starting experiments..."
 
 # # 1. ColaCare QA fixed
 # for dataset in "${QA_DATASETS[@]}"; do
 #     for qa_llm in "${QA_LLM[@]}"; do
-#         cmd="python -m medagentaudit.framework.colacare --dataset $dataset --qa_type $qa_type --meta_model $qa_llm --doctor_models $qa_llm $qa_llm $qa_llm --auditor_model $AUDITOR --config_path config.toml --num_samples $num --time_stamp $time_stamp" 
+#         cmd="python -m medagentaudit.framework.colacare --dataset $dataset --meta_model $qa_llm --doctor_models $qa_llm $qa_llm $qa_llm --auditor_model $AUDITOR --config_path config.toml --num_samples $num --time_stamp $time_stamp" 
 #         run_command "$cmd"
 #     done
 # done
@@ -68,7 +67,7 @@ echo "Starting experiments..."
 # # 2. ColaCare VQA fixed
 # for dataset in "${VQA_DATASETS[@]}"; do
 #     for vqa_llm in "${VQA_LLM[@]}"; do
-#         cmd="python -m medagentaudit.framework.colacare --dataset $dataset --qa_type $qa_type --meta_model $vqa_llm --doctor_models $vqa_llm $vqa_llm $vqa_llm --auditor_model $AUDITOR --config_path config.toml --num_samples $num --time_stamp $time_stamp"
+#         cmd="python -m medagentaudit.framework.colacare --dataset $dataset --meta_model $vqa_llm --doctor_models $vqa_llm $vqa_llm $vqa_llm --auditor_model $AUDITOR --config_path config.toml --num_samples $num --time_stamp $time_stamp"
 #         run_command "$cmd"
 #     done
 # done
@@ -76,7 +75,7 @@ echo "Starting experiments..."
 # # 3. MedAgent QA fixed
 # for dataset in "${QA_DATASETS[@]}"; do
 #     for qa_llm in "${QA_LLM[@]}"; do
-#         cmd="python -m medagentaudit.framework.medagent --dataset $dataset --qa_type $qa_type --model $qa_llm --meta_model $qa_llm --decision_model $qa_llm --auditor_model $AUDITOR --config_path config.toml --num_samples $num --time_stamp $time_stamp"
+#         cmd="python -m medagentaudit.framework.medagent --dataset $dataset --model $qa_llm --meta_model $qa_llm --decision_model $qa_llm --auditor_model $AUDITOR --config_path config.toml --num_samples $num --time_stamp $time_stamp"
 #         run_command "$cmd"
 #     done
 # done
@@ -84,7 +83,7 @@ echo "Starting experiments..."
 # # 4. MedAgent VQA fixed
 # for dataset in "${VQA_DATASETS[@]}"; do
 #     for vqa_llm in "${VQA_LLM[@]}"; do
-#         cmd="python -m medagentaudit.framework.medagent --dataset $dataset --qa_type $qa_type --model $vqa_llm --meta_model $vqa_llm --decision_model $vqa_llm --auditor_model $AUDITOR --config_path config.toml --num_samples $num --time_stamp $time_stamp"
+#         cmd="python -m medagentaudit.framework.medagent --dataset $dataset --model $vqa_llm --meta_model $vqa_llm --decision_model $vqa_llm --auditor_model $AUDITOR --config_path config.toml --num_samples $num --time_stamp $time_stamp"
 #         run_command "$cmd"
 #     done
 # done
@@ -93,7 +92,7 @@ echo "Starting experiments..."
 # # 5. MDAgents QA fixed
 # for dataset in "${QA_DATASETS[@]}"; do
 #     for qa_llm in "${QA_LLM[@]}"; do
-#         cmd="python -m medagentaudit.framework.mdagents --dataset $dataset --qa_type $qa_type --moderator_model $qa_llm --recruiter_model $qa_llm --agent_model $qa_llm --auditor_model $AUDITOR --config_path config.toml --num_samples $num --time_stamp $time_stamp"
+#         cmd="python -m medagentaudit.framework.mdagents --dataset $dataset --moderator_model $qa_llm --recruiter_model $qa_llm --agent_model $qa_llm --auditor_model $AUDITOR --config_path config.toml --num_samples $num --time_stamp $time_stamp"
 #         run_command "$cmd"
 #     done
 # done
@@ -101,7 +100,7 @@ echo "Starting experiments..."
 # # 6. MDAgents VQA fixed
 # for dataset in "${VQA_DATASETS[@]}"; do
 #     for vqa_llm in "${VQA_LLM[@]}"; do
-#         cmd="python -m medagentaudit.framework.mdagents --dataset $dataset --qa_type $qa_type --moderator_model $vqa_llm --recruiter_model $vqa_llm --agent_model $vqa_llm --auditor_model $AUDITOR --config_path config.toml --num_samples $num --time_stamp $time_stamp"
+#         cmd="python -m medagentaudit.framework.mdagents --dataset $dataset --moderator_model $vqa_llm --recruiter_model $vqa_llm --agent_model $vqa_llm --auditor_model $AUDITOR --config_path config.toml --num_samples $num --time_stamp $time_stamp"
 #         run_command "$cmd"
 #     done
 # done
@@ -109,23 +108,23 @@ echo "Starting experiments..."
 # # 7. ReConcile QA fixed
 # for dataset in "${QA_DATASETS[@]}"; do
 #     for qa_llm in "${QA_LLM[@]}"; do
-#         cmd="python -m medagentaudit.framework.reconcile --dataset $dataset --qa_type $qa_type --agents $qa_llm $qa_llm $qa_llm --auditor_model $AUDITOR --config_path config.toml --num_samples $num --time_stamp $time_stamp --max_rounds 3"
+#         cmd="python -m medagentaudit.framework.reconcile --dataset $dataset --agents $qa_llm $qa_llm $qa_llm --auditor_model $AUDITOR --config_path config.toml --num_samples $num --time_stamp $time_stamp --max_rounds 3"
 #         run_command "$cmd"
 #     done
 # done
 
-# 8. ReConcile VQA fixed
-for dataset in "${VQA_DATASETS[@]}"; do
-    for vqa_llm in "${VQA_LLM[@]}"; do
-        cmd="python -m medagentaudit.framework.reconcile --dataset $dataset --qa_type $qa_type --agents $vqa_llm $vqa_llm $vqa_llm --auditor_model $AUDITOR --config_path config.toml --num_samples $num --time_stamp $time_stamp --max_rounds 3"
-        run_command "$cmd"
-    done
-done
+# # 8. ReConcile VQA fixed
+# for dataset in "${VQA_DATASETS[@]}"; do
+#     for vqa_llm in "${VQA_LLM[@]}"; do
+#         cmd="python -m medagentaudit.framework.reconcile --dataset $dataset --agents $vqa_llm $vqa_llm $vqa_llm --auditor_model $AUDITOR --config_path config.toml --num_samples $num --time_stamp $time_stamp --max_rounds 3"
+#         run_command "$cmd"
+#     done
+# done
 
 # # 9. MAC QA fixed
 # for dataset in "${QA_DATASETS[@]}"; do
 #     for qa_llm in "${QA_LLM[@]}"; do
-#         cmd="python -m medagentaudit.framework.mac --dataset $dataset --qa_type $qa_type --doctor_model $qa_llm --supervisor_model $qa_llm --auditor_model $AUDITOR --config_path config.toml --num_samples $num --time_stamp $time_stamp --max_rounds 3"
+#         cmd="python -m medagentaudit.framework.mac --dataset $dataset --doctor_model $qa_llm --supervisor_model $qa_llm --auditor_model $AUDITOR --config_path config.toml --num_samples $num --time_stamp $time_stamp --max_rounds 3"
 #         run_command "$cmd"
 #     done
 # done
@@ -133,7 +132,7 @@ done
 # # 10. MAC VQA fixed
 # for dataset in "${VQA_DATASETS[@]}"; do
 #     for vqa_llm in "${VQA_LLM[@]}"; do
-#         cmd="python -m medagentaudit.framework.mac --dataset $dataset --qa_type $qa_type --doctor_model $vqa_llm --supervisor_model $vqa_llm --auditor_model $AUDITOR --config_path config.toml --num_samples $num --time_stamp $time_stamp --max_rounds 3"
+#         cmd="python -m medagentaudit.framework.mac --dataset $dataset --doctor_model $vqa_llm --supervisor_model $vqa_llm --auditor_model $AUDITOR --config_path config.toml --num_samples $num --time_stamp $time_stamp --max_rounds 3"
 #         run_command "$cmd"
 #     done
 # done
@@ -141,7 +140,7 @@ done
 # # 11. HealthcareAgent QA
 # for dataset in "${QA_DATASETS[@]}"; do
 #     for qa_llm in "${QA_LLM[@]}"; do
-#         cmd="python -m medagentaudit.framework.healthcareagent --dataset $dataset --qa_type $qa_type --model $qa_llm --auditor_model $AUDITOR --config_path config.toml --num_samples $num --time_stamp $time_stamp"
+#         cmd="python -m medagentaudit.framework.healthcareagent --dataset $dataset --model $qa_llm --auditor_model $AUDITOR --config_path config.toml --num_samples $num --time_stamp $time_stamp"
 #         run_command "$cmd"
 #     done
 # done
@@ -149,7 +148,7 @@ done
 # # 12. HealthcareAgent VQA
 # for dataset in "${VQA_DATASETS[@]}"; do
 #     for vqa_llm in "${VQA_LLM[@]}"; do
-#         cmd="python -m medagentaudit.framework.healthcareagent --dataset $dataset --qa_type $qa_type --model $vqa_llm --auditor_model $AUDITOR --config_path config.toml --num_samples $num --time_stamp $time_stamp"
+#         cmd="python -m medagentaudit.framework.healthcareagent --dataset $dataset --model $vqa_llm --auditor_model $AUDITOR --config_path config.toml --num_samples $num --time_stamp $time_stamp"
 #         run_command "$cmd"
 #     done
 # done
