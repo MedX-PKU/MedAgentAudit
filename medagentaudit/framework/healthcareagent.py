@@ -217,7 +217,7 @@ class HealthcareAgentFramework(BaseAgent):
             }
             return analysis_log
 
-    def run_query(self, data_item: Dict) -> Dict:
+    def run_query(self, data_item: Dict, task: str) -> Dict:
         """
         Processes a single medical query through the full HealthcareAgent pipeline.
         """
@@ -231,23 +231,24 @@ class HealthcareAgentFramework(BaseAgent):
         start_time = time.time()
         
         case_history = {"rounds": []}
-        audit = {"rounds": []}
-        audit_round_data = {
-            "round": 1,
-            "1_1_1_factual_hallucination": [],
-            "1_2_1_neglect_or_misinterpretation_of_modality_info": [],
-            
-            "2_1_1_role_assignment": [], 
-            "2_1_2_domain_specific_knowledge_activation": [], 
-            
-            "2_2_1_repetition_of_initial_views": [], 
-            "2_2_2_unresolved_conflicts": [],
-            
-            "3_1_1_suppression_of_minority_views": [],
-            "3_1_2_authority_bias": [],
-            "3_1_3_neglect_of_contradictions": [],
-            "3_2_1_self_contradiction_when_decision": []
-        }
+        if task == "audit":
+            audit = {"rounds": []}
+            audit_round_data = {
+                "round": 1,
+                "1_1_1_factual_hallucination": [],
+                "1_2_1_neglect_or_misinterpretation_of_modality_info": [],
+                
+                "2_1_1_role_assignment": [], 
+                "2_1_2_domain_specific_knowledge_activation": [], 
+                
+                "2_2_1_repetition_of_initial_views": [], 
+                "2_2_2_unresolved_conflicts": [],
+                
+                "3_1_1_suppression_of_minority_views": [],
+                "3_1_2_authority_bias": [],
+                "3_1_3_neglect_of_contradictions": [],
+                "3_2_1_self_contradiction_when_decision": []
+            }
 
         round_data = {"round": 1, "opinions": [], "synthesis": None, "reviews": [], "decision": None, "plan": None, "inquiry": None} 
         case_history["rounds"].append(round_data)
@@ -282,38 +283,38 @@ class HealthcareAgentFramework(BaseAgent):
         prelim_explanation = preliminary_result.get("explanation", "")
         prelim_answer = preliminary_result.get("answer", "")
         preliminary_response_str = f"Explanation: {prelim_explanation}\nAnswer: {prelim_answer}"
+        if task == "audit":
+            # audit 1.1.1 facutal hallucination
+            audit_results_of_factual_hallucination = self.auditor_agent.audit_factual_hallucination(question = question, image_path=image_path, agent_id="PreliminaryAnalyzer", specialty=MedicalSpecialty.GENERAL_MEDICINE.value, answer=prelim_answer, explanation=prelim_explanation)
 
-        # audit 1.1.1 facutal hallucination
-        audit_results_of_factual_hallucination = self.auditor_agent.audit_factual_hallucination(question = question, image_path=image_path, agent_id="PreliminaryAnalyzer", specialty=MedicalSpecialty.GENERAL_MEDICINE.value, answer=prelim_answer, explanation=prelim_explanation)
+            # audit 1.2.1 neglect or misinterpretation of modality information
+            audit_results_of_neglect_or_misinterpretation_of_modality_info = self.auditor_agent.audit_neglect_or_misinterpretation_of_modality_info(question = question, image_path=image_path, agent_id="PreliminaryAnalyzer", specialty=MedicalSpecialty.GENERAL_MEDICINE.value, answer=prelim_answer, explanation=prelim_explanation)
 
-        # audit 1.2.1 neglect or misinterpretation of modality information
-        audit_results_of_neglect_or_misinterpretation_of_modality_info = self.auditor_agent.audit_neglect_or_misinterpretation_of_modality_info(question = question, image_path=image_path, agent_id="PreliminaryAnalyzer", specialty=MedicalSpecialty.GENERAL_MEDICINE.value, answer=prelim_answer, explanation=prelim_explanation)
-
-        # audit 2.1.2 domain-specific knowledge activation
-        audit_results_of_domain_specific_knowledge_activation = self.auditor_agent.audit_domain_specific_knowledge_activation(question = question, 
-                                                                                                                                image_path = image_path, 
-                                                                                                                                agent_id = "PreliminaryAnalyzer", 
-                                                                                                                                specialty = MedicalSpecialty.GENERAL_MEDICINE.value, 
-                                                                                                                                answer = prelim_answer, 
-                                                                                                                                explanation = prelim_explanation)
-        audit_round_data["1_1_1_factual_hallucination"].append({
-            "agent_id": "PreliminaryAnalyzer",
-            "specialty": MedicalSpecialty.GENERAL_MEDICINE.value,
-            "step": "analysis",
-            "audit_result": audit_results_of_factual_hallucination
-        })
-        audit_round_data["1_2_1_neglect_or_misinterpretation_of_modality_info"].append({
-            "agent_id": "PreliminaryAnalyzer",
-            "specialty": MedicalSpecialty.GENERAL_MEDICINE.value,
-            "step": "analysis",
-            "audit_result": audit_results_of_neglect_or_misinterpretation_of_modality_info
-        })                                                                                                        
-        audit_round_data["2_1_2_domain_specific_knowledge_activation"].append({
-            "agent_id": "PreliminaryAnalyzer",
-            "specialty": MedicalSpecialty.GENERAL_MEDICINE.value,
-            "step": "analysis",
-            "audit_result": audit_results_of_domain_specific_knowledge_activation
-        })
+            # audit 2.1.2 domain-specific knowledge activation
+            audit_results_of_domain_specific_knowledge_activation = self.auditor_agent.audit_domain_specific_knowledge_activation(question = question, 
+                                                                                                                                    image_path = image_path, 
+                                                                                                                                    agent_id = "PreliminaryAnalyzer", 
+                                                                                                                                    specialty = MedicalSpecialty.GENERAL_MEDICINE.value, 
+                                                                                                                                    answer = prelim_answer, 
+                                                                                                                                    explanation = prelim_explanation)
+            audit_round_data["1_1_1_factual_hallucination"].append({
+                "agent_id": "PreliminaryAnalyzer",
+                "specialty": MedicalSpecialty.GENERAL_MEDICINE.value,
+                "step": "analysis",
+                "audit_result": audit_results_of_factual_hallucination
+            })
+            audit_round_data["1_2_1_neglect_or_misinterpretation_of_modality_info"].append({
+                "agent_id": "PreliminaryAnalyzer",
+                "specialty": MedicalSpecialty.GENERAL_MEDICINE.value,
+                "step": "analysis",
+                "audit_result": audit_results_of_neglect_or_misinterpretation_of_modality_info
+            })                                                                                                        
+            audit_round_data["2_1_2_domain_specific_knowledge_activation"].append({
+                "agent_id": "PreliminaryAnalyzer",
+                "specialty": MedicalSpecialty.GENERAL_MEDICINE.value,
+                "step": "analysis",
+                "audit_result": audit_results_of_domain_specific_knowledge_activation
+            })
 
         case_history["rounds"][-1]["opinions"].append({
             "agent_id": "PreliminaryAnalyzer",
@@ -330,46 +331,46 @@ class HealthcareAgentFramework(BaseAgent):
         ethics_log = self._call_llm(ethics_prompt)
         ethics_feedback = ethics_log['parsed_output'].get("answer", "")
 
+        if task == "audit":
+            # audit 2.1.2 domain-specific knowledge activation
+            audit_results_of_domain_specific_knowledge_activation = self.auditor_agent.audit_domain_specific_knowledge_activation(question = question, 
+                                                                                                                                    image_path = image_path, 
+                                                                                                                                    agent_id = "SafetyEthicsAgent", 
+                                                                                                                                    specialty = MedicalSpecialty.SAFETY_SUPERVISOR.value, 
+                                                                                                                                    answer = ethics_feedback, 
+                                                                                                                                    explanation = "")
+            # audit 2.2.1 Repetition of Initial Views during Collaborative discussion
+            audit_results_of_repetition_of_initial_views = self.auditor_agent.audit_repetition_of_initial_views(question = question, 
+                                                                                                                image_path=image_path, 
+                                                                                                                current_agent_id="SafetyEthicsAgent", 
+                                                                                                                current_answer = ethics_feedback, 
+                                                                                                                current_explanation="", 
+                                                                                                                case_history=case_history)
+            # audit 2.2.2 Unresolved Conflicts during Collaborative discussion
+            audit_results_of_unresolved_conflicts_during_Collaboration = self.auditor_agent.audit_unresolved_conflicts_during_Collaboration(question = question, 
+                                                                                                                                            current_agent_id="SafetyEthicsAgent", 
+                                                                                                                                            current_answer = ethics_feedback, 
+                                                                                                                                            current_explanation="", 
+                                                                                                                                            case_history=case_history) 
 
-        # audit 2.1.2 domain-specific knowledge activation
-        audit_results_of_domain_specific_knowledge_activation = self.auditor_agent.audit_domain_specific_knowledge_activation(question = question, 
-                                                                                                                                image_path = image_path, 
-                                                                                                                                agent_id = "SafetyEthicsAgent", 
-                                                                                                                                specialty = MedicalSpecialty.SAFETY_SUPERVISOR.value, 
-                                                                                                                                answer = ethics_feedback, 
-                                                                                                                                explanation = "")
-        # audit 2.2.1 Repetition of Initial Views during Collaborative discussion
-        audit_results_of_repetition_of_initial_views = self.auditor_agent.audit_repetition_of_initial_views(question = question, 
-                                                                                                            image_path=image_path, 
-                                                                                                            current_agent_id="SafetyEthicsAgent", 
-                                                                                                            current_answer = ethics_feedback, 
-                                                                                                            current_explanation="", 
-                                                                                                            case_history=case_history)
-        # audit 2.2.2 Unresolved Conflicts during Collaborative discussion
-        audit_results_of_unresolved_conflicts_during_Collaboration = self.auditor_agent.audit_unresolved_conflicts_during_Collaboration(question = question, 
-                                                                                                                                        current_agent_id="SafetyEthicsAgent", 
-                                                                                                                                        current_answer = ethics_feedback, 
-                                                                                                                                        current_explanation="", 
-                                                                                                                                        case_history=case_history) 
-
-        audit_round_data["2_1_2_domain_specific_knowledge_activation"].append({
+            audit_round_data["2_1_2_domain_specific_knowledge_activation"].append({
+                    "agent_id": "SafetyEthicsAgent",
+                    "specialty": MedicalSpecialty.SAFETY_SUPERVISOR.value,
+                    "step": "review",
+                    "audit_result": audit_results_of_domain_specific_knowledge_activation
+                })
+            audit_round_data["2_2_1_repetition_of_initial_views"].append({
                 "agent_id": "SafetyEthicsAgent",
                 "specialty": MedicalSpecialty.SAFETY_SUPERVISOR.value,
                 "step": "review",
-                "audit_result": audit_results_of_domain_specific_knowledge_activation
+                "audit_result": audit_results_of_repetition_of_initial_views
             })
-        audit_round_data["2_2_1_repetition_of_initial_views"].append({
-            "agent_id": "SafetyEthicsAgent",
-            "specialty": MedicalSpecialty.SAFETY_SUPERVISOR.value,
-            "step": "review",
-            "audit_result": audit_results_of_repetition_of_initial_views
-        })
-        audit_round_data["2_2_2_unresolved_conflicts"].append({
-            "agent_id": "SafetyEthicsAgent",
-            "specialty": MedicalSpecialty.SAFETY_SUPERVISOR.value,
-            "step": "review",
-            "audit_result": audit_results_of_unresolved_conflicts_during_Collaboration
-        })
+            audit_round_data["2_2_2_unresolved_conflicts"].append({
+                "agent_id": "SafetyEthicsAgent",
+                "specialty": MedicalSpecialty.SAFETY_SUPERVISOR.value,
+                "step": "review",
+                "audit_result": audit_results_of_unresolved_conflicts_during_Collaboration
+            })
 
         case_history["rounds"][-1]["reviews"].append({
             "agent_id": "SafetyEthicsAgent",
@@ -380,45 +381,45 @@ class HealthcareAgentFramework(BaseAgent):
         emergency_prompt = SAFETY_EMERGENCY_PROMPT.format(preliminary_response=preliminary_response_str)
         emergency_log = self._call_llm(emergency_prompt)
         emergency_feedback = emergency_log['parsed_output'].get("answer", "")
-
-        # audit 2.1.2 domain-specific knowledge activation
-        audit_results_of_domain_specific_knowledge_activation = self.auditor_agent.audit_domain_specific_knowledge_activation(question = question,
-                                                                                                                                image_path = image_path,
-                                                                                                                                agent_id = "SafetyEmergencyAgent",
-                                                                                                                                specialty = MedicalSpecialty.SAFETY_SUPERVISOR.value, 
-                                                                                                                                answer = emergency_feedback,
-                                                                                                                                explanation = "")
-        # audit 2.2.1 Repetition of Initial Views during Collaborative discussion
-        audit_results_of_repetition_of_initial_views = self.auditor_agent.audit_repetition_of_initial_views(question = question, 
-                                                                                                            image_path=image_path, 
-                                                                                                            current_agent_id="SafetyEmergencyAgent", 
-                                                                                                            current_answer = emergency_feedback,
-                                                                                                            current_explanation="",
-                                                                                                            case_history=case_history)
-        # audit 2.2.2 Unresolved Conflicts during Collaborative discussion
-        audit_results_of_unresolved_conflicts_during_Collaboration = self.auditor_agent.audit_unresolved_conflicts_during_Collaboration(question = question, 
-                                                                                                                                        current_agent_id="SafetyEmergencyAgent", 
-                                                                                                                                        current_answer = emergency_feedback, 
-                                                                                                                                        current_explanation="", 
-                                                                                                                                        case_history=case_history)
-        audit_round_data["2_2_1_repetition_of_initial_views"].append({
-            "agent_id": "SafetyEmergencyAgent",
-            "specialty": MedicalSpecialty.SAFETY_SUPERVISOR.value,
-            "step": "review",
-            "audit_result": audit_results_of_repetition_of_initial_views
-        })
-        audit_round_data["2_2_2_unresolved_conflicts"].append({
-            "agent_id": "SafetyEmergencyAgent",
-            "specialty": MedicalSpecialty.SAFETY_SUPERVISOR.value,
-            "step": "review",
-            "audit_result": audit_results_of_unresolved_conflicts_during_Collaboration
-        })
-        audit_round_data["2_1_2_domain_specific_knowledge_activation"].append({
+        if task == "audit":
+            # audit 2.1.2 domain-specific knowledge activation
+            audit_results_of_domain_specific_knowledge_activation = self.auditor_agent.audit_domain_specific_knowledge_activation(question = question,
+                                                                                                                                    image_path = image_path,
+                                                                                                                                    agent_id = "SafetyEmergencyAgent",
+                                                                                                                                    specialty = MedicalSpecialty.SAFETY_SUPERVISOR.value, 
+                                                                                                                                    answer = emergency_feedback,
+                                                                                                                                    explanation = "")
+            # audit 2.2.1 Repetition of Initial Views during Collaborative discussion
+            audit_results_of_repetition_of_initial_views = self.auditor_agent.audit_repetition_of_initial_views(question = question, 
+                                                                                                                image_path=image_path, 
+                                                                                                                current_agent_id="SafetyEmergencyAgent", 
+                                                                                                                current_answer = emergency_feedback,
+                                                                                                                current_explanation="",
+                                                                                                                case_history=case_history)
+            # audit 2.2.2 Unresolved Conflicts during Collaborative discussion
+            audit_results_of_unresolved_conflicts_during_Collaboration = self.auditor_agent.audit_unresolved_conflicts_during_Collaboration(question = question, 
+                                                                                                                                            current_agent_id="SafetyEmergencyAgent", 
+                                                                                                                                            current_answer = emergency_feedback, 
+                                                                                                                                            current_explanation="", 
+                                                                                                                                            case_history=case_history)
+            audit_round_data["2_2_1_repetition_of_initial_views"].append({
                 "agent_id": "SafetyEmergencyAgent",
                 "specialty": MedicalSpecialty.SAFETY_SUPERVISOR.value,
                 "step": "review",
-                "audit_result": audit_results_of_domain_specific_knowledge_activation
-            })                                                                                                                
+                "audit_result": audit_results_of_repetition_of_initial_views
+            })
+            audit_round_data["2_2_2_unresolved_conflicts"].append({
+                "agent_id": "SafetyEmergencyAgent",
+                "specialty": MedicalSpecialty.SAFETY_SUPERVISOR.value,
+                "step": "review",
+                "audit_result": audit_results_of_unresolved_conflicts_during_Collaboration
+            })
+            audit_round_data["2_1_2_domain_specific_knowledge_activation"].append({
+                    "agent_id": "SafetyEmergencyAgent",
+                    "specialty": MedicalSpecialty.SAFETY_SUPERVISOR.value,
+                    "step": "review",
+                    "audit_result": audit_results_of_domain_specific_knowledge_activation
+                })                                                                                                                
         case_history["rounds"][-1]["reviews"].append({
             "agent_id": "SafetyEmergencyAgent",
             "specialty": MedicalSpecialty.SAFETY_SUPERVISOR.value,
@@ -429,45 +430,45 @@ class HealthcareAgentFramework(BaseAgent):
         error_prompt = SAFETY_ERROR_PROMPT.format(preliminary_response=preliminary_response_str)
         error_log = self._call_llm(error_prompt)
         error_feedback = error_log['parsed_output'].get("answer", "")
-
-        # audit 2.1.2 domain-specific knowledge activation
-        audit_results_of_domain_specific_knowledge_activation = self.auditor_agent.audit_domain_specific_knowledge_activation(question = question,
-                                                                                                                                image_path = image_path, 
-                                                                                                                                agent_id = "SafetyErrorAgent",
-                                                                                                                                specialty = MedicalSpecialty.SAFETY_SUPERVISOR.value, 
-                                                                                                                                answer = error_feedback, 
-                                                                                                                                explanation = "")
-        # audit 2.2.1 Repetition of Initial Views during Collaborative discussion
-        audit_results_of_repetition_of_initial_views = self.auditor_agent.audit_repetition_of_initial_views(question = question, 
-                                                                                                            image_path=image_path, 
-                                                                                                            current_agent_id="SafetyErrorAgent", 
-                                                                                                            current_answer = error_feedback,
-                                                                                                            current_explanation="",
-                                                                                                            case_history=case_history)
-        # audit 2.2.2 Unresolved Conflicts during Collaborative discussion
-        audit_results_of_unresolved_conflicts_during_Collaboration = self.auditor_agent.audit_unresolved_conflicts_during_Collaboration(question = question, 
-                                                                                                                                        current_agent_id="SafetyErrorAgent", 
-                                                                                                                                        current_answer = error_feedback, 
-                                                                                                                                        current_explanation="", 
-                                                                                                                                        case_history=case_history)
-        audit_round_data["2_1_2_domain_specific_knowledge_activation"].append({
+        if task == "audit":
+            # audit 2.1.2 domain-specific knowledge activation
+            audit_results_of_domain_specific_knowledge_activation = self.auditor_agent.audit_domain_specific_knowledge_activation(question = question,
+                                                                                                                                    image_path = image_path, 
+                                                                                                                                    agent_id = "SafetyErrorAgent",
+                                                                                                                                    specialty = MedicalSpecialty.SAFETY_SUPERVISOR.value, 
+                                                                                                                                    answer = error_feedback, 
+                                                                                                                                    explanation = "")
+            # audit 2.2.1 Repetition of Initial Views during Collaborative discussion
+            audit_results_of_repetition_of_initial_views = self.auditor_agent.audit_repetition_of_initial_views(question = question, 
+                                                                                                                image_path=image_path, 
+                                                                                                                current_agent_id="SafetyErrorAgent", 
+                                                                                                                current_answer = error_feedback,
+                                                                                                                current_explanation="",
+                                                                                                                case_history=case_history)
+            # audit 2.2.2 Unresolved Conflicts during Collaborative discussion
+            audit_results_of_unresolved_conflicts_during_Collaboration = self.auditor_agent.audit_unresolved_conflicts_during_Collaboration(question = question, 
+                                                                                                                                            current_agent_id="SafetyErrorAgent", 
+                                                                                                                                            current_answer = error_feedback, 
+                                                                                                                                            current_explanation="", 
+                                                                                                                                            case_history=case_history)
+            audit_round_data["2_1_2_domain_specific_knowledge_activation"].append({
+                    "agent_id": "SafetyErrorAgent",
+                    "specialty": MedicalSpecialty.SAFETY_SUPERVISOR.value,
+                    "step": "review",
+                    "audit_result": audit_results_of_domain_specific_knowledge_activation
+                })
+            audit_round_data["2_2_1_repetition_of_initial_views"].append({
                 "agent_id": "SafetyErrorAgent",
                 "specialty": MedicalSpecialty.SAFETY_SUPERVISOR.value,
                 "step": "review",
-                "audit_result": audit_results_of_domain_specific_knowledge_activation
+                "audit_result": audit_results_of_repetition_of_initial_views
             })
-        audit_round_data["2_2_1_repetition_of_initial_views"].append({
-            "agent_id": "SafetyErrorAgent",
-            "specialty": MedicalSpecialty.SAFETY_SUPERVISOR.value,
-            "step": "review",
-            "audit_result": audit_results_of_repetition_of_initial_views
-        })
-        audit_round_data["2_2_2_unresolved_conflicts"].append({
-            "agent_id": "SafetyErrorAgent",
-            "specialty": MedicalSpecialty.SAFETY_SUPERVISOR.value,
-            "step": "review",
-            "audit_result": audit_results_of_unresolved_conflicts_during_Collaboration
-        })
+            audit_round_data["2_2_2_unresolved_conflicts"].append({
+                "agent_id": "SafetyErrorAgent",
+                "specialty": MedicalSpecialty.SAFETY_SUPERVISOR.value,
+                "step": "review",
+                "audit_result": audit_results_of_unresolved_conflicts_during_Collaboration
+            })
 
         case_history["rounds"][-1]["reviews"].append({
             "agent_id": "SafetyErrorAgent",
@@ -487,38 +488,38 @@ class HealthcareAgentFramework(BaseAgent):
         final_result = final_log['parsed_output']
         decision_explanation = final_result.get("explanation", "")
         decision_answer = final_result.get("answer", "")
+        if task == "audit":
+            # audtit 3.1.1 : Suppression of Correct Minority Views by Incorrect Consensus for decision-maker
+            audit_results_of_suppression_of_correct_minority_views_by_incorrect_consensus_for_decision_maker = self.auditor_agent.audit_suppression_by_majority(
+                question = question, options = options, image_path = image_path, current_agent_id = "decision-maker", answer = decision_answer, explanation = decision_explanation, case_history = case_history
+            ) # here the discussion_context includes all the domain agents' answers and explanations before this synthesis
 
-        # audtit 3.1.1 : Suppression of Correct Minority Views by Incorrect Consensus for decision-maker
-        audit_results_of_suppression_of_correct_minority_views_by_incorrect_consensus_for_decision_maker = self.auditor_agent.audit_suppression_by_majority(
-            question = question, options = options, image_path = image_path, current_agent_id = "decision-maker", answer = decision_answer, explanation = decision_explanation, case_history = case_history
-        ) # here the discussion_context includes all the domain agents' answers and explanations before this synthesis
+            # audit 3.1.2 : Reasoning Distorted by Authority Bias for decision-maker
+            audit_results_of_authority_bias_for_decision_maker = self.auditor_agent.audit_authority_bias(
+                question = question, options = options, image_path = image_path, current_agent_id = "decision-maker", answer = decision_answer, explanation = decision_explanation, case_history = case_history
+            ) # here the discussion_context must include the role of domain agent and their answer and explanation before this synthesis
 
-        # audit 3.1.2 : Reasoning Distorted by Authority Bias for decision-maker
-        audit_results_of_authority_bias_for_decision_maker = self.auditor_agent.audit_authority_bias(
-            question = question, options = options, image_path = image_path, current_agent_id = "decision-maker", answer = decision_answer, explanation = decision_explanation, case_history = case_history
-        ) # here the discussion_context must include the role of domain agent and their answer and explanation before this synthesis
+            # audit 3.1.3: Neglect of Contradictions in Reasoning Process for decision-maker
+            audit_results_of_neglect_of_contradictions_in_reasoning_process_for_decision_maker = self.auditor_agent.audit_contradictions_during_decision(
+                question = question, current_agent_id = "decision-maker", explanation = decision_explanation, case_history = case_history, options = options
+            ) # here the discussion_context includes all the domain agents' answers and explanations before this synthesis
 
-        # audit 3.1.3: Neglect of Contradictions in Reasoning Process for decision-maker
-        audit_results_of_neglect_of_contradictions_in_reasoning_process_for_decision_maker = self.auditor_agent.audit_contradictions_during_decision(
-            question = question, current_agent_id = "decision-maker", explanation = decision_explanation, case_history = case_history, options = options
-        ) # here the discussion_context includes all the domain agents' answers and explanations before this synthesis
+            audit_round_data["3_1_1_suppression_of_minority_views"].append({
+                "agent_id": "decision-maker",
+                "step": "decision",
+                "audit_result": audit_results_of_suppression_of_correct_minority_views_by_incorrect_consensus_for_decision_maker
+            })
 
-        audit_round_data["3_1_1_suppression_of_minority_views"].append({
-            "agent_id": "decision-maker",
-            "step": "decision",
-            "audit_result": audit_results_of_suppression_of_correct_minority_views_by_incorrect_consensus_for_decision_maker
-        })
-
-        audit_round_data["3_1_2_authority_bias"].append({
-            "agent_id": "decision-maker",
-            "step": "decision",
-            "audit_result": audit_results_of_authority_bias_for_decision_maker
-        })
-        audit_round_data["3_1_3_neglect_of_contradictions"].append({
-            "agent_id": "decision-maker",
-            "step": "decision",
-            "audit_result": audit_results_of_neglect_of_contradictions_in_reasoning_process_for_decision_maker
-        })
+            audit_round_data["3_1_2_authority_bias"].append({
+                "agent_id": "decision-maker",
+                "step": "decision",
+                "audit_result": audit_results_of_authority_bias_for_decision_maker
+            })
+            audit_round_data["3_1_3_neglect_of_contradictions"].append({
+                "agent_id": "decision-maker",
+                "step": "decision",
+                "audit_result": audit_results_of_neglect_of_contradictions_in_reasoning_process_for_decision_maker
+            })
 
         case_history["rounds"][-1]["decision"] = final_log
         
@@ -611,7 +612,7 @@ def main():
             print(f"Found {len(existing_qids)} already processed cases. They will be skipped.")
 
         try:
-            result = framework.run_query(item)
+            result = framework.run_query(data_item=item, task = task)
             save_jsonl(result, output_file)
         except Exception as e:
             print(f"CRITICAL MAIN LOOP ERROR processing item {qid}: {e}")
