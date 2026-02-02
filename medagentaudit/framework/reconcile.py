@@ -23,7 +23,7 @@ core_root = current_file_path.parents[1] / "core"
 project_root = current_file_path.parents[2]
 sys.path.extend([str(utils_root), str(project_root), str(auditor_root), str(common_root), str(core_root)])
 
-from json_utils import load_json, save_json, preprocess_response_string
+from json_utils import load_json, save_jsonl, preprocess_response_string
 from encode_image import encode_image
 from config_loader import get_config
 from logger import DualLogger
@@ -334,7 +334,8 @@ class ReconcileCoordinator:
                       qid: str,
                       question: str,
                       options: Dict[str, str] | None = None,
-                      image_path: str | None = None) -> Dict[str, Any]:
+                      image_path: str | None = None,
+                      task:str = "open_coding") -> Dict[str, Any]:
         """
         Run the complete discussion process with integrated quantitative observation mechanisms.
         """
@@ -342,23 +343,24 @@ class ReconcileCoordinator:
         start_time = time.time()
 
         discussion_history = []
-        audit = {"rounds": []}
-        audit_round_data = {
-            "round": 1,
-            "1_1_1_factual_hallucination": [],
-            "1_2_1_neglect_or_misinterpretation_of_modality_info": [],
+        if task =="audit":
+            audit = {"rounds": []}
+            audit_round_data = {
+                "round": 1,
+                "1_1_1_factual_hallucination": [],
+                "1_2_1_neglect_or_misinterpretation_of_modality_info": [],
 
-            "2_1_1_role_assignment": [], 
-            "2_1_2_domain_specific_knowledge_activation": [],
-            
-            "2_2_1_repetition_of_initial_views": [],
-            "2_2_2_unresolved_conflicts": [],
-            
-            "3_1_1_suppression_of_minority_views": [],
-            "3_1_2_authority_bias": [],
-            "3_1_3_neglect_of_contradictions": [],
-            "3_2_1_self_contradiction_when_decision": []
-        }
+                "2_1_1_role_assignment": [], 
+                "2_1_2_domain_specific_knowledge_activation": [],
+                
+                "2_2_1_repetition_of_initial_views": [],
+                "2_2_2_unresolved_conflicts": [],
+                
+                "3_1_1_suppression_of_minority_views": [],
+                "3_1_2_authority_bias": [],
+                "3_1_3_neglect_of_contradictions": [],
+                "3_2_1_self_contradiction_when_decision": []
+            }
         case_history = {"rounds": []}
         round_data = {"round": 1, "opinions": [], "synthesis": None, "reviews": [], "decision": None}
         case_history["rounds"].append(round_data)
@@ -380,36 +382,36 @@ class ReconcileCoordinator:
             "reasoning_content": step_log.get("reasoning_content", "")
             }
             doctor_opinions.append(opinion_log["parsed_output"])
+            if task == "audit":
+                # audit 1.1.1 facutal hallucination
+                audit_results_of_factual_hallucination = self.auditor_agent.audit_factual_hallucination(question = question, image_path=image_path, agent_id=agent.agent_id, specialty=agent.specialty, answer=initial_answer, explanation=initial_explanation)
 
-            # audit 1.1.1 facutal hallucination
-            audit_results_of_factual_hallucination = self.auditor_agent.audit_factual_hallucination(question = question, image_path=image_path, agent_id=agent.agent_id, specialty=agent.specialty, answer=initial_answer, explanation=initial_explanation)
+                # audit 1.2.1 neglect or misinterpretation of modality information
+                audit_results_of_neglect_or_misinterpretation_of_modality_info = self.auditor_agent.audit_neglect_or_misinterpretation_of_modality_info(question = question, image_path=image_path, agent_id=agent.agent_id, specialty=agent.specialty, answer=initial_answer, explanation=initial_explanation)
 
-            # audit 1.2.1 neglect or misinterpretation of modality information
-            audit_results_of_neglect_or_misinterpretation_of_modality_info = self.auditor_agent.audit_neglect_or_misinterpretation_of_modality_info(question = question, image_path=image_path, agent_id=agent.agent_id, specialty=agent.specialty, answer=initial_answer, explanation=initial_explanation)
+                # audit 2.1.2 domain-specific knowledge activation
+                audit_results_of_domain_specific_knowledge_activation = self.auditor_agent.audit_domain_specific_knowledge_activation(question = question, image_path=image_path, agent_id=agent.agent_id, specialty=agent.specialty, answer=initial_answer, explanation=initial_explanation)
 
-            # audit 2.1.2 domain-specific knowledge activation
-            audit_results_of_domain_specific_knowledge_activation = self.auditor_agent.audit_domain_specific_knowledge_activation(question = question, image_path=image_path, agent_id=agent.agent_id, specialty=agent.specialty, answer=initial_answer, explanation=initial_explanation)
+                audit_round_data["1_1_1_factual_hallucination"].append({
+                    "agent_id": agent.agent_id,
+                    "specialty": agent.specialty.value,
+                    "step": "analysis",
+                    "audit_result": audit_results_of_factual_hallucination
+                })
+                
+                audit_round_data["1_2_1_neglect_or_misinterpretation_of_modality_info"].append({
+                    "agent_id": agent.agent_id,
+                    "specialty": agent.specialty.value,
+                    "step": "analysis",
+                    "audit_result": audit_results_of_neglect_or_misinterpretation_of_modality_info
+                })
 
-            audit_round_data["1_1_1_factual_hallucination"].append({
-                "agent_id": agent.agent_id,
-                "specialty": agent.specialty.value,
-                "step": "analysis",
-                "audit_result": audit_results_of_factual_hallucination
-            })
-            
-            audit_round_data["1_2_1_neglect_or_misinterpretation_of_modality_info"].append({
-                "agent_id": agent.agent_id,
-                "specialty": agent.specialty.value,
-                "step": "analysis",
-                "audit_result": audit_results_of_neglect_or_misinterpretation_of_modality_info
-            })
-
-            audit_round_data["2_1_2_domain_specific_knowledge_activation"].append({
-                "agent_id": agent.agent_id,
-                "specialty": agent.specialty.value,
-                "step": "analysis",
-                "audit_result": audit_results_of_domain_specific_knowledge_activation
-            })
+                audit_round_data["2_1_2_domain_specific_knowledge_activation"].append({
+                    "agent_id": agent.agent_id,
+                    "specialty": agent.specialty.value,
+                    "step": "analysis",
+                    "audit_result": audit_results_of_domain_specific_knowledge_activation
+                })
             
             case_history["rounds"][-1]["opinions"].append({
                 "agent_id": agent.agent_id,
@@ -431,19 +433,20 @@ class ReconcileCoordinator:
             round_num += 1
             print(f"Phase 2: Discussion round {round_num}/{self.max_rounds}")
             if round_num > 1:
-                audit_round_data = {
-                    "round": round_num,
-                    "2_1_1_role_assignment": [], 
-                    "2_1_2_domain_specific_knowledge_activation": [],
-                    
-                    "2_2_1_repetition_of_initial_views": [],
-                    "2_2_2_unresolved_conflicts": [],
-                    
-                    "3_1_1_suppression_of_minority_views": [],
-                    "3_1_2_authority_bias": [],
-                    "3_1_3_neglect_of_contradictions": [],
-                    "3_2_1_self_contradiction_when_decision": []
-                }
+                if task == "audit":
+                    audit_round_data = {
+                        "round": round_num,
+                        "2_1_1_role_assignment": [], 
+                        "2_1_2_domain_specific_knowledge_activation": [],
+                        
+                        "2_2_1_repetition_of_initial_views": [],
+                        "2_2_2_unresolved_conflicts": [],
+                        
+                        "3_1_1_suppression_of_minority_views": [],
+                        "3_1_2_authority_bias": [],
+                        "3_1_3_neglect_of_contradictions": [],
+                        "3_2_1_self_contradiction_when_decision": []
+                    }
                 round_data = {"round": round_num, "opinions": [], "synthesis": None, "reviews": [], "decision": None}
                 case_history["rounds"].append(round_data)
 
@@ -462,33 +465,34 @@ class ReconcileCoordinator:
                     "explanation": explanation,
                 },
                 "reasoning_content": step_log.get("reasoning_content", "")}
-                # audit 2.1.2 Failure to Activate Specialist Knowledge During Role Execution during Collaborative discussion
-                audit_results_of_domain_specific_knowledge_activation = self.auditor_agent.audit_domain_specific_knowledge_activation(question = question, image_path=image_path, agent_id=agent.agent_id, specialty=agent.specialty, answer=answer, explanation=explanation)
+                if task == "audit":
+                    # audit 2.1.2 Failure to Activate Specialist Knowledge During Role Execution during Collaborative discussion
+                    audit_results_of_domain_specific_knowledge_activation = self.auditor_agent.audit_domain_specific_knowledge_activation(question = question, image_path=image_path, agent_id=agent.agent_id, specialty=agent.specialty, answer=answer, explanation=explanation)
 
-                # audit 2.2.1 Repetition of Initial Views during Collaborative discussion 
-                audit_results_repetition_of_initial_views = self.auditor_agent.audit_repetition_of_initial_views(question=question, image_path = image_path, current_agent_id=agent.agent_id, current_answer = answer, current_explanation=explanation, case_history=case_history)
-                
-                # audit 2.2.2 Unresolved Conflicts during Collaborative discussion
-                audit_results_of_unresolved_conflicts_during_review = self.auditor_agent.audit_unresolved_conflicts_during_Collaboration(question=question, current_agent_id=agent.agent_id, current_answer = answer, current_explanation=explanation, case_history=case_history) 
+                    # audit 2.2.1 Repetition of Initial Views during Collaborative discussion 
+                    audit_results_repetition_of_initial_views = self.auditor_agent.audit_repetition_of_initial_views(question=question, image_path = image_path, current_agent_id=agent.agent_id, current_answer = answer, current_explanation=explanation, case_history=case_history)
+                    
+                    # audit 2.2.2 Unresolved Conflicts during Collaborative discussion
+                    audit_results_of_unresolved_conflicts_during_review = self.auditor_agent.audit_unresolved_conflicts_during_Collaboration(question=question, current_agent_id=agent.agent_id, current_answer = answer, current_explanation=explanation, case_history=case_history) 
 
-                audit_round_data["2_1_2_domain_specific_knowledge_activation"].append({
-                    "agent_id": agent.agent_id,
-                    "specialty": agent.specialty.value,
-                    "step": "review",
-                    "audit_result": audit_results_of_domain_specific_knowledge_activation
-                })
-                audit_round_data["2_2_1_repetition_of_initial_views"].append({
-                    "agent_id": agent.agent_id,
-                    "specialty": agent.specialty.value,
-                    "step": "review",
-                    "audit_result": audit_results_repetition_of_initial_views
-                })
-                audit_round_data["2_2_2_unresolved_conflicts"].append({ 
-                    "agent_id": agent.agent_id,
-                    "specialty": agent.specialty.value,
-                    "step": "review",
-                    "audit_result": audit_results_of_unresolved_conflicts_during_review
-                })
+                    audit_round_data["2_1_2_domain_specific_knowledge_activation"].append({
+                        "agent_id": agent.agent_id,
+                        "specialty": agent.specialty.value,
+                        "step": "review",
+                        "audit_result": audit_results_of_domain_specific_knowledge_activation
+                    })
+                    audit_round_data["2_2_1_repetition_of_initial_views"].append({
+                        "agent_id": agent.agent_id,
+                        "specialty": agent.specialty.value,
+                        "step": "review",
+                        "audit_result": audit_results_repetition_of_initial_views
+                    })
+                    audit_round_data["2_2_2_unresolved_conflicts"].append({ 
+                        "agent_id": agent.agent_id,
+                        "specialty": agent.specialty.value,
+                        "step": "review",
+                        "audit_result": audit_results_of_unresolved_conflicts_during_review
+                    })
 
                 case_history["rounds"][-1]["reviews"].append({
                     "agent_id": agent.agent_id,
@@ -512,8 +516,8 @@ class ReconcileCoordinator:
         # === Phase 3: Final team answer via weighted vote ===
         print("Phase 3: Generating final team answer")
         final_decision, voting_log = self._weighted_vote(current_answers)
-
-        case_history["audit"] = audit
+        if task == "audit":
+            case_history["audit"] = audit
         discussion_history.append({
             "phase": DiscussionPhase.FINAL.value,
             "final_decision": final_decision, "consensus_reached": consensus_reached,
@@ -539,7 +543,8 @@ def process_item(item: Dict[str, Any],
                max_rounds: int = 3,
                auditor_model_key: str = "gemini-2.5-pro",
                conflict_analysis_model_key: str = "gemini-2.5-pro",
-               config_path: str = "config.toml") -> Dict[str, Any]:
+               config_path: str = "config.toml",
+               task :str = "open_coding") -> Dict[str, Any]:
     """
     Process a single QA item with the Reconcile framework.
     """
@@ -551,7 +556,8 @@ def process_item(item: Dict[str, Any],
         qid=qid,
         question=item.get("question", ""),
         options=item.get("options"),
-        image_path=item.get("image_path")
+        image_path=item.get("image_path"),
+        task = task
     )
     
     result = {
@@ -573,37 +579,36 @@ def main():
     """
     parser = argparse.ArgumentParser(description="Run the Reconcile framework on medical QA datasets")
     parser.add_argument("--dataset", type=str, required=True, help="Dataset name")
-    parser.add_argument("--qa_type", type=str, choices=["mc", "ff"], default="mc", help="QA type: multiple-choice (mc) or free-form (ff)")
     parser.add_argument("--agents", nargs='+', required=True, help="List of agent model keys")
     parser.add_argument("--max_rounds", type=int, default=3, help="Maximum number of discussion rounds")
     parser.add_argument("--auditor_model", type=str, required=True, help="Model for the AuditorAgent and conflict agent.")
     parser.add_argument("--num_samples", type=int, required=True, help="Number of samples to process.")
     parser.add_argument("--config_path", type=str, default="config.toml", help="Path to config file")
     parser.add_argument("--time_stamp", type=str, required=True, help="Timestamp for logging purposes")
+    parser.add_argument("--task", type = str, required=True, help="audit or open_coding?")
     args = parser.parse_args()
 
     dataset_name = args.dataset
     print(f"Dataset: {dataset_name}")
-
-    qa_type = args.qa_type
-    print(f"QA Format: {qa_type}")
+    task = args.task
+    print(f"Task: {task}")
 
     timestamp = args.time_stamp
-    current_model_name = current_file_name
+    current_mas_name = current_file_name
     main_llm = args.agents[0]
 
-    terminal_log_dir = project_root / "logs" / "audit_results" / timestamp / current_model_name / dataset_name / main_llm / "terminal_log"
-    terminal_log_dir.mkdir(parents=True, exist_ok=True)
-    terminal_log_file = terminal_log_dir / f"{dataset_name}_full_terminal.log"
+    terminal_log_file = project_root / "logs" / f"{task}_results" / timestamp/ f"{current_mas_name}_{dataset_name}_{main_llm}_terminal_log" / "terminal.log"
+    terminal_log_file.parent.mkdir(parents=True, exist_ok=True)
     print(f"!!! Terminal output is being captured to: {terminal_log_file} !!!")
     sys.stdout = DualLogger(terminal_log_file, sys.stdout)
-    sys.stderr = DualLogger(terminal_log_file, sys.stderr)
+    sys.stderr = DualLogger(terminal_log_file, sys.stderr) # 捕获报错和tqdm进度条
 
-    logs_dir = project_root / "logs" / "audit_results" / timestamp / current_model_name / dataset_name / main_llm
-    logs_dir.mkdir(parents=True, exist_ok=True)
-    print(f"Logs will be saved to: {logs_dir}")
-
-    data_path = project_root / "datasets" / dataset_name / f"medqa_{qa_type}_test.json"
+    data_path = project_root / "datasets" / "processed" / dataset_name / f"{task}" / f"medqa_{dataset_name.lower()}_{task}.json"
+    
+    output_file = project_root / "logs" / f"{task}_results" / timestamp / f"{current_mas_name}_{dataset_name}_{main_llm}.jsonl"
+    error_output_file = project_root / "logs" / f"{task}_results" / timestamp / f"{current_mas_name}_{dataset_name}_{main_llm}_errors.jsonl"
+    output_file.parent.mkdir(parents=True, exist_ok=True)
+    error_output_file.parent.mkdir(parents=True, exist_ok=True)
 
     data = load_json(data_path)
     print(f"Loaded {len(data)} samples from {data_path}")
@@ -611,12 +616,26 @@ def main():
     agent_configs = [{"agent_id": f"agent_{idx}", "model_key": model_key} for idx, model_key in enumerate(args.agents, 1)]
     print(f"Configured {len(agent_configs)} agents: {[cfg['model_key'] for cfg in agent_configs]}")
 
-    for item in tqdm(data[:args.num_samples], desc=f"Processing {args.dataset} ({args.qa_type})"):
+    for item in tqdm(data[:args.num_samples], desc=f"Processing {args.dataset} ({args.task})"):
         qid = item.get("qid")
-        result_path = os.path.join(logs_dir, f"{qid}-result.json")
 
-        if os.path.exists(result_path):
-            print(f"Skipping {qid} (already processed)")
+        existing_qids = set()
+        if output_file.exists():
+            print(f"Output file {output_file} already exists. Appending new results.")
+            with open(output_file, 'r', encoding='utf-8') as f:
+                for line in f:
+                    line = line.strip()
+                    if not line: continue
+                    try:
+                        record = json.loads(line)
+                        if "qid" in record:
+                            existing_qids.add(record["qid"])
+                    except json.JSONDecodeError:
+                        print("Warning: Found a corrupted line in jsonl file, skipping.")
+            print(f"Found {len(existing_qids)} already processed cases. They will be skipped.")
+
+        if qid in existing_qids:
+            print(f"Skipping {qid} - already processed")
             continue
 
         try:
@@ -626,9 +645,10 @@ def main():
                 args.max_rounds,
                 auditor_model_key=args.auditor_model,
                 conflict_analysis_model_key=args.auditor_model, 
-                config_path=args.config_path
+                config_path=args.config_path,
+                task = task
             )
-            save_json(result, result_path)
+            save_jsonl(result, output_file)
         except Exception as e:
             error_traceback = traceback.format_exc()
             
@@ -642,7 +662,7 @@ def main():
                 "error_message": str(e),            # e.g., "list index out of range"
                 "traceback": error_traceback        # The full stack trace
             }
-            save_json(error_log, os.path.join(logs_dir, f"{qid}-error.json"))
+            save_jsonl(error_log, error_output_file)
 
 if __name__ == "__main__":
     main()
