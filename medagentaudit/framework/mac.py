@@ -395,7 +395,7 @@ class MACFramework:
                 print(f"FATAL ERROR during run_query for QID {qid}: {e}")
                 error_result = {"qid": qid, "error": str(e)}
                 save_jsonl(error_result, self.err_log_file)
-        print(f"Finished processing dataset '{self.dataset_name}'. Results saved in {self.log_dir}")
+        print(f"Finished processing dataset '{self.dataset_name}'. Results saved in {self.log_file}")
 
 
 def main():
