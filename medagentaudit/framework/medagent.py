@@ -24,7 +24,7 @@ project_root = current_file_path.parents[2]
 sys.path.extend([str(utils_root), str(project_root), str(auditor_root), str(common_root), str(core_root)])
 
 from encode_image import encode_image
-from json_utils import load_json, save_json, preprocess_response_string
+from json_utils import load_json, save_jsonl, preprocess_response_string
 from logger import DualLogger
 from config_loader import get_config
 from auditor_agent import AuditorAgent
@@ -416,7 +416,8 @@ class MDTConsultation:
                             qid: str,
                             question: str,
                             options: Dict[str, str] | None = None,
-                            image_path: str | None = None) -> Dict[str, Any]:
+                            image_path: str | None = None,
+                            task:str = "open_coding") -> Dict[str, Any]:
             start_time = time.time()
             print(f"Starting MDT consultation for case {qid}")
             print(f"Question: {question}")
@@ -426,39 +427,41 @@ class MDTConsultation:
             specialties, gatherer_log = self.expert_gatherer.gather_question_domain_experts(question)
             print(f"Gathered specialties: {[s.value for s in specialties]}")
             self._initialize_doctor_agents(specialties)
-            # audit 2.1.1 role assignment
-            audit_results_of_role_assignment = self.auditor_agent.audit_role_assignment(question=question, image_path=image_path, specialties=specialties)
+            if task =="audit":
+                # audit 2.1.1 role assignment
+                audit_results_of_role_assignment = self.auditor_agent.audit_role_assignment(question=question, image_path=image_path, specialties=specialties)
+                audit = {"rounds": []}
             current_round = 0
             case_history = {
                 "rounds" : [],
             }
-            audit = {"rounds": []}
             consensus_reached = False
             final_decision_log = None # 初始化 final_decision_log
 
             while current_round < self.max_rounds and not consensus_reached:
                 current_round += 1
-                audit_round_data = {
-                    "round": current_round,
-                    "1_1_1_factual_hallucination": [],
-                    "1_2_1_neglect_or_misinterpretation_of_modality_info": [],
+                if task == "audit":
+                    audit_round_data = {
+                        "round": current_round,
+                        "1_1_1_factual_hallucination": [],
+                        "1_2_1_neglect_or_misinterpretation_of_modality_info": [],
 
-                    "2_1_1_role_assignment": [], 
-                    "2_1_2_domain_specific_knowledge_activation": [], 
-                    
-                    "2_2_1_repetition_of_initial_views": [], 
-                    "2_2_2_unresolved_conflicts": [],
-                    
-                    "3_1_1_suppression_of_minority_views": [],
-                    "3_1_2_authority_bias": [],
-                    "3_1_3_neglect_of_contradictions": [],
-                    "3_2_1_self_contradiction_when_decision": []
-                }
-                audit_round_data["2_1_1_role_assignment"].append({
-                    "specialties": [s.value for s in specialties],
-                    "step": "role_assignment",
-                    "audit_result": audit_results_of_role_assignment
-                })
+                        "2_1_1_role_assignment": [], 
+                        "2_1_2_domain_specific_knowledge_activation": [], 
+                        
+                        "2_2_1_repetition_of_initial_views": [], 
+                        "2_2_2_unresolved_conflicts": [],
+                        
+                        "3_1_1_suppression_of_minority_views": [],
+                        "3_1_2_authority_bias": [],
+                        "3_1_3_neglect_of_contradictions": [],
+                        "3_2_1_self_contradiction_when_decision": []
+                    }
+                    audit_round_data["2_1_1_role_assignment"].append({
+                        "specialties": [s.value for s in specialties],
+                        "step": "role_assignment",
+                        "audit_result": audit_results_of_role_assignment
+                    })
 
                 round_data = {"round": current_round, "opinions": [], "synthesis": None, "reviews": [], "decision": None}
                 case_history["rounds"].append(round_data)
@@ -472,53 +475,54 @@ class MDTConsultation:
                     parsed_output = opinion_log["parsed_output"]
                     doctor_opinion_parsed_outputs.append(parsed_output)
                     print(f"Doctor {i+1} opinion: {parsed_output.get('answer', '')}")
-                    # audit 1.1.1 facutal hallucination
-                    audit_results_of_factual_hallucination = self.auditor_agent.audit_factual_hallucination(question = question, image_path=image_path, agent_id=doctor.agent_id, specialty=doctor.specialty, answer=parsed_output.get('answer', ''), explanation=parsed_output.get('explanation', ''))
+                    if task == "audit":
+                        # audit 1.1.1 facutal hallucination
+                        audit_results_of_factual_hallucination = self.auditor_agent.audit_factual_hallucination(question = question, image_path=image_path, agent_id=doctor.agent_id, specialty=doctor.specialty, answer=parsed_output.get('answer', ''), explanation=parsed_output.get('explanation', ''))
 
-                    # audit 1.2.1 neglect or misinterpretation of modality information
-                    audit_results_of_neglect_or_misinterpretation_of_modality_info = self.auditor_agent.audit_neglect_or_misinterpretation_of_modality_info(question = question, image_path=image_path, agent_id=doctor.agent_id, specialty=doctor.specialty, answer=parsed_output.get('answer', ''), explanation=parsed_output.get('explanation', ''))
+                        # audit 1.2.1 neglect or misinterpretation of modality information
+                        audit_results_of_neglect_or_misinterpretation_of_modality_info = self.auditor_agent.audit_neglect_or_misinterpretation_of_modality_info(question = question, image_path=image_path, agent_id=doctor.agent_id, specialty=doctor.specialty, answer=parsed_output.get('answer', ''), explanation=parsed_output.get('explanation', ''))
 
-                    # audit 2.1.2 Failure to Activate Specialist Knowledge During Role Execution during Collaborative discussion
-                    audit_results_of_domain_specific_knowledge_activation = self.auditor_agent.audit_domain_specific_knowledge_activation(question = question, image_path=image_path, agent_id=doctor.agent_id, specialty=doctor.specialty, answer=parsed_output.get('answer', ''), explanation=parsed_output.get('explanation', ''))
-                    
-                    if current_round > 1:
-                        # audit 2.2.1 Repetition of Initial Views during Collaborative discussion
-                        audit_results_of_repetition_of_initial_views = self.auditor_agent.audit_repetition_of_initial_views(question = question, image_path=image_path, current_agent_id=doctor.agent_id, current_answer = parsed_output.get('answer', ''), current_explanation=parsed_output.get('explanation', ''), case_history=case_history) 
-                        # audit 2.2.2 Unresolved Conflicts during Collaborative discussion
-                        audit_results_of_unresolved_conflicts_during_Collaboration = self.auditor_agent.audit_unresolved_conflicts_during_Collaboration(question = question, current_agent_id=doctor.agent_id, current_answer = parsed_output.get('answer', ''), current_explanation=parsed_output.get('explanation', ''), case_history=case_history)
-                        audit_round_data["2_2_1_repetition_of_initial_views"].append({
+                        # audit 2.1.2 Failure to Activate Specialist Knowledge During Role Execution during Collaborative discussion
+                        audit_results_of_domain_specific_knowledge_activation = self.auditor_agent.audit_domain_specific_knowledge_activation(question = question, image_path=image_path, agent_id=doctor.agent_id, specialty=doctor.specialty, answer=parsed_output.get('answer', ''), explanation=parsed_output.get('explanation', ''))
+                        
+                        if current_round > 1:
+                            # audit 2.2.1 Repetition of Initial Views during Collaborative discussion
+                            audit_results_of_repetition_of_initial_views = self.auditor_agent.audit_repetition_of_initial_views(question = question, image_path=image_path, current_agent_id=doctor.agent_id, current_answer = parsed_output.get('answer', ''), current_explanation=parsed_output.get('explanation', ''), case_history=case_history) 
+                            # audit 2.2.2 Unresolved Conflicts during Collaborative discussion
+                            audit_results_of_unresolved_conflicts_during_Collaboration = self.auditor_agent.audit_unresolved_conflicts_during_Collaboration(question = question, current_agent_id=doctor.agent_id, current_answer = parsed_output.get('answer', ''), current_explanation=parsed_output.get('explanation', ''), case_history=case_history)
+                            audit_round_data["2_2_1_repetition_of_initial_views"].append({
+                                "agent_id": doctor.agent_id,
+                                "specialty": doctor.specialty.value,
+                                "step": "analysis",
+                                "audit_result": audit_results_of_repetition_of_initial_views
+                            })
+                            audit_round_data["2_2_2_unresolved_conflicts"].append({ 
+                                "agent_id": doctor.agent_id,
+                                "specialty": doctor.specialty.value,
+                                "step": "analysis",
+                                "audit_result": audit_results_of_unresolved_conflicts_during_Collaboration
+                            })
+
+                        audit_round_data["1_1_1_factual_hallucination"].append({
                             "agent_id": doctor.agent_id,
                             "specialty": doctor.specialty.value,
                             "step": "analysis",
-                            "audit_result": audit_results_of_repetition_of_initial_views
+                            "audit_result": audit_results_of_factual_hallucination
                         })
-                        audit_round_data["2_2_2_unresolved_conflicts"].append({ 
+                        
+                        audit_round_data["1_2_1_neglect_or_misinterpretation_of_modality_info"].append({
                             "agent_id": doctor.agent_id,
                             "specialty": doctor.specialty.value,
                             "step": "analysis",
-                            "audit_result": audit_results_of_unresolved_conflicts_during_Collaboration
+                            "audit_result": audit_results_of_neglect_or_misinterpretation_of_modality_info
                         })
 
-                    audit_round_data["1_1_1_factual_hallucination"].append({
-                        "agent_id": doctor.agent_id,
-                        "specialty": doctor.specialty.value,
-                        "step": "analysis",
-                        "audit_result": audit_results_of_factual_hallucination
-                    })
-                    
-                    audit_round_data["1_2_1_neglect_or_misinterpretation_of_modality_info"].append({
-                        "agent_id": doctor.agent_id,
-                        "specialty": doctor.specialty.value,
-                        "step": "analysis",
-                        "audit_result": audit_results_of_neglect_or_misinterpretation_of_modality_info
-                    })
-
-                    audit_round_data["2_1_2_domain_specific_knowledge_activation"].append({
-                        "agent_id": doctor.agent_id,
-                        "specialty": doctor.specialty.value,
-                        "step": "analysis",
-                        "audit_result": audit_results_of_domain_specific_knowledge_activation
-                    })
+                        audit_round_data["2_1_2_domain_specific_knowledge_activation"].append({
+                            "agent_id": doctor.agent_id,
+                            "specialty": doctor.specialty.value,
+                            "step": "analysis",
+                            "audit_result": audit_results_of_domain_specific_knowledge_activation
+                        })
 
                     case_history["rounds"][-1]["opinions"].append({
                         "agent_id": doctor.agent_id,
@@ -535,46 +539,46 @@ class MDTConsultation:
                 synthesis_parsed_output = synthesis_log["parsed_output"]
                 synthesis_explanation = synthesis_parsed_output.get("explanation", "")
                 synthesis_answer = synthesis_parsed_output.get("answer", "")
-                
-                # audtit 3.1.1 : Suppression of Correct Minority Views by Incorrect Consensus for synthesizer
-                audit_results_of_suppression_of_correct_minority_views_by_incorrect_consensus_for_synthesizer = self.auditor_agent.audit_suppression_by_majority(
-                    question = question, options = options, image_path = image_path, current_agent_id = self.meta_agent.agent_id, answer = synthesis_answer, explanation = synthesis_explanation, case_history = case_history
-                ) # here the discussion_context includes all the domain agents' answers and explanations before this synthesis
+                if task == "audit":
+                    # audtit 3.1.1 : Suppression of Correct Minority Views by Incorrect Consensus for synthesizer
+                    audit_results_of_suppression_of_correct_minority_views_by_incorrect_consensus_for_synthesizer = self.auditor_agent.audit_suppression_by_majority(
+                        question = question, options = options, image_path = image_path, current_agent_id = self.meta_agent.agent_id, answer = synthesis_answer, explanation = synthesis_explanation, case_history = case_history
+                    ) # here the discussion_context includes all the domain agents' answers and explanations before this synthesis
 
-                # audit 3.1.2 : Reasoning Distorted by Authority Bias for synthesizer
-                audit_results_of_authority_bias_for_synthesizer = self.auditor_agent.audit_authority_bias(
-                    question = question, options = options, image_path = image_path, current_agent_id = self.meta_agent.agent_id, answer = synthesis_answer, explanation = synthesis_explanation, case_history = case_history
-                ) # here the discussion_context must include the role of domain agent and their answer and explanation before this synthesis
+                    # audit 3.1.2 : Reasoning Distorted by Authority Bias for synthesizer
+                    audit_results_of_authority_bias_for_synthesizer = self.auditor_agent.audit_authority_bias(
+                        question = question, options = options, image_path = image_path, current_agent_id = self.meta_agent.agent_id, answer = synthesis_answer, explanation = synthesis_explanation, case_history = case_history
+                    ) # here the discussion_context must include the role of domain agent and their answer and explanation before this synthesis
 
-                # audit 3.1.3: Neglect of Contradictions in Reasoning Process for synthesizer
-                audit_results_of_neglect_of_contradictions_in_reasoning_process_for_synthesizer = self.auditor_agent.audit_contradictions_during_decision(
-                    question = question, current_agent_id = self.meta_agent.agent_id, explanation = synthesis_explanation, case_history = case_history, options = options
-                ) # here the discussion_context includes all the domain agents' answers and explanations before this synthesis
-                if current_round > 1:
-                    # audit 3.2.1: Self-Contradiction in Viewpoints Across Rounds for synthesizer
-                    audit_results_of_self_contradiction_in_viewpoints_across_rounds_for_synthesizer = self.auditor_agent.audit_contradictions_across_rounds(
-                        question = question, answer = synthesis_answer, explanation = synthesis_explanation, case_history = case_history, current_agent_id = self.meta_agent.agent_id, options = options
-                    ) # here the meta_agent.memory includes all the previous syntheses and decisions
-                    audit_round_data["3_2_1_self_contradiction_when_decision"].append({
+                    # audit 3.1.3: Neglect of Contradictions in Reasoning Process for synthesizer
+                    audit_results_of_neglect_of_contradictions_in_reasoning_process_for_synthesizer = self.auditor_agent.audit_contradictions_during_decision(
+                        question = question, current_agent_id = self.meta_agent.agent_id, explanation = synthesis_explanation, case_history = case_history, options = options
+                    ) # here the discussion_context includes all the domain agents' answers and explanations before this synthesis
+                    if current_round > 1:
+                        # audit 3.2.1: Self-Contradiction in Viewpoints Across Rounds for synthesizer
+                        audit_results_of_self_contradiction_in_viewpoints_across_rounds_for_synthesizer = self.auditor_agent.audit_contradictions_across_rounds(
+                            question = question, answer = synthesis_answer, explanation = synthesis_explanation, case_history = case_history, current_agent_id = self.meta_agent.agent_id, options = options
+                        ) # here the meta_agent.memory includes all the previous syntheses and decisions
+                        audit_round_data["3_2_1_self_contradiction_when_decision"].append({
+                            "agent_id": self.meta_agent.agent_id,
+                            "step": "synthesis",
+                            "audit_result": audit_results_of_self_contradiction_in_viewpoints_across_rounds_for_synthesizer
+                        })
+                    audit_round_data["3_1_1_suppression_of_minority_views"].append({
                         "agent_id": self.meta_agent.agent_id,
                         "step": "synthesis",
-                        "audit_result": audit_results_of_self_contradiction_in_viewpoints_across_rounds_for_synthesizer
+                        "audit_result": audit_results_of_suppression_of_correct_minority_views_by_incorrect_consensus_for_synthesizer
                     })
-                audit_round_data["3_1_1_suppression_of_minority_views"].append({
-                    "agent_id": self.meta_agent.agent_id,
-                    "step": "synthesis",
-                    "audit_result": audit_results_of_suppression_of_correct_minority_views_by_incorrect_consensus_for_synthesizer
-                })
-                audit_round_data["3_1_2_authority_bias"].append({
-                    "agent_id": self.meta_agent.agent_id,
-                    "step": "synthesis",
-                    "audit_result": audit_results_of_authority_bias_for_synthesizer
-                })
-                audit_round_data["3_1_3_neglect_of_contradictions"].append({
-                    "agent_id": self.meta_agent.agent_id,
-                    "step": "synthesis",
-                    "audit_result": audit_results_of_neglect_of_contradictions_in_reasoning_process_for_synthesizer
-                })
+                    audit_round_data["3_1_2_authority_bias"].append({
+                        "agent_id": self.meta_agent.agent_id,
+                        "step": "synthesis",
+                        "audit_result": audit_results_of_authority_bias_for_synthesizer
+                    })
+                    audit_round_data["3_1_3_neglect_of_contradictions"].append({
+                        "agent_id": self.meta_agent.agent_id,
+                        "step": "synthesis",
+                        "audit_result": audit_results_of_neglect_of_contradictions_in_reasoning_process_for_synthesizer
+                    })
 
                 case_history["rounds"][-1]["synthesis"] = synthesis_log # after synthesizer then log, in case repetition
                 # Step 4: Doctors review synthesis
@@ -590,34 +594,34 @@ class MDTConsultation:
                     agrees = review_parsed_output.get('agree', False)
                     all_agree = all_agree and agrees
                     print(f"Doctor {i+1} agrees: {'Yes' if agrees else 'No'}")
+                    if task == "audit":
+                        # audit 2.1.2 Failure to Activate Specialist Knowledge During Role Execution during Collaborative discussion
+                        audit_results_of_domain_specific_knowledge_activation = self.auditor_agent.audit_domain_specific_knowledge_activation(question = question, image_path=image_path, agent_id=doctor.agent_id, specialty=doctor.specialty, answer=review_outcome, explanation=review_reason)
 
-                    # audit 2.1.2 Failure to Activate Specialist Knowledge During Role Execution during Collaborative discussion
-                    audit_results_of_domain_specific_knowledge_activation = self.auditor_agent.audit_domain_specific_knowledge_activation(question = question, image_path=image_path, agent_id=doctor.agent_id, specialty=doctor.specialty, answer=review_outcome, explanation=review_reason)
+                        # audit 2.2.1 Repetition of Initial Views during Collaborative discussion
+                        audit_results_repetition_of_initial_views = self.auditor_agent.audit_repetition_of_initial_views(question=question, image_path = image_path, current_agent_id=doctor.agent_id, current_answer = review_outcome, current_explanation=review_reason, case_history=case_history)
+                        
+                        # audit 2.2.2 Unresolved Conflicts during Collaborative discussion
+                        audit_results_of_unresolved_conflicts_during_review = self.auditor_agent.audit_unresolved_conflicts_during_Collaboration(question=question, current_agent_id=doctor.agent_id, current_answer = review_outcome, current_explanation=review_reason, case_history=case_history)
 
-                    # audit 2.2.1 Repetition of Initial Views during Collaborative discussion
-                    audit_results_repetition_of_initial_views = self.auditor_agent.audit_repetition_of_initial_views(question=question, image_path = image_path, current_agent_id=doctor.agent_id, current_answer = review_outcome, current_explanation=review_reason, case_history=case_history)
-                    
-                    # audit 2.2.2 Unresolved Conflicts during Collaborative discussion
-                    audit_results_of_unresolved_conflicts_during_review = self.auditor_agent.audit_unresolved_conflicts_during_Collaboration(question=question, current_agent_id=doctor.agent_id, current_answer = review_outcome, current_explanation=review_reason, case_history=case_history)
-
-                    audit_round_data["2_1_2_domain_specific_knowledge_activation"].append({
-                        "agent_id": doctor.agent_id,
-                        "specialty": doctor.specialty.value,
-                        "step": "review",
-                        "audit_result": audit_results_of_domain_specific_knowledge_activation
-                    })
-                    audit_round_data["2_2_1_repetition_of_initial_views"].append({
-                        "agent_id": doctor.agent_id,
-                        "specialty": doctor.specialty.value,
-                        "step": "review",
-                        "audit_result": audit_results_repetition_of_initial_views
-                    })
-                    audit_round_data["2_2_2_unresolved_conflicts"].append({ 
-                        "agent_id": doctor.agent_id,
-                        "specialty": doctor.specialty.value,
-                        "step": "review",
-                        "audit_result": audit_results_of_unresolved_conflicts_during_review
-                    })
+                        audit_round_data["2_1_2_domain_specific_knowledge_activation"].append({
+                            "agent_id": doctor.agent_id,
+                            "specialty": doctor.specialty.value,
+                            "step": "review",
+                            "audit_result": audit_results_of_domain_specific_knowledge_activation
+                        })
+                        audit_round_data["2_2_1_repetition_of_initial_views"].append({
+                            "agent_id": doctor.agent_id,
+                            "specialty": doctor.specialty.value,
+                            "step": "review",
+                            "audit_result": audit_results_repetition_of_initial_views
+                        })
+                        audit_round_data["2_2_2_unresolved_conflicts"].append({ 
+                            "agent_id": doctor.agent_id,
+                            "specialty": doctor.specialty.value,
+                            "step": "review",
+                            "audit_result": audit_results_of_unresolved_conflicts_during_review
+                        })
 
                     case_history["rounds"][-1]["reviews"].append({
                         "agent_id": doctor.agent_id,
@@ -644,50 +648,51 @@ class MDTConsultation:
                 print(f"Final answer: {final_decision_log['parsed_output'].get('answer', 'N/A')}")
             else:
                 print("Consultation ended without a final decision being generated.")
+            if task == "audit":
+                # audit 3.1.1: Suppression of Correct Minority Views by Incorrect Consensus during Decision-making for decision-maker
+                audit_results_of_suppression_of_correct_minority_views_by_incorrect_consensus_for_decision_maker = self.auditor_agent.audit_suppression_by_majority(
+                    question = question, options = options, image_path = image_path, current_agent_id = self.decision_agent.agent_id, answer = decision_answer, explanation = decision_explanation, case_history = case_history
+                ) # here the discussion_context includes all the domain agents' answers and explanations before this decision
 
-            # audit 3.1.1: Suppression of Correct Minority Views by Incorrect Consensus during Decision-making for decision-maker
-            audit_results_of_suppression_of_correct_minority_views_by_incorrect_consensus_for_decision_maker = self.auditor_agent.audit_suppression_by_majority(
-                question = question, options = options, image_path = image_path, current_agent_id = self.decision_agent.agent_id, answer = decision_answer, explanation = decision_explanation, case_history = case_history
-            ) # here the discussion_context includes all the domain agents' answers and explanations before this decision
+                # audit 3.1.2: Reasoning Distorted by Authority Bias for decision-maker
+                audit_results_of_authority_bias_for_decision_maker = self.auditor_agent.audit_authority_bias(
+                    question = question, options = options, image_path = image_path, current_agent_id = self.decision_agent.agent_id, explanation = decision_explanation, case_history = case_history, answer = decision_answer
+                ) # here the discussion_context must include the role of domain agent and their answer and explanation before this decision
 
-            # audit 3.1.2: Reasoning Distorted by Authority Bias for decision-maker
-            audit_results_of_authority_bias_for_decision_maker = self.auditor_agent.audit_authority_bias(
-                question = question, options = options, image_path = image_path, current_agent_id = self.decision_agent.agent_id, explanation = decision_explanation, case_history = case_history, answer = decision_answer
-            ) # here the discussion_context must include the role of domain agent and their answer and explanation before this decision
-
-            # audit 3.1.3: Neglect of Contradictions in Reasoning Process for decision-maker
-            audit_results_of_neglect_of_contradictions_in_reasoning_process_for_decision_maker = self.auditor_agent.audit_contradictions_during_decision(
-                question = question, current_agent_id = self.decision_agent.agent_id, explanation = decision_explanation, case_history = case_history, options = options
-            ) # here the discussion_context includes all the domain agents' answers and explanations before this decision
-            if current_round > 1:
-                # audit 3.2.1: Self-Contradiction in Viewpoints Across Rounds for decision-maker
-                audit_results_of_self_contradiction_in_viewpoints_across_rounds_for_decision_maker = self.auditor_agent.audit_contradictions_across_rounds(
-                    question = question, options = options, answer = decision_answer, current_agent_id = self.decision_agent.agent_id, explanation = decision_explanation, case_history = case_history
-                ) # here the meta agent's memory includes all its previous decisions and syntheses!
-                audit_round_data["3_2_1_self_contradiction_when_decision"].append({
+                # audit 3.1.3: Neglect of Contradictions in Reasoning Process for decision-maker
+                audit_results_of_neglect_of_contradictions_in_reasoning_process_for_decision_maker = self.auditor_agent.audit_contradictions_during_decision(
+                    question = question, current_agent_id = self.decision_agent.agent_id, explanation = decision_explanation, case_history = case_history, options = options
+                ) # here the discussion_context includes all the domain agents' answers and explanations before this decision
+                if current_round > 1:
+                    # audit 3.2.1: Self-Contradiction in Viewpoints Across Rounds for decision-maker
+                    audit_results_of_self_contradiction_in_viewpoints_across_rounds_for_decision_maker = self.auditor_agent.audit_contradictions_across_rounds(
+                        question = question, options = options, answer = decision_answer, current_agent_id = self.decision_agent.agent_id, explanation = decision_explanation, case_history = case_history
+                    ) # here the meta agent's memory includes all its previous decisions and syntheses!
+                    audit_round_data["3_2_1_self_contradiction_when_decision"].append({
+                        "agent_id": self.decision_agent.agent_id,
+                        "step": "decision",
+                        "audit_result": audit_results_of_self_contradiction_in_viewpoints_across_rounds_for_decision_maker
+                    })
+                audit_round_data["3_1_1_suppression_of_minority_views"].append({
                     "agent_id": self.decision_agent.agent_id,
                     "step": "decision",
-                    "audit_result": audit_results_of_self_contradiction_in_viewpoints_across_rounds_for_decision_maker
+                    "audit_result": audit_results_of_suppression_of_correct_minority_views_by_incorrect_consensus_for_decision_maker
                 })
-            audit_round_data["3_1_1_suppression_of_minority_views"].append({
-                "agent_id": self.decision_agent.agent_id,
-                "step": "decision",
-                "audit_result": audit_results_of_suppression_of_correct_minority_views_by_incorrect_consensus_for_decision_maker
-            })
-            audit_round_data["3_1_2_authority_bias"].append({
-                "agent_id": self.decision_agent.agent_id,
-                "step": "decision",
-                "audit_result": audit_results_of_authority_bias_for_decision_maker
-            })
-            audit_round_data["3_1_3_neglect_of_contradictions"].append({
-                "agent_id": self.decision_agent.agent_id,
-                "step": "decision",
-                "audit_result": audit_results_of_neglect_of_contradictions_in_reasoning_process_for_decision_maker
-            })
+                audit_round_data["3_1_2_authority_bias"].append({
+                    "agent_id": self.decision_agent.agent_id,
+                    "step": "decision",
+                    "audit_result": audit_results_of_authority_bias_for_decision_maker
+                })
+                audit_round_data["3_1_3_neglect_of_contradictions"].append({
+                    "agent_id": self.decision_agent.agent_id,
+                    "step": "decision",
+                    "audit_result": audit_results_of_neglect_of_contradictions_in_reasoning_process_for_decision_maker
+                })
 
 
             case_history["rounds"][-1]["decision"] = final_decision_log
-            case_history["audit"] = audit
+            if task == "audit":
+                case_history["audit"] = audit
             # Finalize history
             processing_time = time.time() - start_time
             
@@ -700,7 +705,7 @@ class MDTConsultation:
 
             return case_history
 
-def process_input(item, model_key, meta_model_key, decision_model_key, auditor_model_key, config_path):
+def process_input(item, model_key, meta_model_key, decision_model_key, auditor_model_key, config_path, task:str):
     """Process a single input data item."""
     mdt = MDTConsultation(
         max_rounds=3,
@@ -715,13 +720,13 @@ def process_input(item, model_key, meta_model_key, decision_model_key, auditor_m
         question=item.get("question"),
         options=item.get("options"),
         image_path=item.get("image_path"),
+        task = task
     )
 
 
 def main():
     parser = argparse.ArgumentParser(description="Run MDT consultation on medical datasets")
     parser.add_argument("--dataset", type=str, required=True, help="Specify dataset name")
-    parser.add_argument("--qa_type", type=str, choices=["mc", "ff"], default="mc", help="QA type")
     parser.add_argument("--model", required=True, type=str, help="Model for doctor agents")
     parser.add_argument("--meta_model", required=True, type=str, help="Model for meta agent")
     parser.add_argument("--decision_model", required=True, type=str, help="Model for decision agent")
@@ -729,39 +734,52 @@ def main():
     parser.add_argument("--num_samples", type=int, required=True, help="Number of samples to process")
     parser.add_argument("--config_path", type=str, default="config.toml", help="Path to config file")
     parser.add_argument("--time_stamp", type=str, required=True, help="Timestamp for logging purposes")
+    parser.add_argument("--task", type = str, required=True, help="audit or open_coding?")
     args = parser.parse_args()
 
     dataset_name = args.dataset
     print(f"Dataset: {dataset_name}")
-
+    task = args.task
+    print(f"Task: {task}")
     timestamp = args.time_stamp
-    qa_type = args.qa_type
-    current_model_name = current_file_name
+    current_mas_name = current_file_name
     main_llm = args.model
     
-    terminal_log_dir = project_root / "logs" / "audit_results" / timestamp / current_model_name / dataset_name / main_llm / "terminal_log"
-    terminal_log_dir.mkdir(parents=True, exist_ok=True)
-    terminal_log_file = terminal_log_dir / f"{dataset_name}_full_terminal.log"
+    terminal_log_file = project_root / "logs" / f"{task}_results" / timestamp/ f"{current_mas_name}_{dataset_name}_{main_llm}_terminal_log" / "terminal.log"
+    terminal_log_file.parent.mkdir(parents=True, exist_ok=True)
     print(f"!!! Terminal output is being captured to: {terminal_log_file} !!!")
     sys.stdout = DualLogger(terminal_log_file, sys.stdout)
     sys.stderr = DualLogger(terminal_log_file, sys.stderr) # 捕获报错和tqdm进度条
 
-    logs_dir = project_root / "logs" / "audit_results" / timestamp / current_model_name / dataset_name / main_llm
-    logs_dir.mkdir(parents=True, exist_ok=True)
-    print(f"Logs will be saved to: {logs_dir}")
-
-    data_path = project_root / "datasets" / dataset_name / f"medqa_{qa_type}_test.json"
+    data_path = project_root / "datasets" / "processed" / dataset_name / f"{task}" / f"medqa_{dataset_name.lower()}_{task}.json"
+    
+    output_file = project_root / "logs" / f"{task}_results" / timestamp / f"{current_mas_name}_{dataset_name}_{main_llm}.jsonl"
+    error_output_file = project_root / "logs" / f"{task}_results" / timestamp / f"{current_mas_name}_{dataset_name}_{main_llm}_errors.jsonl"
+    output_file.parent.mkdir(parents=True, exist_ok=True)
+    error_output_file.parent.mkdir(parents=True, exist_ok=True)
 
     data = load_json(data_path)
     print(f"Loaded {len(data)} samples from {data_path}")
 
     for item in tqdm(data[:args.num_samples], desc=f"Running MDT on {args.dataset}"):
         qid = item["qid"]
-        log_file_path = os.path.join(logs_dir, f"{qid}-result.json")
-        if os.path.exists(log_file_path):
+        existing_qids = set()
+        if output_file.exists():
+            print(f"Output file {output_file} already exists. Appending new results.")
+            with open(output_file, 'r', encoding='utf-8') as f:
+                for line in f:
+                    line = line.strip()
+                    if not line: continue
+                    try:
+                        record = json.loads(line)
+                        if "qid" in record:
+                            existing_qids.add(record["qid"])
+                    except json.JSONDecodeError:
+                        print("Warning: Found a corrupted line in jsonl file, skipping.")
+            print(f"Found {len(existing_qids)} already processed cases. They will be skipped.")
+        if qid in existing_qids:
             print(f"Skipping {qid} - already processed")
             continue
-
         try:
             full_case_history = process_input(
                 item,
@@ -769,7 +787,8 @@ def main():
                 meta_model_key=args.meta_model,
                 decision_model_key=args.decision_model,
                 auditor_model_key=args.auditor_model,
-                config_path=args.config_path
+                config_path=args.config_path,
+                task = task
             )
 
             final_decision_log = full_case_history.get("final_decision_log", {})
@@ -787,12 +806,12 @@ def main():
                 "predicted_answer": predicted_answer,
                 "case_history": full_case_history,
             }
-            save_json(item_result, log_file_path)
+            save_jsonl(item_result, output_file)
 
         except Exception as e:
             print(f"Error processing item {qid}: {e}")
             error_log = {"qid": qid, "error": str(e)}
-            save_json(error_log, os.path.join(logs_dir, f"{qid}-error.json"))
+            save_jsonl(error_log, error_output_file)
 
 
 if __name__ == "__main__":
