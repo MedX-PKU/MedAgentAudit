@@ -88,12 +88,8 @@ class DoctorAgent(BaseAgent):
 
         text_content = {
             "type": "text",
-            "text": f"{question_with_options}\n\nProvide your analysis in JSON format, including 'explanation' (detailed reasoning) ,'answer' (clear conclusion) , and 'IU' (a list of information units)  fields."
+            "text": f"{question_with_options}\n\nProvide your analysis in JSON format, including 'explanation' (detailed reasoning) ,'answer' (clear conclusion)."
         }
-        text_content["text"] += (
-            f"Each IU in the list should be a string representing a single piece of object you perceive from the input text or image(if we have the image)"
-            f"(e.g., 'A 2cm nodule is visible in the upper left lung lobe.', 'The patient's white blood cell count is 15,000/µL.')"
-        )
         user_content.append(text_content)
 
         user_message = {
