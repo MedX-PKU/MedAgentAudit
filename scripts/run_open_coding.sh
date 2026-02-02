@@ -48,7 +48,7 @@ run_command() {
 # 定义数据集和任务类型
 QA_DATASETS=("MedQA" "PubMedQA" "MedXpertQA-text")
 
-VQA_DATASETS=("PathVQA" "VQA-RAD" "Slake")
+VQA_DATASETS=("PathVQA" "VQA-RAD" "SLAKE")
 
 QA_LLM=("deepseek-reasoner")
 

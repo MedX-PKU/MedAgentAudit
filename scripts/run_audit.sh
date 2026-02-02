@@ -49,7 +49,7 @@ run_command() {
 # QA_DATASETS=("MedQA" "PubMedQA" "MedXpertQA-text")
 QA_DATASETS=("MedQA")
 
-VQA_DATASETS=("PathVQA" "VQA-RAD" "Slake")
+VQA_DATASETS=("PathVQA" "VQA-RAD" "SLAKE")
 QA_LLM=("deepseek-reasoner" "gpt-5.2" "gemini-3-flash-preview" "qwen3-8b")
 VQA_LLM=("glm-4.6v" "gpt-5.2" "gemini-3-flash-preview" "qwen3-vl-8b-thinking")
 # this experiment‘s samples' num
