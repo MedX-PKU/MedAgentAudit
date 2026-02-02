@@ -531,7 +531,8 @@ class HealthcareAgentFramework(BaseAgent):
 
 
         audit["rounds"].append(audit_round_data)
-        case_history["audit"] = audit
+        if task == "audit":
+            case_history["audit"] = audit
         processing_time = time.time() - start_time
         print(f"Finished QID: {qid}. Time: {processing_time:.2f}s. Final Answer: {predicted_answer}")
 

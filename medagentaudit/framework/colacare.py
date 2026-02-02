@@ -829,7 +829,8 @@ class MDTConsultation:
         print(f"Final decision: {final_decision_parsed.get('answer', 'N/A')}")
 
         processing_time = time.time() - start_time
-        case_history["audit"] = audit
+        if task == "audit":
+            case_history["audit"] = audit
         case_history["final_decision_log"] = final_decision_log
         case_history["consensus_reached"] = consensus_reached
         case_history["total_rounds"] = current_round
