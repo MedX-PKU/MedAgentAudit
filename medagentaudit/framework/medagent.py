@@ -440,6 +440,9 @@ class MDTConsultation:
                 current_round += 1
                 audit_round_data = {
                     "round": current_round,
+                    "1_1_1_factual_hallucination": [],
+                    "1_2_1_neglect_or_misinterpretation_of_modality_info": [],
+
                     "2_1_1_role_assignment": [], 
                     "2_1_2_domain_specific_knowledge_activation": [], 
                     
@@ -469,9 +472,15 @@ class MDTConsultation:
                     parsed_output = opinion_log["parsed_output"]
                     doctor_opinion_parsed_outputs.append(parsed_output)
                     print(f"Doctor {i+1} opinion: {parsed_output.get('answer', '')}")
+                    # audit 1.1.1 facutal hallucination
+                    audit_results_of_factual_hallucination = self.auditor_agent.audit_factual_hallucination(question = question, image_path=image_path, agent_id=doctor.agent_id, specialty=doctor.specialty, answer=parsed_output.get('answer', ''), explanation=parsed_output.get('explanation', ''))
+
+                    # audit 1.2.1 neglect or misinterpretation of modality information
+                    audit_results_of_neglect_or_misinterpretation_of_modality_info = self.auditor_agent.audit_neglect_or_misinterpretation_of_modality_info(question = question, image_path=image_path, agent_id=doctor.agent_id, specialty=doctor.specialty, answer=parsed_output.get('answer', ''), explanation=parsed_output.get('explanation', ''))
 
                     # audit 2.1.2 Failure to Activate Specialist Knowledge During Role Execution during Collaborative discussion
                     audit_results_of_domain_specific_knowledge_activation = self.auditor_agent.audit_domain_specific_knowledge_activation(question = question, image_path=image_path, agent_id=doctor.agent_id, specialty=doctor.specialty, answer=parsed_output.get('answer', ''), explanation=parsed_output.get('explanation', ''))
+                    
                     if current_round > 1:
                         # audit 2.2.1 Repetition of Initial Views during Collaborative discussion
                         audit_results_of_repetition_of_initial_views = self.auditor_agent.audit_repetition_of_initial_views(question = question, image_path=image_path, current_agent_id=doctor.agent_id, current_answer = parsed_output.get('answer', ''), current_explanation=parsed_output.get('explanation', ''), case_history=case_history) 
@@ -489,6 +498,21 @@ class MDTConsultation:
                             "step": "analysis",
                             "audit_result": audit_results_of_unresolved_conflicts_during_Collaboration
                         })
+
+                    audit_round_data["1_1_1_factual_hallucination"].append({
+                        "agent_id": doctor.agent_id,
+                        "specialty": doctor.specialty.value,
+                        "step": "analysis",
+                        "audit_result": audit_results_of_factual_hallucination
+                    })
+                    
+                    audit_round_data["1_2_1_neglect_or_misinterpretation_of_modality_info"].append({
+                        "agent_id": doctor.agent_id,
+                        "specialty": doctor.specialty.value,
+                        "step": "analysis",
+                        "audit_result": audit_results_of_neglect_or_misinterpretation_of_modality_info
+                    })
+
                     audit_round_data["2_1_2_domain_specific_knowledge_activation"].append({
                         "agent_id": doctor.agent_id,
                         "specialty": doctor.specialty.value,
