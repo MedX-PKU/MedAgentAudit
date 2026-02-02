@@ -609,7 +609,9 @@ def main():
                     except json.JSONDecodeError:
                         print("Warning: Found a corrupted line in jsonl file, skipping.")
             print(f"Found {len(existing_qids)} already processed cases. They will be skipped.")
-
+        if qid in existing_qids:
+            print(f"Skipping {qid} - already processed")
+            continue
         try:
             result = framework.run_query(data_item=item, task = task)
             save_jsonl(result, output_file)
