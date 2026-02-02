@@ -288,9 +288,14 @@ Your output should be in JSON format, including 'explanation' (synthesized reaso
         opinions_text = "\n".join(formatted_opinions)
 
         # Prepare user message with all opinions
+        user_content = []
+        user_content.append({
+            "type": "text",
+            "text": f"Round {current_round} Doctors' Opinions:\n{opinions_text}\n\n"
+        })
         user_message = {
             "role": "user",
-            "content": f"Round {current_round} Doctors' Opinions:\n{opinions_text}\n\n"
+            "content": user_content
         }
 
         response_text, reasoning_content, system_msg, user_msg = self.call_llm(system_message = system_message, user_message = user_message)

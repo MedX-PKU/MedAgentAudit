@@ -68,13 +68,13 @@ class Agent(BaseAgent):
             base64_image = encode_image(image_path)
             user_content = [{"type": "text", "text": prompt}, {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}}]
         else:
-            user_content = prompt
+            user_content = [{"type": "text", "text": prompt}]
         user_message = {"role": "user", "content": user_content}
         messages = [system_message]
         if use_memory and self.memory:
             messages.extend(self.memory)
         messages.append(user_message)
-        response, reasoning_content, system_message, user_message = self.call_llm(system_message = system_message, user_message = user_message, response_format=response_format)
+        response, reasoning_content, system_message, user_message = self.call_llm(system_message = system_message, user_message = user_message)
         user_message["content"] = [item for item in user_message["content"] if item.get("type") != "image_url"]
         return response, reasoning_content, system_message, user_message
 
@@ -648,8 +648,7 @@ class MDAgentsFramework:
         else:
             main_prompt += "\nProvide your answer as a JSON object with 'answer', 'explanation', "
 
-        response, reasoning_content, _, _ = agent.chat(prompt=main_prompt, 
-                                       image_path=data_item.get('image_path'))
+        response, reasoning_content, _, _ = agent.chat(prompt=main_prompt, image_path=data_item.get('image_path'))
     
 
         try:
