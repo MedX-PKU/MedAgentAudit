@@ -48,19 +48,18 @@ run_command() {
 # 定义数据集和任务类型
 QA_DATASETS=("MedQA" "PubMedQA" "MedXpertQA-text")
 VQA_DATASETS=("PathVQA" "VQA-RAD" "Slake")
-QA_LLM=("deepseek-reasoner" "gpt-5.2" "gemini-2.5-flash" "qwen3-8b")
-VQA_LLM=("glm-4.6v" "gpt-5.2" "gemini-2.5-flash" "qwen3-vl-8b-thinking")
+QA_LLM=("deepseek-reasoner" "gpt-5.2" "gemini-3-flash-preview" "qwen3-8b")
+VQA_LLM=("glm-4.6v" "gpt-5.2" "gemini-3-flash-preview" "qwen3-vl-8b-thinking")
 # this experiment‘s samples' num
-num=1
-time_stamp= "20260115"
-qa_type= "mc"
+num=100
+time_stamp="20260202"
 config_path="config.toml"
 echo "Starting experiments..."
 
 # 1. QA
 for dataset in "${QA_DATASETS[@]}"; do
     for qa_llm in "${QA_LLM[@]}"; do
-        cmd="python -m medagentaudit.framework.single_llm --dataset $dataset --qa_type $qa_type --config_path $config_path --num_samples $num --time_stamp $time_stamp --model_key $qa_llm" 
+        cmd="python -m medagentaudit.framework.single_llm --dataset $dataset --config_path $config_path --num_samples $num --time_stamp $time_stamp --model_key $qa_llm" 
         run_command "$cmd"
     done
 done
@@ -68,7 +67,7 @@ done
 # 2. VQA
 for dataset in "${VQA_DATASETS[@]}"; do
     for vqa_llm in "${VQA_LLM[@]}"; do
-        cmd="python -m medagentaudit.framework.single_llm --dataset $dataset --qa_type $qa_type --config_path $config_path --num_samples $num --time_stamp $time_stamp --model_key $vqa_llm"
+        cmd="python -m medagentaudit.framework.single_llm --dataset $dataset --config_path $config_path --num_samples $num --time_stamp $time_stamp --model_key $vqa_llm"
         run_command "$cmd"
     done
 done

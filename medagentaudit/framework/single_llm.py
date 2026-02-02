@@ -23,7 +23,7 @@ sys.path.extend([str(utils_root), str(project_root), str(auditor_root), str(comm
 
 from logger import DualLogger
 from encode_image import encode_image
-from json_utils import load_json, save_json
+from json_utils import load_json, save_jsonl
 from base_agent import BaseAgent
 from agent_type import AgentType
 
@@ -140,11 +140,10 @@ class SingleModelInference(BaseAgent):
         user_content = self._prepare_user_message(prompt, image_path)
         user_message = {"role": "user", "content": user_content}
         # Call LLM to get responses
-        response, system_message, user_message = self.call_llm(
+        response, reasoning_content, system_message, user_message = self.call_llm(
             system_message=system_message,
             user_message=user_message,
         )
-
 
         # For zero-shot and few-shot, use the first response
         predicted_answer = response.strip()
@@ -171,6 +170,7 @@ class SingleModelInference(BaseAgent):
             "image_path": image_path,
             "ground_truth": ground_truth,
             "predicted_answer": predicted_answer,
+            "reasoning_content": reasoning_content,
             "case_history": {
                 "reasoning": reasoning,
                 "model": self.model_key,
@@ -186,8 +186,6 @@ class SingleModelInference(BaseAgent):
 def main():
     parser = argparse.ArgumentParser(description="Run single model inference on medical datasets")
     parser.add_argument("--dataset", type=str, required=True, help="Dataset name (MedQA, PubMedQA, PathVQA, VQA-RAD)")
-    parser.add_argument("--qa_type", type=str, choices=["mc", "ff"], required=True,
-                       help="QA type: multiple-choice (mc) or free-form (ff)")
     parser.add_argument("--model_key", type=str, default="qwen-max-latest",
                        help="Model key from LLM_MODELS_SETTINGS")
     parser.add_argument("--num_samples", type=int, default=5,
@@ -199,31 +197,27 @@ def main():
 
     # Dataset and QA type
     dataset_name = args.dataset
-    qa_type = args.qa_type
     model_key = args.model_key
     num_samples = args.num_samples
     timestamp = args.time_stamp
     config_path = args.config_path
     print(f"Dataset: {dataset_name}")
-    print(f"QA Type: {qa_type}")
     print(f"Model: {model_key}")
     print(f"Sample Size: {num_samples}")
 
     main_llm = args.model_key
 
-    terminal_log_dir = project_root / "logs" / "single_llm" / timestamp / dataset_name / main_llm / "terminal_log"
-    terminal_log_dir.mkdir(parents=True, exist_ok=True)
-    terminal_log_file = terminal_log_dir / f"{dataset_name}_full_terminal.log"
+    terminal_log_file = project_root / "logs" / f"single_llm" / timestamp/ f"{dataset_name}_{main_llm}_terminal.log"
+    terminal_log_file.parent.mkdir(parents=True, exist_ok=True)
     print(f"!!! Terminal output is being captured to: {terminal_log_file} !!!")
     sys.stdout = DualLogger(terminal_log_file, sys.stdout)
     sys.stderr = DualLogger(terminal_log_file, sys.stderr) # 捕获报错和tqdm进度条
 
     # Set up data path
-    data_path = project_root / "datasets" / dataset_name / f"medqa_{qa_type}_test.json"
+    data_path = project_root / "datasets" / "processed" / dataset_name / f"audit" / f"medqa_{dataset_name.lower()}_audit.json"
 
-    logs_dir = project_root / "logs" / "single_llm" / timestamp / dataset_name / main_llm
-    logs_dir.mkdir(parents=True, exist_ok=True)
-    print(f"Logs will be saved to: {logs_dir}")
+    output_file = project_root / "logs" / f"single_llm" / timestamp / f"{dataset_name}_{main_llm}.jsonl"
+    output_file.parent.mkdir(parents=True, exist_ok=True)
 
     print(f"Data path: {data_path}")
 
@@ -240,15 +234,27 @@ def main():
     error_count = 0
     correct_count = 0
 
+    existing_qids = set()
+    if output_file.exists():
+        print(f"Output file {output_file} already exists. Appending new results.")
+        with open(output_file, 'r', encoding='utf-8') as f:
+            for line in f:
+                line = line.strip()
+                if not line: continue
+                try:
+                    record = json.loads(line)
+                    if "qid" in record:
+                        existing_qids.add(record["qid"])
+                except json.JSONDecodeError:
+                    print("Warning: Found a corrupted line in jsonl file, skipping.")
+        print(f"Found {len(existing_qids)} already processed cases. They will be skipped.")
+
     # Process each item
     for item in tqdm(data[:num_samples], desc=f"Processing {dataset_name}"):
         qid = item["qid"]
 
-        # Skip if already processed
-        result_path = logs_dir / f"{qid}-result.json"
-        if result_path.exists():
+        if qid in existing_qids:
             print(f"Skipping {qid} - already processed")
-            skipped_count += 1
             continue
 
         try:
@@ -258,7 +264,7 @@ def main():
             )
 
             # Save the result
-            save_json(result, result_path)
+            save_jsonl(result, output_file)
 
             # Update stats
             processed_count += 1
@@ -271,7 +277,7 @@ def main():
 
     # Print summary
     print("\n" + "="*50)
-    print(f"Processing Summary for {dataset_name} ({qa_type}):")
+    print(f"Processing Summary for {dataset_name}:")
     print(f"Total items: {len(data)}")
     print(f"Processed: {processed_count}")
     print(f"Skipped (already processed): {skipped_count}")

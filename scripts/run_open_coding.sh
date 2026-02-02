@@ -54,7 +54,7 @@ QA_LLM=("deepseek-reasoner")
 
 VQA_LLM=("gemini-3-flash-preview")
 # this experiment‘s samples' num
-num=2
+num=100
 time_stamp="20260202"
 task="open_coding"
 AUDITOR="gemini-3-flash-preview"

@@ -46,9 +46,7 @@ run_command() {
 }
 
 # 定义数据集和任务类型
-# QA_DATASETS=("MedQA" "PubMedQA" "MedXpertQA-text")
-QA_DATASETS=("MedQA")
-
+QA_DATASETS=("MedQA" "PubMedQA" "MedXpertQA-text")
 VQA_DATASETS=("PathVQA" "VQA-RAD" "SLAKE")
 QA_LLM=("deepseek-reasoner" "gpt-5.2" "gemini-3-flash-preview" "qwen3-8b")
 VQA_LLM=("glm-4.6v" "gpt-5.2" "gemini-3-flash-preview" "qwen3-vl-8b-thinking")
@@ -155,7 +153,7 @@ for dataset in "${VQA_DATASETS[@]}"; do
         run_command "$cmd"
     done
 done
-等待所有任务完成
+# 等待所有任务完成
 wait
 
 echo "All experiments completed!"
