@@ -385,7 +385,6 @@ class MACFramework:
 def main():
     parser = argparse.ArgumentParser(description="Run MAC Framework with Quantitative Observation on medical datasets")
     parser.add_argument("--dataset", type=str, required=True, help="Specify dataset name")
-    parser.add_argument("--qa_type", type=str, choices=["mc", "ff"], required=True, help="QA type: multiple-choice (mc) or free-form (ff)")
     parser.add_argument("--doctor_model", type=str, required=True, help="Model key for the Doctor agents")
     parser.add_argument("--supervisor_model", type=str, required=True, help="Model key for the Supervisor agent")
     parser.add_argument("--auditor_model", type=str, required=True, help="Model key for the Auditor agent")
@@ -394,27 +393,29 @@ def main():
     parser.add_argument("--config_path", type=str, required=True,help="Path to the config.toml file,default = utils/config.toml")
     parser.add_argument("--num_samples", type=int, required=True,help="Number of samples to process from the dataset")
     parser.add_argument("--time_stamp", type=str, required=True, help="Timestamp for logging purposes")
+    parser.add_argument("--task", type = str, required=True, help="audit or open_coding?")
 
     args = parser.parse_args()
 
-    current_model_name = current_file_name
+    current_mas_name = current_file_name
     timestamp = args.time_stamp
     dataset_name = args.dataset
-    qa_type = args.qa_type
     main_llm = args.doctor_model
+    task = args.task
+    print(f"Task: {task}")
 
-    terminal_log_dir = project_root / "logs" / "audit_results" / timestamp / current_model_name / dataset_name / main_llm / "terminal_log"
-    terminal_log_dir.mkdir(parents=True, exist_ok=True)
-    terminal_log_file = terminal_log_dir / f"{dataset_name}_full_terminal.log"
+    terminal_log_file = project_root / "logs" / f"{task}_results" / timestamp/ f"{current_mas_name}_{dataset_name}_{main_llm}_terminal_log" / "terminal.log"
+    terminal_log_file.parent.mkdir(parents=True, exist_ok=True)
     print(f"!!! Terminal output is being captured to: {terminal_log_file} !!!")
     sys.stdout = DualLogger(terminal_log_file, sys.stdout)
     sys.stderr = DualLogger(terminal_log_file, sys.stderr) # 捕获报错和tqdm进度条
     
-    data_path = project_root / "datasets" / dataset_name / f"medqa_{qa_type}_test.json"
+    data_path = project_root / "datasets" / "processed" / dataset_name / f"{task}" / f"medqa_{dataset_name.lower()}_{task}.json"
 
-    logs_dir = project_root / "logs" / "audit_results" / timestamp / current_model_name / dataset_name / main_llm
-    logs_dir.mkdir(parents=True, exist_ok=True)
-    print(f"Using Log Directory: {logs_dir}")
+    output_file = project_root / "logs" / f"{task}_results" / timestamp / f"{current_mas_name}_{dataset_name}_{main_llm}.jsonl"
+    error_output_file = project_root / "logs" / f"{task}_results" / timestamp / f"{current_mas_name}_{dataset_name}_{main_llm}_errors.jsonl"
+    output_file.parent.mkdir(parents=True, exist_ok=True)
+    error_output_file.parent.mkdir(parents=True, exist_ok=True)
 
     if not data_path.exists():
         print(f"Error: Dataset file not found at {data_path}")

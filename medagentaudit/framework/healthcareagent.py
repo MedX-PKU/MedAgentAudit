@@ -552,7 +552,6 @@ class HealthcareAgentFramework(BaseAgent):
 def main():
     parser = argparse.ArgumentParser(description="Run HealthcareAgent Framework on medical datasets")
     parser.add_argument("--dataset", type=str, required=True, help="Specify dataset name")
-    parser.add_argument("--qa_type", type=str, choices=["mc", "ff"], required=True, help="QA type: multiple-choice (mc) or free-form (ff)")
     parser.add_argument("--config_path", type=str, required=True, help="default = utils/config.toml")
     parser.add_argument("--model", type=str,required=True, help="qa= deepseek-reasoner/gpt-5.1/gemini-2.5-flash,vqa = qwen-3-vl/gpt-5.1/gemini-2.5-flash")
     parser.add_argument("--auditor_model", type=str, required=True, help="gemini-3-pro-preview")
