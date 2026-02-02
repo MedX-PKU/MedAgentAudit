@@ -895,9 +895,6 @@ def main():
     dataset_name = args.dataset
     print(f"Dataset: {dataset_name}")
 
-    qa_type = args.qa_type
-    print(f"QA Format: {qa_type}")
-
     task = args.task
     print(f"Task: {task}")
 
