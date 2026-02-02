@@ -324,8 +324,8 @@ def process_pathvqa(raw_dir=RAW_DATA_DIR, output_dir=PROCESSED_DATA_DIR, audit_s
     """
     path_vqa_path = raw_dir / "PathVQA" / "qas" / "test" / "test_qa.pkl"
     path_vqa_images = raw_dir / "PathVQA" / "images" / "test"
-    audit_output_path = output_dir / "PathVQA" / "audit" / "medqa_pathvqa.json"
-    open_coding_output_path = output_dir / "PathVQA" / "open_coding" / "medqa_pathvqa.json"
+    audit_output_path = output_dir / "PathVQA" / "audit" / "medqa_pathvqa_audit.json"
+    open_coding_output_path = output_dir / "PathVQA" / "open_coding" / "medqa_pathvqa_open_coding.json"
 
     # Create output directory if it doesn't exist
     audit_output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -393,8 +393,8 @@ def process_vqa_rad(raw_dir=RAW_DATA_DIR, output_dir=PROCESSED_DATA_DIR, audit_s
     vqa_rad_images = raw_dir / "VQA-RAD" / "images" / "test"
     audit_output_path_base = output_dir / "VQA-RAD" / "audit"
     open_coding_output_path_base = output_dir / "VQA-RAD" / "open_coding"
-    audit_output_path = audit_output_path_base / "medqa_vqa-rad.json"
-    open_coding_output_path = open_coding_output_path_base / "medqa_vqa-rad.json"
+    audit_output_path = audit_output_path_base / "medqa_vqa-rad_audit.json"
+    open_coding_output_path = open_coding_output_path_base / "medqa_vqa-rad_open_coding.json"
 
     # Create output directory if it doesn't exist
     audit_output_path_base.mkdir(parents=True, exist_ok=True)
