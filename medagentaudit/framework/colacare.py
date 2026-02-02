@@ -901,25 +901,20 @@ def main():
     print(f"Task: {task}")
 
     timestamp = args.time_stamp
-    current_model_name = current_file_name
+    current_mas_name = current_file_name
 
     main_llm = args.meta_model
 
-    terminal_log_dir = project_root / "logs" / "audit_results" / timestamp / current_model_name / dataset_name / main_llm / "terminal_log"
-    terminal_log_dir.mkdir(parents=True, exist_ok=True)
-    terminal_log_file = terminal_log_dir / f"{dataset_name}_full_terminal.log"
+    terminal_log_file = project_root / "logs" / f"{task}_results" / f"{timestamp}_{current_mas_name}_{dataset_name}_{main_llm}_terminal_log" / "terminal.log"
+    terminal_log_file.parent.mkdir(parents=True, exist_ok=True)
     print(f"!!! Terminal output is being captured to: {terminal_log_file} !!!")
     sys.stdout = DualLogger(terminal_log_file, sys.stdout)
     sys.stderr = DualLogger(terminal_log_file, sys.stderr) # 捕获报错和tqdm进度条
 
-    logs_dir = project_root / "logs" / "audit_results" / timestamp / current_model_name / dataset_name / main_llm
-    logs_dir.mkdir(parents=True, exist_ok=True)
-    print(f"Logs will be saved to: {logs_dir}")
-
     data_path = project_root / "datasets" / "processed" / dataset_name / f"{task}" / f"medqa_{dataset_name.lower()}_{task}.json"
     
-    output_file = project_root / "logs" / f"{task}_results" / f"{timestamp}_{current_model_name}_{dataset_name}.jsonl"
-    error_output_file = project_root / "logs" / f"{task}_results" / f"{timestamp}_{current_model_name}_{dataset_name}_errors.jsonl"
+    output_file = project_root / "logs" / f"{task}_results" / f"{timestamp}_{current_mas_name}_{dataset_name}_{main_llm}.jsonl"
+    error_output_file = project_root / "logs" / f"{task}_results" / f"{timestamp}_{current_mas_name}_{dataset_name}_{main_llm}_errors.jsonl"
     output_file.mkdir(parents=True, exist_ok=True)
     error_output_file.mkdir(parents=True, exist_ok=True)
     
