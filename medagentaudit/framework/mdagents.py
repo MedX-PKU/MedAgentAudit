@@ -623,7 +623,7 @@ class MDAgentsFramework:
                     specialties.append(member['specialty'])
             print(f"Recruited Teams: {[t['goal'] for t in teams]}")
             step_log["recruited_personnel"] = teams
-            step_log["specialties"] = [s.value for s in specialties]
+            step_log["specialties"] = [s for s in specialties]
             return teams, step_log
         return [], step_log
 

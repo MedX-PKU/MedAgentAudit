@@ -628,8 +628,8 @@ class MDTConsultation:
                         "specialty": doctor.specialty.value,
                         "log": review_log 
                     })
-
-                audit["rounds"].append(audit_round_data)
+                if task == "audit":
+                    audit["rounds"].append(audit_round_data)
 
                 consensus_reached = all_agree
 

@@ -506,7 +506,8 @@ class ReconcileCoordinator:
                     "response": resp, "interaction_log": step_log
                 })
                 print(f"Agent {agent.agent_id} round {round_num} answer: {resp.get('answer', '')} (conf: {resp.get('confidence', 0.0):.2f})")
-            audit["rounds"].append(audit_round_data)
+            if task == "audit":
+                audit["rounds"].append(audit_round_data)
             current_answers = new_answers
             consensus_reached = self._check_consensus(current_answers)
             if consensus_reached:
