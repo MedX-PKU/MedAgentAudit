@@ -75,6 +75,7 @@ class Agent(BaseAgent):
             messages.extend(self.memory)
         messages.append(user_message)
         response, reasoning_content, system_message, user_message = self.call_llm(system_message = system_message, user_message = user_message, response_format=response_format)
+        user_message["content"] = [item for item in user_message["content"] if item.get("type") != "image_url"]
         return response, reasoning_content, system_message, user_message
 
     def clear_memory(self):
