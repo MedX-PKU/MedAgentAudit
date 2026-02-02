@@ -24,7 +24,7 @@ project_root = current_file_path.parents[2]
 sys.path.extend([str(utils_root), str(project_root), str(auditor_root), str(common_root), str(core_root)])
 
 from encode_image import encode_image
-from json_utils import load_json, save_json, preprocess_response_string
+from json_utils import load_json, save_jsonl, preprocess_response_string
 from logger import DualLogger
 from auditor_agent import AuditorAgent
 from base_agent import BaseAgent
@@ -557,24 +557,28 @@ def main():
     parser.add_argument("--auditor_model", type=str, required=True, help="gemini-3-pro-preview")
     parser.add_argument("--num_samples", type = int, required=True,help = "number of samples to run")
     parser.add_argument("--time_stamp", type=str, required=True, help="Timestamp for logging purposes")
+    parser.add_argument("--task", type = str, required=True, help="audit or open_coding?")
 
     args = parser.parse_args()
     timestamp = args.time_stamp
-    qa_type = args.qa_type
-    current_model_name = current_file_name
+    current_mas_name = current_file_name
     dataset_name = args.dataset
     main_llm = args.model
 
-    terminal_log_dir = project_root / "logs" / "audit_results" / timestamp / current_model_name / dataset_name / main_llm / "terminal_log"
-    terminal_log_dir.mkdir(parents=True, exist_ok=True)
-    terminal_log_file = terminal_log_dir / f"{dataset_name}_full_terminal.log"
+    task = args.task
+
+    terminal_log_file = project_root / "logs" / f"{task}_results" / timestamp/ f"{current_mas_name}_{dataset_name}_{main_llm}_terminal_log" / "terminal.log"
+    terminal_log_file.parent.mkdir(parents=True, exist_ok=True)
     print(f"!!! Terminal output is being captured to: {terminal_log_file} !!!")
     sys.stdout = DualLogger(terminal_log_file, sys.stdout)
     sys.stderr = DualLogger(terminal_log_file, sys.stderr) # 捕获报错和tqdm进度条
 
-    logs_dir = project_root / "logs" / "audit_results" / timestamp / current_model_name / dataset_name / main_llm
-    logs_dir.mkdir(parents=True, exist_ok=True)
-    data_path = project_root / "datasets" / dataset_name / f"medqa_{qa_type}_test.json"
+    output_file = project_root / "logs" / f"{task}_results" / timestamp / f"{current_mas_name}_{dataset_name}_{main_llm}.jsonl"
+    error_output_file = project_root / "logs" / f"{task}_results" / timestamp / f"{current_mas_name}_{dataset_name}_{main_llm}_errors.jsonl"
+    output_file.parent.mkdir(parents=True, exist_ok=True)
+    error_output_file.parent.mkdir(parents=True, exist_ok=True)
+
+    data_path = project_root / "datasets" / "processed" / dataset_name / f"{task}" / f"medqa_{dataset_name.lower()}_{task}.json"
 
     if not os.path.exists(data_path):
         print(f"Error: Dataset file not found at {data_path}")
@@ -590,19 +594,29 @@ def main():
 
     for item in tqdm(data[:args.num_samples], desc=f"Running HealthcareAgent on {args.dataset}"):
         qid = item["qid"]
-        result_path = os.path.join(logs_dir, f"{qid}-result.json")
 
-        if os.path.exists(result_path):
-            print(f"Skipping {qid} - already processed")
-            continue
+        existing_qids = set()
+        if output_file.exists():
+            print(f"Output file {output_file} already exists. Appending new results.")
+            with open(output_file, 'r', encoding='utf-8') as f:
+                for line in f:
+                    line = line.strip()
+                    if not line: continue
+                    try:
+                        record = json.loads(line)
+                        if "qid" in record:
+                            existing_qids.add(record["qid"])
+                    except json.JSONDecodeError:
+                        print("Warning: Found a corrupted line in jsonl file, skipping.")
+            print(f"Found {len(existing_qids)} already processed cases. They will be skipped.")
 
         try:
             result = framework.run_query(item)
-            save_json(result, result_path)
+            save_jsonl(result, output_file)
         except Exception as e:
             print(f"CRITICAL MAIN LOOP ERROR processing item {qid}: {e}")
             error_result = {"qid": qid, "error": str(e), "timestamp": int(time.time())}
-            save_json(error_result, os.path.join(logs_dir, f"{qid}-error.json"))
+            save_jsonl(error_result, error_output_file)
 
 if __name__ == "__main__":
     main()
