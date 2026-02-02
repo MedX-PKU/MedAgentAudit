@@ -621,6 +621,7 @@ class MDTConsultation:
                     "step": "analysis",
                     "audit_result": audit_results_of_factual_hallucination
                 })
+                
                 audit_round_data["1_2_1_neglect_or_misinterpretation_of_modality_info"].append({
                     "agent_id": doctor.agent_id,
                     "specialty": doctor.specialty.value,
