@@ -905,7 +905,7 @@ def main():
 
     main_llm = args.meta_model
 
-    terminal_log_file = project_root / "logs" / f"{task}_results" / f"{timestamp}_{current_mas_name}_{dataset_name}_{main_llm}_terminal_log" / "terminal.log"
+    terminal_log_file = project_root / "logs" / f"{task}_results" / timestamp/ f"{current_mas_name}_{dataset_name}_{main_llm}_terminal_log" / "terminal.log"
     terminal_log_file.parent.mkdir(parents=True, exist_ok=True)
     print(f"!!! Terminal output is being captured to: {terminal_log_file} !!!")
     sys.stdout = DualLogger(terminal_log_file, sys.stdout)
@@ -913,10 +913,10 @@ def main():
 
     data_path = project_root / "datasets" / "processed" / dataset_name / f"{task}" / f"medqa_{dataset_name.lower()}_{task}.json"
     
-    output_file = project_root / "logs" / f"{task}_results" / f"{timestamp}_{current_mas_name}_{dataset_name}_{main_llm}.jsonl"
-    error_output_file = project_root / "logs" / f"{task}_results" / f"{timestamp}_{current_mas_name}_{dataset_name}_{main_llm}_errors.jsonl"
-    output_file.mkdir(parents=True, exist_ok=True)
-    error_output_file.mkdir(parents=True, exist_ok=True)
+    output_file = project_root / "logs" / f"{task}_results" / timestamp / f"{current_mas_name}_{dataset_name}_{main_llm}.jsonl"
+    error_output_file = project_root / "logs" / f"{task}_results" / timestamp / f"{current_mas_name}_{dataset_name}_{main_llm}_errors.jsonl"
+    output_file.parent.mkdir(parents=True, exist_ok=True)
+    error_output_file.parent.mkdir(parents=True, exist_ok=True)
     
     existing_qids = set()
     if output_file.exists():
