@@ -284,7 +284,7 @@ if __name__ == "__main__":
     
     # Define paths
     audit_result_path = project_root / "logs" / "audit_results" / timestamp
-    metrics_folder_path = project_root / "logs" / "metrics" 
+    metrics_folder_path = project_root / "logs" / "metrics" / timestamp
     
     # Setup Logging
     terminal_log_dir = metrics_folder_path / timestamp / "terminal_log"
