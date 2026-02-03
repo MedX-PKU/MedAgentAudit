@@ -8,7 +8,7 @@ SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
 cd "$SCRIPT_DIR/.." || exit
 echo "Current working directory: $(pwd)"
 # 设置并发数
-MAX_CONCURRENT=4
+MAX_CONCURRENT=8
 CURRENT_JOBS=0
 
 # 创建一个临时文件来跟踪正在运行的进程

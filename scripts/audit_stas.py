@@ -3,6 +3,7 @@
 this script is to compute the statistics for audited results from multi-agent systems
 we need to give statistics 3 dimensions: mas, dataset, llm
 '''
+# TODO : aggregate the audit reports at the granularity of rounds: for example the round1 failure rate, round2 failure rate, etc so as to we can visualize it!
 import json
 from enum import Enum
 from typing import Dict, Any, Optional, List, Tuple
@@ -280,16 +281,16 @@ def stas_of_audit_results(audit_results_path: Path, metrics_folder_path: Path):
 
 
 if __name__ == "__main__":
-    timestamp = "20260202" 
+    timestamp = time.strftime("%Y%m%d-%H%M%S")
     
     # Define paths
-    audit_result_path = project_root / "logs" / "audit_results" / timestamp
+    audit_result_path = project_root / "logs" / "audit_results" / "20260202"
     metrics_folder_path = project_root / "logs" / "metrics" / timestamp
     
     # Setup Logging
-    terminal_log_dir = metrics_folder_path / timestamp / "terminal_log"
+    terminal_log_dir = metrics_folder_path / "terminal_log"
     terminal_log_dir.mkdir(parents=True, exist_ok=True)
-    terminal_log_file = terminal_log_dir / f"{timestamp}_audit_stats.log"
+    terminal_log_file = terminal_log_dir / f"audit_stats.log"
     
     print(f"!!! Terminal output is being captured to: {terminal_log_file} !!!")
     
