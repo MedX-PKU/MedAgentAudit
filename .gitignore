@@ -53,6 +53,8 @@ datasets/**/*
 !datasets/raw/
 datasets/raw/*
 !datasets/raw/preprocess_datasets.py
-
+scripts/audit*
 opencoding
 taxonomy
+scripts/audit_stas.py
+scripts/generate_taxonomy_statistics.py
