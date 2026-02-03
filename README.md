@@ -60,16 +60,16 @@ We utilize 6 distinct medical datasets covering Text QA and Visual QA (VQA).
 
 | Dataset        | Modality   | Task Type     | Open-Coding Samples | Audit Samples | Source                                                       |
 | :------------- | :--------- | :------------ | :------------------ | :------------ | :----------------------------------------------------------- |
-| **MedQA** (US) | Text       | Single Choice | 600                 | 2400          | [Link](https://github.com/jind11/MedQA)                      |
-| **PubMedQA**   | Text       | Yes/No/Maybe  | 600                 | 2400          | [Link](https://github.com/pubmedqa/pubmedqa)                 |
+| **MedQA** (US) | Text       | Single Choice | 600                 | 2400          | [Github](https://github.com/jind11/MedQA)                      |
+| **PubMedQA**   | Text       | Yes/No/Maybe  | 600                 | 2400          | [Github](https://github.com/pubmedqa/pubmedqa)                 |
 | **MedXpertQA** | Text       | Single Choice | 600                 | 2400          | [HuggingFace](https://huggingface.co/datasets/TsinghuaC3I/MedXpertQA) |
-| **PathVQA**    | Image+Text | Yes/No        | 600                 | 2400          | [Link](https://github.com/KaveeshaSilva/PathVQA)             |
+| **PathVQA**    | Image+Text | Yes/No        | 600                 | 2400          | [Github](https://github.com/KaveeshaSilva/PathVQA)             |
 | **VQA-RAD**    | Image+Text | Yes/No & Open | 600                 | 2400          | [HuggingFace](https://huggingface.co/datasets/flaviagiammarino/vqa-rad) |
 | **Slake**      | Image+Text | Yes/No & Open | 600                 | 2400          | [HuggingFace](https://huggingface.co/datasets/BoKelvin/SLAKE) |
 | **Total**      |            |               | **3,600**           | **14,400**    |                                                              |
 
 *   **Open-Coding Set**: Used for qualitative analysis to derive the taxonomy.
-    *   *LLM Setup*: QA tasks use `deepSeek-reasoner`; VQA tasks use `gemini-3-flash-preview`.
+    *   *LLM Setup*: QA tasks use `deepseek-reasoner`; VQA tasks use `gemini-3-flash-preview`.
 *   **Audit Set**: Used for large-scale quantitative verification (No overlap with Open-Coding set).
     *   *LLM Setup*: 4 different LLMs tested across 6 frameworks.
 
@@ -131,7 +131,7 @@ api_key = "sk-..."
 base_url = "https://api.deepseek.com"
 model_name = "deepseek-reasoner"
 
-[llm.gemini-2.5-flash]
+[llm.gemini-3-flash-preview]
 api_key = "AIza..."
 base_url = "https://generativelanguage.googleapis.com/v1beta/openai/"
 model_name = "gemini-2.0-flash-exp"
