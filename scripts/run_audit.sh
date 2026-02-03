@@ -51,7 +51,7 @@ VQA_DATASETS=("PathVQA" "VQA-RAD" "SLAKE")
 QA_LLM=("deepseek-reasoner" "gpt-5.2" "gemini-3-flash-preview" "qwen3-8b")
 VQA_LLM=("glm-4.6v" "gpt-5.2" "gemini-3-flash-preview" "qwen3-vl-8b-thinking")
 # this experiment‘s samples' num
-num=2
+num=100
 time_stamp="20260202"
 task="audit"
 AUDITOR="gemini-3-flash-preview"
