@@ -34,7 +34,7 @@ clean_failed_cases.py
 medagentaudit/medqa/__pycache__
 medagentaudit/medqa/data_annotation.py
 medagentaudit/medqa/evaluate.py
-temp*.py
+temp*
 figure/history
 figure/HealthAgentWhyFail_V6.pptx
 figure/visaulize_codes_figures/figures
