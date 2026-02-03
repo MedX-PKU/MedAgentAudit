@@ -16,12 +16,15 @@ We propose a **Unified Taxonomy of Dynamic Processes in Multi-Agent Collaboratio
 
 <details>
 <summary><b>Phase I: Task Comprehension Failures (Click to expand)</b></summary>
+
 *Failures occurring before collaboration begins, determining input quality.*
 
 *   **1.1 Perceptual and Knowledge Deficits (Input Processing Failures)**
     *   **1.1.1 Factual Hallucinations during Input Interpretation**: Agents report non-existent lesions, miss obvious abnormalities, or confuse anatomical structures (e.g., swapping left/right) at the perception level.
 *   **1.2 Misalignment with Clinical Intent (Instruction-Level Failures)**
     *   **1.2.1 Neglect or Misinterpretation of Modality Information**: Agents ignore image inputs in VQA tasks (treating them as text-only) or fail to answer the specific clinical question (e.g., describing image metadata instead of pathology).
+
+</details>
 
 <details>
 <summary><b>Phase II: Collaboration Process Failures (Click to expand)</b></summary>
@@ -35,6 +38,8 @@ We propose a **Unified Taxonomy of Dynamic Processes in Multi-Agent Collaboratio
     *   **2.2.1 Repetition of Initial Views**: Discussion fails to introduce new information; agents simply repeat initial conclusions or blindly agree ("Lazy Agreement").
     *   **2.2.2 Unresolved Conflicts**: Agents ignore mutually exclusive factual claims (e.g., one sees a mass, one does not) and proceed without resolution.
 
+</details>
+
 <details>
 <summary><b>Phase III: Decision-Making Failures (Click to expand)</b></summary>
 
@@ -47,16 +52,18 @@ We propose a **Unified Taxonomy of Dynamic Processes in Multi-Agent Collaboratio
 *   **3.2 Failures in the Final Aggregation Stage**
     *   **3.2.1 Self-Contradiction Across Rounds**: The synthesizer/decision-maker flips their diagnosis in later rounds without new evidence.
 
+</details>
+
 ## 📊 Datasets & Distribution
 
 We utilize 6 distinct medical datasets covering Text QA and Visual QA (VQA).
 
 | Dataset        | Modality   | Task Type     | Open-Coding Samples | Audit Samples | Source                                                       |
 | :------------- | :--------- | :------------ | :------------------ | :------------ | :----------------------------------------------------------- |
-| **MedQA** (US) | Text       | Single Choice | 600                 | 2400          | [Github](https://github.com/jind11/MedQA)                      |
-| **PubMedQA**   | Text       | Yes/No/Maybe  | 600                 | 2400          | [Github](https://github.com/pubmedqa/pubmedqa)                 |
+| **MedQA** (US) | Text       | Single Choice | 600                 | 2400          | [Link](https://github.com/jind11/MedQA)                      |
+| **PubMedQA**   | Text       | Yes/No/Maybe  | 600                 | 2400          | [Link](https://github.com/pubmedqa/pubmedqa)                 |
 | **MedXpertQA** | Text       | Single Choice | 600                 | 2400          | [HuggingFace](https://huggingface.co/datasets/TsinghuaC3I/MedXpertQA) |
-| **PathVQA**    | Image+Text | Yes/No        | 600                 | 2400          | [Github](https://github.com/KaveeshaSilva/PathVQA)             |
+| **PathVQA**    | Image+Text | Yes/No        | 600                 | 2400          | [Link](https://github.com/KaveeshaSilva/PathVQA)             |
 | **VQA-RAD**    | Image+Text | Yes/No & Open | 600                 | 2400          | [HuggingFace](https://huggingface.co/datasets/flaviagiammarino/vqa-rad) |
 | **Slake**      | Image+Text | Yes/No & Open | 600                 | 2400          | [HuggingFace](https://huggingface.co/datasets/BoKelvin/SLAKE) |
 | **Total**      |            |               | **3,600**           | **14,400**    |                                                              |
