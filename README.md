@@ -1,7 +1,7 @@
-# MedAgentAudit: A Large-Scale Empirical Study & Unified Taxonomy of Medical Multi-Agent Systems
+# MedAgentAudit: Diagnosing and Quantifying Collaborative Failure Modes in Medical Multi-Agent Systems
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/release/python-3100/)
+[![Python 3.12+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/release/python-3120/)
 [![Dataset](https://img.shields.io/badge/Dataset-MedQA%7CPubMedQA%7CMedXpertQA%7CPathVQA%7CVQA--RAD%7CSlake-green)](./datasets)
 
 ## 📖 Abstract
@@ -60,12 +60,12 @@ We evaluate our method on the test sets of 6 distinct medical datasets, covering
 
 | Dataset        | Modality   | Task Type     | Open-Coding Samples | Audit Samples | Source                                                       |
 | :------------- | :--------- | :------------ | :------------------ | :------------ | :----------------------------------------------------------- |
-| **MedQA** (US) | Text       | Single Choice | 600                 | 2400          | [Github](https://github.com/jind11/MedQA)                      |
-| **PubMedQA**   | Text       | Yes/No/Maybe  | 600                 | 2400          | [Github](https://github.com/pubmedqa/pubmedqa)                 |
-| **MedXpertQA** | Text       | Single Choice | 600                 | 2400          | [HuggingFace](https://huggingface.co/datasets/TsinghuaC3I/MedXpertQA) |
-| **PathVQA**    | Image+Text | Yes/No        | 600                 | 2400          | [Github](https://github.com/KaveeshaSilva/PathVQA)             |
-| **VQA-RAD**    | Image+Text | Yes/No & Open | 600                 | 2400          | [HuggingFace](https://huggingface.co/datasets/flaviagiammarino/vqa-rad) |
-| **Slake**      | Image+Text | Yes/No & Open | 600                 | 2400          | [HuggingFace](https://huggingface.co/datasets/BoKelvin/SLAKE) |
+| **MedQA** (US) | Text       | Single Choice | 600                 | 2400          | [GitHub](https://github.com/jind11/MedQA)                      |
+| **PubMedQA**   | Text       | Yes/No/Maybe  | 600                 | 2400          | [GitHub](https://github.com/pubmedqa/pubmedqa)                 |
+| **MedXpertQA** | Text       | Single Choice | 600                 | 2400          | [Hugging Face](https://huggingface.co/datasets/TsinghuaC3I/MedXpertQA) |
+| **PathVQA**    | Image+Text | Yes/No        | 600                 | 2400          | [Git Hub](https://github.com/KaveeshaSilva/PathVQA)             |
+| **VQA-RAD**    | Image+Text | Yes/No & Open | 600                 | 2400          | [Hugging Face](https://huggingface.co/datasets/flaviagiammarino/vqa-rad) |
+| **Slake**      | Image+Text | Yes/No & Open | 600                 | 2400          | [Hugging Face](https://huggingface.co/datasets/BoKelvin/SLAKE) |
 | **Total**      |            |               | **3,600**           | **14,400**    |                                                              |
 
 *   **Open-Coding Set**: Used for qualitative analysis to derive the taxonomy.
@@ -177,5 +177,6 @@ A core component of this project is the `AuditorAgent` (located in `medagentaudi
 *   **Prompts**: It uses carefully crafted prompts (e.g., `AUDITOR_PROMPTS["Factual_Hallucination_Prompts"]`) to detect specific failures like "1.1.1 Factual Hallucinations" or "3.1.2 Authority Bias".
 
 ## 📝 License
+
 
 This project is licensed under the MIT License. See the `LICENSE` file for details.
