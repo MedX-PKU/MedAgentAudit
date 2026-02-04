@@ -8,7 +8,7 @@
 
 While large language model (LLM)-based multi-agent systems show promise in simulating medical consultations, their evaluation is often confined to final-answer accuracy. This practice treats their internal collaborative processes as opaque "black boxes" and overlooks a critical question: **is a diagnostic conclusion reached through a sound and verifiable reasoning pathway?**
 
-As these systems are increasingly deployed on web-based platforms, their inscrutable nature poses a significant risk of generating and disseminating high-stakes medical misinformation. To address this, we conduct a large-scale empirical study of **3,600 cases** (Open-Coding) and **14,400 cases** (Audit) from six medical datasets and six representative multi-agent frameworks. Through a rigorous, mixed-methods approach combining qualitative analysis with quantitative auditing, we develop a comprehensive taxonomy of collaborative failure modes. Our quantitative audit reveals four dominant failure patterns: flawed consensus driven by shared model deficiencies, suppression of correct minority opinions, ineffective discussion dynamics, and critical information loss during synthesis.
+As these systems are increasingly deployed on web-based platforms, their inscrutable nature poses a significant risk of generating and disseminating high-stakes medical misinformation. To address this, we conduct a large-scale empirical study of **3,600 cases** (Open-Coding) and **14,400 cases** (Audit) from six medical datasets and six representative multi-agent frameworks. Through a rigorous, mixed-methods approach combining qualitative analysis with quantitative auditing, we develop a comprehensive taxonomy of collaborative failure modes. Our quantitative audit reveals 10 dominant failure patterns, from the task comprehension stage to the final decision stage.
 
 ## 🧬 Unified Taxonomy of Collaborative Failures
 
@@ -56,7 +56,7 @@ We propose a **Unified Taxonomy of Dynamic Processes in Multi-Agent Collaboratio
 
 ## 📊 Datasets & Distribution
 
-We utilize 6 distinct medical datasets covering Text QA and Visual QA (VQA).
+We evaluate our method on the test sets of 6 distinct medical datasets, covering both Text QA and Visual QA (VQA).
 
 | Dataset        | Modality   | Task Type     | Open-Coding Samples | Audit Samples | Source                                                       |
 | :------------- | :--------- | :------------ | :------------------ | :------------ | :----------------------------------------------------------- |
@@ -127,14 +127,14 @@ Create or modify `config.toml` in the root directory. You need to provide API ke
 ```toml
 # Example config.toml structure
 [llm.deepseek-reasoner]
-api_key = "sk-..."
+api_key = "YOUR_DEEPSEEK_KEY"
 base_url = "https://api.deepseek.com"
 model_name = "deepseek-reasoner"
 
 [llm.gemini-3-flash-preview]
-api_key = "AIza..."
+api_key = "YOUR_GEMINI_KEY"
 base_url = "https://generativelanguage.googleapis.com/v1beta/openai/"
-model_name = "gemini-2.0-flash-exp"
+model_name = "gemini-3-flash-preview"
 # ... other models
 ```
 
