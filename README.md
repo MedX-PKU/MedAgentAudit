@@ -1,7 +1,7 @@
 # MedAgentAudit: Diagnosing and Quantifying Collaborative Failure Modes in Medical Multi-Agent Systems
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Python 3.12+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/release/python-3120/)
+[![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/release/python-3120/)
 [![Dataset](https://img.shields.io/badge/Dataset-MedQA%7CPubMedQA%7CMedXpertQA%7CPathVQA%7CVQA--RAD%7CSlake-green)](./datasets)
 
 ## 📖 Abstract
@@ -180,3 +180,4 @@ A core component of this project is the `AuditorAgent` (located in `medagentaudi
 
 
 This project is licensed under the MIT License. See the `LICENSE` file for details.
+
