@@ -106,11 +106,17 @@ class BaseAgent:
                         }
                     }
 
-                else: # qwen
+                elif 'qwen3-8b' in self.model_key.lower():
+                    # Qwen Special Handling
+                    request_kwargs["messages"] = [system_message, user_message]
+                    request_kwargs['response_format'] = None
+                    request_kwargs["extra_body"] = {"enable_thinking": True}
+
+                else:
                     request_kwargs["messages"] = [system_message, user_message]
                     request_kwargs['response_format'] = response_format
                     # Qwen / Default handling
-                    request_kwargs["extra_body"] = {"enable_thinking": True}
+                    request_kwargs["extra_body"] = {"enable_thinking": True} 
 
                 completion = self.client.chat.completions.create(**request_kwargs)
 
