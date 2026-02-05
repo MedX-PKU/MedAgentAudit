@@ -185,7 +185,7 @@ class MACFramework:
                     user_content.append({"type": "text", "text": initial_messages[0]['content']})
                 user_message = {"role": "user", "content": user_content}
 
-                response_str, reasoning_content, _, _ = doctor.call_llm(system_message=system_message, user_message=user_message)
+                response_str, reasoning_content, _, _ = doctor.call_llm(system_message=system_message, user_message=user_message, response_format={"type": "json_object"})
                 parsed_output = json.loads(preprocess_response_string(response_str))
                 opinion_log = {"parsed_output": parsed_output, "reasoning_content" : reasoning_content}
                 if task == "audit":
@@ -276,7 +276,7 @@ class MACFramework:
                 "Respond in JSON format with 'explanation' (your analysis of the round), 'consensus_reached' (boolean), and 'answer' (your final concluded answer, which can be null if consensus is not yet reached)."
             )
 
-            supervisor_response_str, reasoning_content, _, _ = self.supervisor_agent.call_llm(system_message={"role": "system", "content": supervisor_instruction}, user_message={"role": "user", "content": supervisor_prompt})
+            supervisor_response_str, reasoning_content, _, _ = self.supervisor_agent.call_llm(system_message={"role": "system", "content": supervisor_instruction}, user_message={"role": "user", "content": supervisor_prompt}, response_format={"type": "json_object"})
             parsed_output = json.loads(preprocess_response_string(supervisor_response_str))
             conversation_log.append({
                 "role": "Supervisor",

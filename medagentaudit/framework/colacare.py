@@ -97,7 +97,7 @@ class DoctorAgent(BaseAgent):
             "content": user_content,
         }
 
-        response_text, reasoning_content, system_msg, user_msg = self.call_llm(system_message = system_message, user_message = user_message)
+        response_text, reasoning_content, system_msg, user_msg = self.call_llm(system_message = system_message, user_message = user_message, response_format={"type": "json_object"})
 
         user_msg["content"] = [item for item in user_msg["content"] if item.get("type") != "image_url"]
         try:
@@ -208,7 +208,7 @@ class DoctorAgent(BaseAgent):
             "content": user_content,
         }
 
-        response_text, reasoning_content, system_msg, user_msg = self.call_llm(system_message = system_message, user_message = user_message) 
+        response_text, reasoning_content, system_msg, user_msg = self.call_llm(system_message = system_message, user_message = user_message, response_format={"type": "json_object"}) 
         user_msg["content"] = [item for item in user_msg["content"] if item.get("type") != "image_url"]
 
         try:
@@ -324,7 +324,7 @@ class MetaAgent(BaseAgent):
             "role":"user",
             "content": user_content
         }
-        response_text, reasoning_content, system_msg, user_msg = self.call_llm(system_message = system_message, user_message = user_message)
+        response_text, reasoning_content, system_msg, user_msg = self.call_llm(system_message = system_message, user_message = user_message, response_format={"type": "json_object"})
         user_msg["content"] = [item for item in user_msg["content"] if item.get("type") != "image_url"]
 
         try:
@@ -456,7 +456,7 @@ class MetaAgent(BaseAgent):
             "content": user_content
         }
 
-        response_text, reasoning_content, system_msg, user_msg = self.call_llm(system_message = system_message, user_message = user_message)
+        response_text, reasoning_content, system_msg, user_msg = self.call_llm(system_message = system_message, user_message = user_message, response_format={"type": "json_object"})
         user_msg["content"] = [item for item in user_msg["content"] if item.get("type") != "image_url"]
 
         try:

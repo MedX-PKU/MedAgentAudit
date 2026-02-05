@@ -72,7 +72,7 @@ Available Specialties: {available_specialties}"""
             "content": f"Review this medical question and determine the three most appropriate medical specialties required to provide the answer. Ensure the selected specialties are distinct and cover different aspects of the problem:\n\n{question}"
         }
 
-        response_text, reasoning_content, system_msg, user_msg = self.call_llm(system_message = system_message, user_message = user_message)
+        response_text, reasoning_content, system_msg, user_msg = self.call_llm(system_message = system_message, user_message = user_message, response_format={"type": "json_object"})
         log = {
             "reasoning_content": reasoning_content,
             "llm_input": {"system_message": system_msg, "user_message": user_msg},

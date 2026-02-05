@@ -177,7 +177,7 @@ class HealthcareAgentFramework(BaseAgent):
 
         user_message = {"role": "user", "content": user_content}
 
-        response_text, reasoning_content,  system_msg, user_msg = self.call_llm(system_message, user_message)
+        response_text, reasoning_content,  system_msg, user_msg = self.call_llm(system_message, user_message, response_format={"type": "json_object"})
         user_msg["content"] = [item for item in user_msg["content"] if item.get("type") != "image_url"]
 
         try:

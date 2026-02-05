@@ -105,7 +105,7 @@ class BaseAgent:
                             "thinking_config": thinking_config
                         }
                     }
-                
+
                 else: # qwen
                     request_kwargs["messages"] = [system_message, user_message]
                     request_kwargs['response_format'] = response_format

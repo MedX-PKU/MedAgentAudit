@@ -74,7 +74,7 @@ class Agent(BaseAgent):
         if use_memory and self.memory:
             messages.extend(self.memory)
         messages.append(user_message)
-        response, reasoning_content, system_message, user_message = self.call_llm(system_message = system_message, user_message = user_message)
+        response, reasoning_content, system_message, user_message = self.call_llm(system_message = system_message, user_message = user_message, response_format=response_format)
         user_message["content"] = [item for item in user_message["content"] if item.get("type") != "image_url"]
         return response, reasoning_content, system_message, user_message
 
@@ -187,6 +187,7 @@ class Group:
             investigation_json_str, reasoning_content, system_message, user_message = a_mem.chat(
                 prompt=investigation_prompt,
                 image_path=self.question_context.get('image_path'),
+
             )
             # Parse and log investigation
             try:
@@ -284,6 +285,7 @@ class Group:
         final_report_str, reasoning_content, system_message, user_message = self.lead_agent.chat(
             prompt=synthesis_prompt,
             image_path=self.question_context.get('image_path'),
+            response_format={"type": "json_object"},
         )
         
         try:
@@ -416,6 +418,7 @@ class MDAgentsFramework:
         response, _, system_message, user_message = self.moderator_agent.chat(
             prompt=prompt,
             image_path=None,
+            response_format={"type": "json_object"}
         )
         step_log = {"step_name": "determine_complexity", 
                     "prompt": prompt, 
@@ -521,6 +524,7 @@ class MDAgentsFramework:
         recruitment_response, reasoning_content, system_message, user_message = self.recruiter_agent.chat(
             prompt=prompt,
             image_path=None,
+            response_format={"type": "json_object"}
         )
         print(f"Recruiter Response ({complexity.value}):\n{recruitment_response}")
 
@@ -648,8 +652,7 @@ class MDAgentsFramework:
         else:
             main_prompt += "\nProvide your answer as a JSON object with 'answer', 'explanation', "
 
-        response, reasoning_content, _, _ = agent.chat(prompt=main_prompt, image_path=data_item.get('image_path'))
-    
+        response, reasoning_content, _, _ = agent.chat(prompt=main_prompt, image_path=data_item.get('image_path'), response_format={"type": "json_object"})
 
         try:
             result = json.loads(preprocess_response_string(response))
@@ -847,11 +850,12 @@ class MDAgentsFramework:
         
         final_response, reasoning_content, final_system_message, final_user_message = self.decision_maker_agent.chat(
             prompt=synthesis_prompt,
-            image_path=image_path
+            image_path=image_path,
+            response_format={"type": "json_object"}
         )
         decision_log = {
             "reasoning_content": reasoning_content,
-            "llm_input": {"system_message": final_system_message, "user_message": final_user_message}
+            "llm_input": {"system_message": final_system_message, "user_message": final_user_message},
         }
 
         try:
