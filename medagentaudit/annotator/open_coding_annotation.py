@@ -22,7 +22,7 @@ project_root = current_file_path.parents[2]
 sys.path.extend([str(utils_root), str(project_root), str(auditor_root), str(common_root)])
 from logger import DualLogger
 from encode_image import encode_image
-from json_utils import load_json, save_jsonl, preprocess_response_string
+from json_utils import load_jsonl, save_jsonl, preprocess_response_string
 from auditor_agent import AuditorAgent
 from base_agent import BaseAgent
 from agent_type import AgentType
@@ -364,26 +364,23 @@ def main():
     current_file_path = Path(__file__).resolve()
     project_root = current_file_path.parents[2]
 
-    open_coding_logs_path = project_root / "logs" / "20260202" / "mas_collaboration_results"
+    mas_collaboration_logs_path = project_root / "logs" / "mas_collaboration_results"/ "20260202" 
 
     # in this file, every mas running case is one line, and each file. has 100 cases, namely 100 lines per file.
-    open_coding_file = f'{framework}_{dataset}_{main_llm}.jsonl'
+    open_coding_file = mas_collaboration_logs_path / f'{framework}_{dataset}_{main_llm}.jsonl'
 
-    # --- Determine Frameworks and Datasets to Process ---
-    datasets_to_process_path = [os.path.join('./logs',dataset_type,dataset_name,'multiple_choice',log_folder) for dataset_name, log_folder in logs_file_path[framework_to_use].items()]
-    output_third_path = os.path.join('./logs','annotation',args.model,framework_to_use)
-    os.makedirs(output_third_path, exist_ok=True)
-    if not os.path.exists(output_third_path):
-        print(f"Error: Dataset file not found at {output_third_path}")
-        return
+    # adding logs
+    terminal_log_file = project_root / "logs" / f"open_coding_results" / "20260202"/ f"{framework}_{dataset}_{main_llm}_terminal.log"
+    terminal_log_file.parent.mkdir(parents=True, exist_ok=True)
+    print(f"!!! Terminal output is being captured to: {terminal_log_file} !!!")
+    sys.stdout = DualLogger(terminal_log_file, sys.stdout)
+    sys.stderr = DualLogger(terminal_log_file, sys.stderr) # 捕获报错和tqdm进度条
+
+    output_file = project_root / "logs" / f"open_coding_results" / "20260202" / f"{framework}_{dataset}_{main_llm}.jsonl"
+
     # --- Processing Loop ---
-    parser_func = get_framework_parser(framework_to_use)
-    if not parser_func:
-        print(f"\nWarning: No parser found for framework '{framework_to_use}'. Skipping.")
-        return
-    print(f"\n{'='*20} Processing Framework: {framework_to_use} {'='*20}")
-    
-
+    print(f"\n{'='*20} Processing Framework: {framework} , dataset: {dataset}, main llm : {main_llm} {'='*20}")
+    data = load_jsonl (open_coding_file)
     for i in range(len(datasets_to_process_path)):
         input_dir = datasets_to_process_path[i]
         output_dir = os.path.join(output_third_path, datasets[i])
