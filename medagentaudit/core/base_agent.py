@@ -111,7 +111,6 @@ class BaseAgent:
                     request_kwargs["messages"] = [system_message, user_message]
                     request_kwargs['response_format'] = None
                     request_kwargs["extra_body"] = {"enable_thinking": True}
-
                 else:
                     request_kwargs["messages"] = [system_message, user_message]
                     request_kwargs['response_format'] = response_format

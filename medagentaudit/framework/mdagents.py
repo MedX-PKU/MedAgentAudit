@@ -205,10 +205,10 @@ class Group:
             investigations.append({"specialty": a_mem.specialty, "id": a_mem.agent_id, "report": investigation})
             if task == "audit":
                 # audit 1.1.1 facutal hallucination
-                audit_results_of_factual_hallucination = self.auditor_agent.audit_factual_hallucination(question = self.question_context['question'], image_path=self.question_context.get('image_path'), agent_id=a_mem.agent_id, specialty=a_mem.specialty, answer=investigation.get("answer"), explanation=investigation.get("explanation", ""))
+                audit_results_of_factual_hallucination = auditor_agent.audit_factual_hallucination(question = self.question_context['question'], image_path=self.question_context.get('image_path'), agent_id=a_mem.agent_id, specialty=a_mem.specialty, answer=investigation.get("answer"), explanation=investigation.get("explanation", ""))
 
                 # audit 1.2.1 neglect or misinterpretation of modality information
-                audit_results_of_neglect_or_misinterpretation_of_modality_info = self.auditor_agent.audit_neglect_or_misinterpretation_of_modality_info(question = self.question_context['question'], image_path=self.question_context.get('image_path'), agent_id=a_mem.agent_id, specialty=a_mem.specialty, answer=investigation.get("answer"), explanation=investigation.get("explanation", ""))
+                audit_results_of_neglect_or_misinterpretation_of_modality_info = auditor_agent.audit_neglect_or_misinterpretation_of_modality_info(question = self.question_context['question'], image_path=self.question_context.get('image_path'), agent_id=a_mem.agent_id, specialty=a_mem.specialty, answer=investigation.get("answer"), explanation=investigation.get("explanation", ""))
 
                 # audit 2.1.2 domain-specific knowledge activation
                 audit_results_of_domain_specific_knowledge_activation = auditor_agent.audit_domain_specific_knowledge_activation(question = self.question_context['question'], 
@@ -972,6 +972,7 @@ class MDAgentsFramework:
                 agent = Agent(
                     agent_id=agent_id,
                     specialty=f"{member_config['specialty']}{' (Lead)' if is_lead else ''}",
+                    config_path=self.config_path,
                     model_key=agent_model_key,
                     instruction=f"{instruction_prefix} Collaborate within your team to achieve the goal: '{config['goal']}'. Respond in JSON format."
                 )
