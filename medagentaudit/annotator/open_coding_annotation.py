@@ -35,7 +35,6 @@ class LLMAnnotator(BaseAgent):
     """
     def __init__(self, model_key: str, max_retries: int = 3, retry_delay: int = 5, config_path: str = "config.toml"):
         """
-
         Args:
             model_key: The model key from LLM_MODELS_SETTINGS.
             max_retries: Maximum number of retries for API call failures.
@@ -199,19 +198,20 @@ def get_framework_parser(framework_name: str) -> Optional[Callable[[Dict[str, An
     parsers = {
         "ColaCare": parse_colacare_log,
         "MDAgents": parse_mdagents_log,
-        "MedAgent": parse_medagent_log,  # 注意：这里使用 MedAgent 而不是 Medagnet
+        "MedAgent": parse_medagent_log,  
         "ReConcile": parse_reconcile_log
     }
     return parsers.get(framework_name)
 
 
 # --- 4. PROMPT ENGINEERING ---
-def build_annotation_prompts(case_details: Dict[str, Any], taxonomy_text: str) -> Tuple[str, Union[str, List[Dict[str, Any]]]]:
+def build_open_coding_prompts_for_colacare(case_details: Dict[str, Any], taxonomy_text: str) -> Tuple[str, Union[str, List[Dict[str, Any]]]]:
     """
-    构建系统消息和用户消息。
+    construct the prompt basing on the characteristics of different multi-agent frameworks.
     """
-    # 1. 构建系统消息 (System Message) - 模型的角色和通用指令
-    intent_description = "No specific intent description available for this framework."
+    system_content = (f"你是一个在医学人工智能方面的专家，精通医学知识以及医疗多智能体系统方面的知识。你现在的任务是根据医疗多智能体系统的"
+                      f""  
+    )
     
     # --- 框架意图描述 ---
     if case_details['framework_name'] == 'ColaCare':
@@ -366,8 +366,7 @@ def main():
 
     mas_collaboration_logs_path = project_root / "logs" / "mas_collaboration_results"/ "20260202" 
 
-    # in this file, every mas running case is one line, and each file. has 100 cases, namely 100 lines per file.
-    open_coding_file = mas_collaboration_logs_path / f'{framework}_{dataset}_{main_llm}.jsonl'
+
 
     # adding logs
     terminal_log_file = project_root / "logs" / f"open_coding_results" / "20260202"/ f"{framework}_{dataset}_{main_llm}_terminal.log"
@@ -377,41 +376,74 @@ def main():
     sys.stderr = DualLogger(terminal_log_file, sys.stderr) # 捕获报错和tqdm进度条
 
     output_file = project_root / "logs" / f"open_coding_results" / "20260202" / f"{framework}_{dataset}_{main_llm}.jsonl"
+    error_output_file = project_root / "logs" / f"open_coding_results" / "20260202" / f"{framework}_{dataset}_{main_llm}_errors.jsonl"
+    output_file.parent.mkdir(parents=True, exist_ok=True)
+    error_output_file.parent.mkdir(parents=True, exist_ok=True)
+
+    existing_qids = set()
+    if output_file.exists():
+        print(f"Output file {output_file} already exists. Appending new results.")
+        with open(output_file, 'r', encoding='utf-8') as f:
+            for line in f:
+                line = line.strip()
+                if not line: continue
+                try:
+                    record = json.loads(line)
+                    if "qid" in record:
+                        existing_qids.add(record["qid"])
+                except json.JSONDecodeError:
+                    print("Warning: Found a corrupted line in jsonl file, skipping.")
+        print(f"Found {len(existing_qids)} already processed cases. They will be skipped.")
+
+    # in this file, every mas running case is one line, and each file. has 100 cases, namely 100 lines per file.
+    open_coding_file = mas_collaboration_logs_path / f'{framework}_{dataset}_{main_llm}.jsonl'
+    data = load_jsonl(open_coding_file)
+    print(f"Total cases to process: {len(data)}")
+
+
 
     # --- Processing Loop ---
     print(f"\n{'='*20} Processing Framework: {framework} , dataset: {dataset}, main llm : {main_llm} {'='*20}")
-    data = load_jsonl (open_coding_file)
-    for i in range(len(datasets_to_process_path)):
-        input_dir = datasets_to_process_path[i]
-        output_dir = os.path.join(output_third_path, datasets[i])
-        os.makedirs(output_dir, exist_ok=True)
+    
+    for item in tqdm(data, desc=f"Running open-coding on {dataset}-{framework}-{main_llm}"): 
+        qid = item["qid"]
 
-        if not os.path.isdir(input_dir):
-            print(f"Warning: Log directory not found for {framework_to_use}/{datasets[i]}. Path: {input_dir}. Skipping.")
-            continue
-        
-        log_files = [f for f in os.listdir(input_dir) if f.endswith('.json')]
-        if not log_files:
-            print(f"No log files found in {input_dir}. Skipping.")
+        if qid in existing_qids:
+            print(f"Skipping {qid} - already processed")
             continue
 
-        print(f"\n--- Processing Dataset: {datasets[i]} ({len(log_files)} cases) ---")
-        
-        results = {"success": 0, "skipped": 0, "error_loading": 0, "error_parsing": 0, "error_annotating": 0}
+        try: 
+            status = process_single_log(log_path, output_path, parser_func, annotator, taxonomy_text)
 
-        with tqdm(log_files, desc=f"Annotating {framework_to_use}/{datasets[i]}") as pbar:
-            for filename in pbar:
-                log_path = os.path.join(input_dir, filename)
-                # 统一输出文件名格式
-                qid = filename.split('.')[0]
-                output_path = os.path.join(output_dir, f"{qid}_annotation.json")
-                
-                status = process_single_log(log_path, output_path, parser_func, annotator, taxonomy_text)
-                results[status] += 1
-                pbar.set_postfix(results)
-        
-        print(f"--- Finished {datasets[i]} ---")
-        print(f"  Success: {results['success']}, Skipped: {results['skipped']}, Errors: {sum(v for k, v in results.items() if 'error' in k)}")
+            final_decision_log = full_case_history.get("final_decision_log", {})
+            print("Final decision log:", final_decision_log)  # Debugging line
+            final_decision_parsed = final_decision_log.get("parsed_output", {})
+            print("Final decision parsed:", final_decision_parsed)  # Debugging line
+            predicted_answer = final_decision_parsed.get("answer", "Error: No answer found")
+            print(f"Predicted answer for {qid}: {predicted_answer}")
+
+            item_result = {
+                "qid": qid,
+                "timestamp": int(time.time()),
+                "question": item["question"],
+                "options": item.get("options"),
+                "image_path": item.get("image_path"),
+                "ground_truth": item.get("answer"),
+                "predicted_answer": predicted_answer,
+                "case_history": full_case_history, # This now contains the full, detailed log
+            }
+
+            save_jsonl(item_result, str(output_file))
+            existing_qids.add(qid)
+
+        except Exception as e:
+            print(f"Error processing item {qid}: {e}")
+            # Optionally, save an error log
+            error_log = {
+                "qid": qid,
+                "error": str(e)
+            }
+            save_jsonl(error_log, str(error_output_file))
 
 if __name__ == "__main__":
     main()
