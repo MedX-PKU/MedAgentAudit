@@ -78,7 +78,7 @@ class BaseAgent:
                 elif 'gemini' in self.model_key.lower():
                     # Gemini Special Handling
                     request_kwargs["messages"] = [system_message, user_message]
-                    request_kwargs['response_format'] = None
+                    request_kwargs['response_format'] = response_format
                     thinking_config = {"include_thoughts": True}
                     
                     raw_effort = getattr(self.llm, 'reasoning_effort', "high")
