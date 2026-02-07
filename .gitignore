@@ -58,3 +58,5 @@ opencoding
 taxonomy
 scripts/audit_stas.py
 scripts/generate_taxonomy_statistics.py
+
+.DS_Store
