@@ -159,6 +159,7 @@ class ReconcileAgent(BaseAgent):
             f"Based on this discussion, provide your updated analysis in JSON format with the following fields:\n"
             f"- 'reasoning': your detailed step-by-step analysis\n"
             f"- 'answer': your final answer"
+            f"\n- 'confidence': a number between 0.0 and 1.0 representing your confidence level\n\n"
         )
 
         user_content.append({"type": "text", "text": prompt_text})
