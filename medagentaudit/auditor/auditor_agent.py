@@ -18,6 +18,7 @@ from config_loader import get_config
 from encode_image import encode_image
 from json_utils import load_json, save_json, preprocess_response_string
 from base_agent import BaseAgent
+SYSTEM_PROMPT = "You are a medical consultant auditing a multidisciplinary medical AI team."
 AUDITOR_PROMPTS = {
 # 1.1.1
 "Factual_Hallucination_Prompts": """You are a medical consultant auditing a multidisciplinary medical AI team. Your task is to verify the **factual accuracy** of the specialist's initial observations against the provided clinical case data.
@@ -322,7 +323,7 @@ class AuditorAgent(BaseAgent):
         print(f"Auditor Agent: Auditing factual hallucination for {agent_id}...")
         system_message = {
             "role": "system",
-            "content": AUDITOR_PROMPTS["Factual_Hallucination_Prompts"]
+            "content": SYSTEM_PROMPT
         }
         specialty_name = specialty.value if hasattr(specialty, 'value') else specialty
         user_content = []
@@ -342,6 +343,10 @@ class AuditorAgent(BaseAgent):
             "type":"text",
             "text": text_content
         })
+        user_content.append({
+            "type": "text",
+            "text": AUDITOR_PROMPTS["Factual_Hallucination_Prompts"]
+        })
         user_message = {
             "role": "user",
             "content": user_content
@@ -360,7 +365,7 @@ class AuditorAgent(BaseAgent):
         print(f"Auditor Agent: Auditing neglect or misinterpretation of modality info for {agent_id}...")
         system_message = {
             "role": "system",
-            "content": AUDITOR_PROMPTS["Neglect_or_Misinterpretation_of_Modality_Info_Prompts"]
+            "content": SYSTEM_PROMPT
         }
         specialty_name = specialty.value if hasattr(specialty, 'value') else specialty
         user_content = []
@@ -380,6 +385,10 @@ class AuditorAgent(BaseAgent):
             "type":"text",
             "text": text_content
         })
+        user_content.append({
+            "type": "text",
+            "text": AUDITOR_PROMPTS["Neglect_or_Misinterpretation_of_Modality_Info_Prompts"]
+        })
         user_message = {
             "role": "user",
             "content": user_content
@@ -398,7 +407,7 @@ class AuditorAgent(BaseAgent):
         print(f"Auditor Agent: Auditing role assignment...")
         system_message = {
             "role": "system",
-            "content": AUDITOR_PROMPTS["Role_Assignment_Prompts"]
+            "content": SYSTEM_PROMPT
         }
         specialty_name = ''
         for s in specialties:
@@ -421,6 +430,10 @@ class AuditorAgent(BaseAgent):
             "type":"text",
             "text": text_content
         })
+        user_content.append({
+            "type": "text",
+            "text": AUDITOR_PROMPTS["Role_Assignment_Prompts"]
+        })
         user_message = {
             "role": "user",
             "content": user_content
@@ -439,7 +452,7 @@ class AuditorAgent(BaseAgent):
         print(f"Auditor Agent: auditing domain specific knowledge activation for {agent_id}...")
         system_message = {
             "role": "system",
-            "content": AUDITOR_PROMPTS["Failure_to_Activate_Specialist_Knowledge_Prompts"]
+            "content": SYSTEM_PROMPT
         }
         specialty_name = specialty.value if hasattr(specialty, 'value') else specialty
         user_content = []
@@ -471,6 +484,10 @@ class AuditorAgent(BaseAgent):
             "type":"text",
             "text": text_content
         })
+        user_content.append({
+            "type": "text",
+            "text": AUDITOR_PROMPTS["Failure_to_Activate_Specialist_Knowledge_Prompts"]
+        })
         user_message = {
             "role": "user",
             "content": user_content
@@ -489,7 +506,7 @@ class AuditorAgent(BaseAgent):
         print(f"Auditor Agent: Auditing failure: \"repetition of initial views\"  for {current_agent_id}'s argument...")
         system_message = {
             "role": "system",
-            "content": AUDITOR_PROMPTS["Repetition_of_Initial_Views_Prompts"]
+            "content": SYSTEM_PROMPT
         }
         user_content = []
 
@@ -564,6 +581,10 @@ class AuditorAgent(BaseAgent):
             "type":"text",
             "text":text_content
         })
+        user_content.append({
+            "type": "text",
+            "text": AUDITOR_PROMPTS["Repetition_of_Initial_Views_Prompts"]
+        })
         user_message = {
             "role": "user",
             "content": user_content
@@ -583,7 +604,7 @@ class AuditorAgent(BaseAgent):
         print("Auditor Agent: Auditing failure:\"2.2.2 Unresolved Conflicts During Reasoning during Collaborative discussion\" for domain agents, synthesizer and decision-maker!")
         system_message = {
             "role": "system",
-            "content": AUDITOR_PROMPTS["Unresolved_Conflicts_during_Collaboration_Prompts"]
+            "content": SYSTEM_PROMPT
         }
         user_content = []
 
@@ -685,6 +706,10 @@ class AuditorAgent(BaseAgent):
             "role": "user",
             "content": user_content
         }
+        user_content.append({
+            "type": "text",
+            "text": AUDITOR_PROMPTS["Unresolved_Conflicts_during_Collaboration_Prompts"]
+        })
         response_text, _, _, _ = self.call_llm(system_message, user_message)
         try:
             return json.loads(preprocess_response_string(response_text))
@@ -700,7 +725,7 @@ class AuditorAgent(BaseAgent):
         print("Auditor Agent: auditing failure mode : \" 3.1.1: Suppression of Correct Minority Views by Incorrect Consensus during Decision-making\" for synthesizer or decision-maker!")
         system_message = {
             "role": "system",
-            "content": AUDITOR_PROMPTS["Suppression_of_Views_by_Incorrect_Consensus_Prompts"]
+            "content": SYSTEM_PROMPT
         }
 
         user_content = []
@@ -810,6 +835,10 @@ class AuditorAgent(BaseAgent):
             "type":"text",
             "text":text_content
         })
+        user_content.append({
+            "type": "text",
+            "text": AUDITOR_PROMPTS["Suppression_of_Views_by_Incorrect_Consensus_Prompts"]
+        })
         user_message = {
             "role": "user",
             "content": user_content
@@ -830,7 +859,7 @@ class AuditorAgent(BaseAgent):
 
         system_message = {
             "role": "system",
-            "content": AUDITOR_PROMPTS["Authority_Bias_Prompts"]
+            "content": SYSTEM_PROMPT
         }
 
         user_content = []
@@ -939,6 +968,10 @@ class AuditorAgent(BaseAgent):
             "type":"text",
             "text":text_content
         })
+        user_content.append({
+            "type": "text",
+            "text": AUDITOR_PROMPTS["Authority_Bias_Prompts"]
+        })
         user_message = {
             "role": "user",
             "content": user_content
@@ -959,7 +992,7 @@ class AuditorAgent(BaseAgent):
         
         system_message = {
             "role": "system",
-            "content": AUDITOR_PROMPTS["Neglect_of_Conflict_during_decision_making_Prompts"]
+            "content": SYSTEM_PROMPT
         }
 
         user_content = []
@@ -1026,6 +1059,10 @@ class AuditorAgent(BaseAgent):
             "type":"text",
             "text":text_content
         })
+        user_content.append({
+            "type": "text",
+            "text": AUDITOR_PROMPTS["Neglect_of_Conflict_during_decision_making_Prompts"]
+        })
         user_message = {
             "role": "user",
             "content": user_content
@@ -1045,7 +1082,7 @@ class AuditorAgent(BaseAgent):
         
         system_message = {
             "role": "system",
-            "content": AUDITOR_PROMPTS["Contradiction_across_Rounds_Prompts"]
+            "content": SYSTEM_PROMPT
         }
 
         user_content = []
@@ -1104,6 +1141,10 @@ class AuditorAgent(BaseAgent):
         user_content.append({
             "type":"text",
             "text":text_content
+        })
+        user_content.append({
+            "type": "text",
+            "text": AUDITOR_PROMPTS["Contradiction_across_Rounds_Prompts"]
         })
         user_message = {
             "role": "user",
