@@ -1,5 +1,5 @@
 '''
-./medagentaudit/annotator/open_coding_annotation.py
+./medagentaudit/open_coder/open_coder.py
 '''
 import os
 import json
@@ -7,7 +7,6 @@ import argparse
 import time
 from typing import Dict, Any, Callable, Optional, List, Union
 from tqdm import tqdm
-from openai import OpenAI
 import sys
 from typing import Tuple
 from pathlib import Path
@@ -23,15 +22,13 @@ sys.path.extend([str(utils_root), str(project_root), str(auditor_root), str(comm
 from logger import DualLogger
 from encode_image import encode_image
 from json_utils import load_jsonl, save_jsonl, preprocess_response_string
-from auditor_agent import AuditorAgent
 from base_agent import BaseAgent
 from agent_type import AgentType
-from medical_specialty import MedicalSpecialty
 from parse_structured_output import parse_structured_output
 # TODO  同样保存为jsonl，且要注意错误的日志单独输出不写入正确jsonl里。
-class LLMAnnotator(BaseAgent):
+class OpenCoder(BaseAgent):
     """
-    open-coding automated annotator for constructing full version taxonomy!
+    open-coding automated open-coder for constructing full version taxonomy!
     """
     def __init__(self, model_key: str, max_retries: int = 3, retry_delay: int = 5, config_path: str = "config.toml"):
         """
@@ -41,8 +38,8 @@ class LLMAnnotator(BaseAgent):
             retry_delay: Delay time (in seconds) between each retry.
             config_path: Path to the configuration file.
         """
-        super().__init__(agent_id="annotator", agent_type=AgentType.ANNOTATOR, config_path=config_path, model_key=model_key)
-        print(f"Initializing annotator agent, ID: annotator, Model: {model_key}")
+        super().__init__(agent_id="open_coder", agent_type=AgentType.OPENCODER, config_path=config_path, model_key=model_key)
+        print(f"Initializing open-coder agent, ID: open_coder, Model: {model_key}")
 
     def annotate(self, system_message: str, user_message: Union[str, List[Dict[str, Any]]], qid: str) -> Optional[Dict[str, Any]]:
         """
@@ -319,7 +316,7 @@ def build_open_coding_prompts_for_colacare(case_details: Dict[str, Any], taxonom
 
 # --- 5. MAIN EXECUTION LOGIC ---
 
-def process_single_log(log_path: str, output_path: str, parser: Callable, annotator: LLMAnnotator, taxonomy: str):
+def process_single_log(log_path: str, output_path: str, parser: Callable, opencoder: OpenCoder, taxonomy: str):
     """处理单个日志文件：解析、构建prompt、调用API、保存结果。"""
     # TODO taxonomy 重写为提示词
     if os.path.exists(output_path):
@@ -337,7 +334,7 @@ def process_single_log(log_path: str, output_path: str, parser: Callable, annota
         
     system_message, user_message = build_annotation_prompts(case_details, taxonomy)
     
-    annotation_result = annotator.annotate(system_message, user_message, case_details['qid'])
+    annotation_result = opencoder.annotate(system_message, user_message, case_details['qid'])
     
     if annotation_result:
         save_json(annotation_result, output_path)
@@ -353,27 +350,23 @@ def main():
     parser.add_argument("--model", required=True,type=str, help="The LLM model to use for annotation,the available models are: gpt-5.2, gemini-3-flash-preview")
     parser.add_argument("--framework", required=True,type=str, help="The multiagent framework to process.")
     parser.add_argument("--dataset", required=True,type=str, help="The dataset to process.")
-    parser.add_argument("--main_llm", required=True, type=str, help="the main llm model used in multi-agent framework,like gpt-5.2,gemini-3-flash-preview")
+    parser.add_argument("--main_llm", required=True, type=str, help="the main llm model used for open-coding")
+    parser.add_argument("--config_path", type=str, required=True,help="Path to the config.toml file,default = utils/config.toml")
     args = parser.parse_args()
-    # --- Setup ---
-    annotator = LLMAnnotator(model_key=args.model)
 
     framework = args.framework
     dataset = args.dataset
     main_llm = args.main_llm
     current_file_path = Path(__file__).resolve()
     project_root = current_file_path.parents[2]
-
-    mas_collaboration_logs_path = project_root / "logs" / "mas_collaboration_results"/ "20260202" 
-
-
+    mas_collaboration_logs_path = project_root / "logs" / "mas_collaboration_results"/ "20260202"
 
     # adding logs
-    terminal_log_file = project_root / "logs" / f"open_coding_results" / "20260202"/ f"{framework}_{dataset}_{main_llm}_terminal.log"
+    terminal_log_file = project_root / "logs" / f"open_coding_results" / f"{framework}_{dataset}_terminal.log"
     terminal_log_file.parent.mkdir(parents=True, exist_ok=True)
     print(f"!!! Terminal output is being captured to: {terminal_log_file} !!!")
     sys.stdout = DualLogger(terminal_log_file, sys.stdout)
-    sys.stderr = DualLogger(terminal_log_file, sys.stderr) # 捕获报错和tqdm进度条
+    sys.stderr = DualLogger(terminal_log_file, sys.stderr)
 
     output_file = project_root / "logs" / f"open_coding_results" / "20260202" / f"{framework}_{dataset}_{main_llm}.jsonl"
     error_output_file = project_root / "logs" / f"open_coding_results" / "20260202" / f"{framework}_{dataset}_{main_llm}_errors.jsonl"
@@ -401,7 +394,7 @@ def main():
     print(f"Total cases to process: {len(data)}")
 
 
-
+    opencoder = OpenCoder(model_key=args.model, config_path=args.config_path)
     # --- Processing Loop ---
     print(f"\n{'='*20} Processing Framework: {framework} , dataset: {dataset}, main llm : {main_llm} {'='*20}")
     
@@ -413,7 +406,7 @@ def main():
             continue
 
         try: 
-            status = process_single_log(log_path, output_path, parser_func, annotator, taxonomy_text)
+            status = process_single_log(log_path, output_path, parser_func, opencoder, taxonomy_text)
 
             final_decision_log = full_case_history.get("final_decision_log", {})
             print("Final decision log:", final_decision_log)  # Debugging line
