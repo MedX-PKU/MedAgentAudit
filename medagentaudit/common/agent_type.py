@@ -16,4 +16,4 @@ class AgentType(Enum):
     EXPERT_GATHERER = "Expert Gatherer"
     RECONCILE = "ReConciler"
     SINGLELLM = "SingleLLM"
-    ANNOTATOT = "Annotator"
+    OPENCODER = "OpenCoder"
