@@ -201,30 +201,55 @@ def get_framework_parser(framework_name: str) -> Optional[Callable[[Dict[str, An
     return parsers.get(framework_name)
 
 
-# --- 4. PROMPT ENGINEERING ---
-def build_open_coding_prompts_for_colacare(case_details: Dict[str, Any], taxonomy_text: str) -> Tuple[str, Union[str, List[Dict[str, Any]]]]:
+def build_open_coding_prompts(item: Dict[str, Any], mas: str) -> Tuple[Dict[str, Any], Dict[str, Any]]:
     """
-    construct the prompt basing on the characteristics of different multi-agent frameworks.
+    construct the prompt basing on the characteristics of different multi-agent frameworks, return system message and user message respectively.
     """
-    system_content = (f"你是一个在医学人工智能方面的专家，精通医学知识以及医疗多智能体系统方面的知识。你现在的任务是根据医疗多智能体系统的"
-                      f""  
-    )
-    
-    # --- 框架意图描述 ---
-    if case_details['framework_name'] == 'ColaCare':
-        intent_description = """It simulates a multi-disciplinary medical team. Specialist 'Doctor' agents provide initial opinions. A 'Meta' agent synthesizes these opinions. Doctors then review the synthesis, leading to a consensus or further rounds of debate. The goal is to achieve a robust conclusion through expert collaboration and iterative refinement, not just simple voting."""
-    elif case_details['framework_name'] == 'MDAgents':
-        intent_description = """This is a dynamic, complexity-gated framework. A 'Moderator' agent first assesses the query's complexity as 'basic', 'intermediate', or 'advanced'. A 'Recruiter' then assembles the appropriate agents. For 'basic' cases, a single 'General Doctor' responds. For 'intermediate' cases, a team of specialist agents provide opinions, which are then synthesized by a 'Decision Maker'. For 'advanced' cases, multiple specialized teams (e.g., Initial Assessment, Diagnostics, Final Review) work sequentially, with the 'Decision Maker' synthesizing their final reports. The core idea is adapting the collaborative structure to the problem's difficulty."""
-    elif case_details['framework_name'] == 'MedAgent':
-        intent_description = """It simulates a structured consultation process. An 'Expert Gatherer' agent first identifies relevant medical specialties for the query. Then, 'Doctor' agents representing these specialties provide independent analyses. A 'Meta' (Coordinator) agent synthesizes these opinions into a single report. This report is then reviewed by the original 'Doctor' agents for agreement. Finally, a 'Decision Maker' agent produces the final answer based on the synthesis and reviews. It's a sequential process of recruitment, analysis, synthesis, review, and final decision."""
-    elif case_details['framework_name'] == 'ReConcile':
-        intent_description = """This framework focuses on achieving consensus through debate and confidence scoring. Multiple agents generate an initial response containing 'reasoning', an 'answer', and a numerical 'confidence' score. They then engage in multiple rounds of discussion, where they are shown the grouped answers and reasonings from the previous round. After the debate rounds, a final decision is reached via a confidence-weighted vote, where responses from more confident agents are given more weight. The core mechanism is iterative refinement through debate coupled with a quantitative confidence metric."""
+    system_message = (f"You are a distinguished expert in medical artificial intelligence, "
+                      f"possessing profound domain expertise in both clinical medicine and the architecture of medical multi-agent systems.")
 
+    if mas.lower() == 'colacare':
+        mas_description = (f"ColaCare employs a static role assignment strategy initialized before collaboration begins. The workflow follows a sequential structure: "
+                           f"Initial Analysis: Assigned Doctor Agents independently provide their initial medical opinions based on the case. "
+                           f"Synthesis: A Meta Agent aggregates these disparate opinions to formulate a preliminary conclusion. "
+                           f"Peer Review: Doctor Agents review this preliminary conclusion, indicating their position (Agree/Disagree) and providing the rationale for their judgment. "
+                           f"Decision Making: The Decision-Maker analyzes the full context of the reviews to determine the final conclusion. "
+                           f"The system outputs a final answer only when a unanimous consensus is reached among all reviewers or when the maximum number of discussion rounds is exhausted.")
+    elif mas.lower() == 'mac':
+        mas_description = (f"The MAC system operates without specific role assignments (e.g., cardiologist, neurologist); instead, all participating agents are prompted to act as undifferentiated, general medical experts. "
+                           f"The collaborative workflow follows an iterative consensus mechanism: "
+                           f"1. Initial Analysis: In each round, multiple doctor agents first independently provide their initial analysis and reasoning regarding the case. "
+                           f"2. Supervisor Evaluation: A Supervisor agent synthesizes these inputs to evaluate whether a consensus has been reached among the doctor agents. "
+                           f"3. Decision or Iteration: "
+                           f"- If the Supervisor determines that a consensus exists, it outputs the final answer and concludes the session. "
+                           f"- If no consensus is found, the Supervisor triggers a new round of discussion for further deliberation.")
+    elif mas.lower() == 'healthcareagent':
+        mas_description = (f"The HealthcareAgent framework operates through a structured \"Plan-Analyze-Review-Decide\" workflow designed to ensure safety and accuracy in clinical reasoning: "
+                           f"-Planning & Inquiry: The system first evaluates the clarity of the medical problem. "
+                           f"If the query is deemed ambiguous, it initiates an inquiry process, generating three relevant follow-up questions to enrich the context before proceeding. "
+                           f"-Initial Analysis: A domain agent performs the preliminary medical analysis and diagnostic reasoning based on the (potentially enriched) context. "
+                           f"-Safety & Ethics Review: The initial analysis undergoes a rigorous review by specialized Safety & Ethics Reviewers. "
+                           f"This stage includes specific checks for Medical Ethics, Medical Risks, and Medical Errors. "
+                           f"-Decision Making: Finally, a Decision-maker aggregates the initial analysis along with the feedback from all safety reviewers to formulate the final clinical decision.")
+    elif mas.lower() == 'mdagents':
+        mas_description = (f"MDAgents utilizes an adaptive framework that first assesses the complexity of the medical query (Basic, Intermediate, or Advanced) to determine the collaboration structure. "
+                           f"1. Intermediate Complexity: "
+                            f"-Recruitment:** The system dynamically recruits a panel of experts (default: 5) tailored to the specific medical query. "
+                            f"-Process: These experts conduct an independent Initial Analysis. Their findings are then aggregated and finalized by a Decision-Maker agent. "
+                            f"2. Advanced Complexity: "
+                            f"-Recruitment: The system recruits multiple specialized groups (default: 3 groups, including an Initial Assessment Team and a Final Review and Decision Team [FDT], totaling 9 experts. "
+                            f"-Hierarchy: Each group operates under a Team Leader. "
+                            f"-Process: The IDT reports first, followed by intermediate groups, and finally the FDT. "
+                            f"The workflow culminates in a report generated by the team leaders, which is then used by Decision-Maker to render the final diagnosis.")
+    elif mas.lower() == 'medagent':
+        mas_description = """It simulates a structured consultation process. An 'Expert Gatherer' agent first identifies relevant medical specialties for the query. Then, 'Doctor' agents representing these specialties provide independent analyses. A 'Meta' (Coordinator) agent synthesizes these opinions into a single report. This report is then reviewed by the original 'Doctor' agents for agreement. Finally, a 'Decision Maker' agent produces the final answer based on the synthesis and reviews. It's a sequential process of recruitment, analysis, synthesis, review, and final decision."""
+    elif mas.lower() == 'reconcile':
+        mas_description = """This framework focuses on achieving consensus through debate and confidence scoring. Multiple agents generate an initial response containing 'reasoning', an 'answer', and a numerical 'confidence' score. They then engage in multiple rounds of discussion, where they are shown the grouped answers and reasonings from the previous round. After the debate rounds, a final decision is reached via a confidence-weighted vote, where responses from more confident agents are given more weight. The core mechanism is iterative refinement through debate coupled with a quantitative confidence metric."""
     system_message = f"""
     You are a meticulous AI Collaboration Analyst specialized in auditing medical multi-agent systems. 
     
     The multi-agent framework being analyzed is **{case_details['framework_name']}**.
-    Framework Intent: {intent_description}
+    Framework Intent: {mas_description}
     
     Your expertise includes analyzing collaboration patterns, identifying decision-making flaws, and classifying system behaviors according to established taxonomies.
     """
@@ -316,60 +341,36 @@ def build_open_coding_prompts_for_colacare(case_details: Dict[str, Any], taxonom
 
 # --- 5. MAIN EXECUTION LOGIC ---
 
-def process_single_log(log_path: str, output_path: str, parser: Callable, opencoder: OpenCoder, taxonomy: str):
-    """处理单个日志文件：解析、构建prompt、调用API、保存结果。"""
-    # TODO taxonomy 重写为提示词
-    if os.path.exists(output_path):
-        return "skipped"
-
-    log_content = load_json_file(log_path)
-    if not log_content:
-        return "error_loading"
-    
-    case_details = parser(log_content)
-    print(f'framework:{case_details['framework_name']}')
-    print(f'image_path:{case_details['image_path']}')
-    if not case_details:
-        return "error_parsing"
-        
-    system_message, user_message = build_annotation_prompts(case_details, taxonomy)
-    
-    annotation_result = opencoder.annotate(system_message, user_message, case_details['qid'])
-    
-    if annotation_result:
-        save_json(annotation_result, output_path)
-        return "success"
-    else:
-        return "error_annotating"
-
+def open_coding(item: Dict[str, Any], model_key: str, config_path: str, mas: str) -> Optional[Dict[str, Any]]:
+    # prepare the system message and user message for open-coding
+    system_message, user_message = build_open_coding_prompts(item=item, mas = mas)
 def main():
     parser = argparse.ArgumentParser(
         description="Automate the annotation of multi-agent collaboration logs using a taxonomy.",
         formatter_class=argparse.RawTextHelpFormatter
     )
-    parser.add_argument("--model", required=True,type=str, help="The LLM model to use for annotation,the available models are: gpt-5.2, gemini-3-flash-preview")
-    parser.add_argument("--framework", required=True,type=str, help="The multiagent framework to process.")
+    parser.add_argument("--model", required=True,type=str, help="The LLM model to use for open-coding,the available models are: gpt-5.2, gemini-3-flash-preview")
+    parser.add_argument("--mas", required=True,type=str, help="The multiagent system to process.")
+    parser.add_argument("--mas_collab_llm", required=True,type=str, help="The main llm used in the multi-agent collaboration process")
     parser.add_argument("--dataset", required=True,type=str, help="The dataset to process.")
-    parser.add_argument("--main_llm", required=True, type=str, help="the main llm model used for open-coding")
     parser.add_argument("--config_path", type=str, required=True,help="Path to the config.toml file,default = utils/config.toml")
     args = parser.parse_args()
 
-    framework = args.framework
+    mas = args.mas
     dataset = args.dataset
-    main_llm = args.main_llm
+    mas_collab_llm = args.mas_collab_llm
     current_file_path = Path(__file__).resolve()
     project_root = current_file_path.parents[2]
-    mas_collaboration_logs_path = project_root / "logs" / "mas_collaboration_results"/ "20260202"
-
+    
     # adding logs
-    terminal_log_file = project_root / "logs" / f"open_coding_results" / f"{framework}_{dataset}_terminal.log"
+    terminal_log_file = project_root / "logs" / f"open_coding_results" / f"{mas}_{dataset}_{mas_collab_llm}_terminal.log"
     terminal_log_file.parent.mkdir(parents=True, exist_ok=True)
     print(f"!!! Terminal output is being captured to: {terminal_log_file} !!!")
     sys.stdout = DualLogger(terminal_log_file, sys.stdout)
     sys.stderr = DualLogger(terminal_log_file, sys.stderr)
 
-    output_file = project_root / "logs" / f"open_coding_results" / "20260202" / f"{framework}_{dataset}_{main_llm}.jsonl"
-    error_output_file = project_root / "logs" / f"open_coding_results" / "20260202" / f"{framework}_{dataset}_{main_llm}_errors.jsonl"
+    output_file = project_root / "logs" / f"open_coding_results" / f"{mas}_{dataset}_{mas_collab_llm}.jsonl"
+    error_output_file = project_root / "logs" / f"open_coding_results" / f"{mas}_{dataset}_{mas_collab_llm}_errors.jsonl"
     output_file.parent.mkdir(parents=True, exist_ok=True)
     error_output_file.parent.mkdir(parents=True, exist_ok=True)
 
@@ -388,32 +389,22 @@ def main():
                     print("Warning: Found a corrupted line in jsonl file, skipping.")
         print(f"Found {len(existing_qids)} already processed cases. They will be skipped.")
 
-    # in this file, every mas running case is one line, and each file. has 100 cases, namely 100 lines per file.
-    open_coding_file = mas_collaboration_logs_path / f'{framework}_{dataset}_{main_llm}.jsonl'
-    data = load_jsonl(open_coding_file)
+    # in this file, every mas running case is one line, and each file. has 20 cases, namely 20 lines per file.
+    collaboration_file_for_opencoding = project_root / "logs" / "extracted_logs_for_open_coding" / f"{mas}_{dataset}_{mas_collab_llm}_open_coding.jsonl"
+    data = load_jsonl(collaboration_file_for_opencoding)
     print(f"Total cases to process: {len(data)}")
 
-
-    opencoder = OpenCoder(model_key=args.model, config_path=args.config_path)
     # --- Processing Loop ---
-    print(f"\n{'='*20} Processing Framework: {framework} , dataset: {dataset}, main llm : {main_llm} {'='*20}")
+    print(f"\n{'='*20} Processing MAS: {mas} , dataset: {dataset}, mas_collab_llm : {mas_collab_llm} {'='*20}")
     
-    for item in tqdm(data, desc=f"Running open-coding on {dataset}-{framework}-{main_llm}"): 
+    for item in tqdm(data, desc=f"Running open-coding on {dataset}-{mas}-{mas_collab_llm}"): 
         qid = item["qid"]
-
         if qid in existing_qids:
             print(f"Skipping {qid} - already processed")
             continue
 
         try: 
-            status = process_single_log(log_path, output_path, parser_func, opencoder, taxonomy_text)
-
-            final_decision_log = full_case_history.get("final_decision_log", {})
-            print("Final decision log:", final_decision_log)  # Debugging line
-            final_decision_parsed = final_decision_log.get("parsed_output", {})
-            print("Final decision parsed:", final_decision_parsed)  # Debugging line
-            predicted_answer = final_decision_parsed.get("answer", "Error: No answer found")
-            print(f"Predicted answer for {qid}: {predicted_answer}")
+            open_coding_result = open_coding(item = item, model_key=args.model, config_path=args.config_path, mas = mas)
 
             item_result = {
                 "qid": qid,
