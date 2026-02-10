@@ -48,6 +48,7 @@ code2prompt.py
 refactor_file_system.md
 medagentaudit/framework/__pycache__
 annotation
+!platform/medagentaudit-platform/src/views/annotation/
 
 datasets/**/*
 !datasets/raw/
