@@ -1,5 +1,38 @@
-# Vue 3 + TypeScript + Vite
+# MedAgentAudit Platform
 
-This template should help get you started developing with Vue 3 and TypeScript in Vite. The template uses Vue 3 `<script setup>` SFCs, check out the [script setup docs](https://v3.vuejs.org/api/sfc-script-setup.html#sfc-script-setup) to learn more.
+Browser-only annotation platform for the MedAgentAudit project.
 
-Learn more about the recommended Project Setup and IDE Support in the [Vue Docs TypeScript Guide](https://vuejs.org/guide/typescript/overview.html#project-setup).
+## Routes
+
+- `/` project landing page
+- `/annotation/open-coding` open-coding UI (full log + taxonomy multi-select)
+- `/annotation/audit` audit UI (mode-level yes/no + deterministic assignment)
+
+## Data conventions (static JS/TS, no backend)
+
+- Open-coding cases: `src/data/open-coding/cases.ts`
+- Audit cases: `src/data/audit/cases.ts`
+- VQA images: `public/data/images/...` and reference via `image.path`
+
+## Local persistence
+
+- Open-coding saved under `localStorage` key `medagentaudit:open-coding:<name>`
+- Audit saved under `localStorage` key `medagentaudit:audit:auditor:<id>`
+
+## Export
+
+- Open-coding: `{name}_opencoding.json`
+- Audit: `Auditor_<id>_audit.json`
+
+## Dev
+
+```bash
+npm i
+npm run dev
+```
+
+## Build
+
+```bash
+npm run build
+```
