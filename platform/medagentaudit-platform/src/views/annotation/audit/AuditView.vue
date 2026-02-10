@@ -7,6 +7,7 @@ import AppCard from '../../../components/ui/AppCard.vue'
 import AppSelect from '../../../components/ui/AppSelect.vue'
 import ProgressBar from '../../../components/annotation/ProgressBar.vue'
 import TwoPane from '../../../components/layout/TwoPane.vue'
+import AppToast from '../../../components/ui/AppToast.vue'
 import type { AuditAnnotation, AuditCase, AuditItem } from '../../../domain/types'
 import { downloadJson } from '../../../lib/download'
 import { AUDIT_CASES } from '../../../data/audit/cases'
@@ -25,6 +26,7 @@ const auditorId = computed<AuditorId | null>(() => {
 const search = ref('')
 const activeAuditId = ref<string | null>(null)
 const verdict = ref<Verdict>('no')
+const toast = ref<{ show: boolean; message: string }>({ show: false, message: '' })
 
 const annotations = ref<Record<string, AuditAnnotation>>({})
 
@@ -84,6 +86,8 @@ watch(
 )
 
 const doneCount = computed(() => Object.keys(annotations.value).length)
+const isAllDone = computed(() => assignedItems.value.length > 0 && doneCount.value >= assignedItems.value.length)
+const completionHintShown = ref(false)
 
 const nextTodoAuditId = computed(() => {
   const list = filteredItems.value
@@ -110,6 +114,15 @@ const persistActive = () => {
 }
 
 watch(verdict, persistActive)
+
+watch(isAllDone, (done) => {
+  if (!done || completionHintShown.value) return
+  completionHintShown.value = true
+  toast.value = { show: true, message: 'All items reviewed. Please export your JSON.' }
+  window.setTimeout(() => {
+    toast.value = { show: false, message: '' }
+  }, 2000)
+})
 
 const exportJson = () => {
   if (!auditorId.value) return
@@ -156,7 +169,9 @@ const exportJson = () => {
               <AppButton variant="secondary" :disabled="!auditorId" @click="activeAuditId = nextTodoAuditId">
                 Next todo
               </AppButton>
-              <AppButton variant="secondary" :disabled="!auditorId" @click="exportJson">Export JSON</AppButton>
+              <AppButton v-if="isAllDone" variant="secondary" :disabled="!auditorId" @click="exportJson">
+                Export JSON
+              </AppButton>
             </div>
 
             <input
@@ -292,4 +307,6 @@ const exportJson = () => {
       </AppCard>
     </template>
   </TwoPane>
+
+  <AppToast :show="toast.show" :message="toast.message" />
 </template>

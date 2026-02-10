@@ -73,6 +73,8 @@ watch(
 )
 
 const doneCount = computed(() => Object.keys(annotations.value).length)
+const isAllDone = computed(() => OPEN_CODING_CASES.length > 0 && doneCount.value >= OPEN_CODING_CASES.length)
+const completionToastShown = ref(false)
 
 const nextTodoCaseId = computed(() => {
   const list = filteredCases.value
@@ -98,6 +100,15 @@ const persistActive = () => {
 }
 
 watch([taxonomy, novelFailureMode], persistActive, { deep: true })
+
+watch(isAllDone, (done) => {
+  if (!done || completionToastShown.value) return
+  toast.value = { show: true, message: 'All cases labeled. Please export your JSON.' }
+  completionToastShown.value = true
+  window.setTimeout(() => {
+    toast.value = { show: false, message: '' }
+  }, 2000)
+})
 
 const exportJson = () => {
   const name = annotatorName.value.trim()
@@ -142,15 +153,17 @@ const copyLog = async () => {
 
             <AppInput v-model="search" placeholder="Search caseId / dataset / framework ..." />
 
-            <ProgressBar :done="doneCount" :total="OPEN_CODING_CASES.length" />
+              <ProgressBar :done="doneCount" :total="OPEN_CODING_CASES.length" />
 
-            <div class="flex flex-wrap gap-2">
-              <AppButton variant="secondary" :disabled="!annotatorName.trim()" @click="activeCaseId = nextTodoCaseId">
-                Next todo
-              </AppButton>
-              <AppButton variant="secondary" :disabled="!annotatorName.trim()" @click="exportJson">Export JSON</AppButton>
+              <div class="flex flex-wrap gap-2">
+                <AppButton variant="secondary" :disabled="!annotatorName.trim()" @click="activeCaseId = nextTodoCaseId">
+                  Next todo
+                </AppButton>
+                <AppButton v-if="isAllDone" variant="secondary" :disabled="!annotatorName.trim()" @click="exportJson">
+                  Export JSON
+                </AppButton>
+              </div>
             </div>
-          </div>
 
           <div class="mt-4 max-h-[60vh] overflow-auto pr-1">
             <div class="space-y-2">
