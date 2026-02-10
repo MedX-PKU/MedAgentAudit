@@ -33,4 +33,3 @@ const active = (to: string) => route.path === to
     </div>
   </AppShell>
 </template>
-

@@ -19,7 +19,7 @@ const active = (path: string) => route.path === path || route.path.startsWith(pa
 <template>
   <div class="min-h-screen bg-slate-50 text-slate-900">
     <header class="sticky top-0 z-40 border-b border-slate-200 bg-white/80 backdrop-blur">
-      <div class="mx-auto flex max-w-6xl items-center gap-4 px-4 py-3">
+      <div class="flex w-full items-center gap-4 px-3 py-3 lg:px-4">
         <div class="font-semibold tracking-tight">
           {{ props.title }}
         </div>
@@ -38,7 +38,7 @@ const active = (path: string) => route.path === path || route.path.startsWith(pa
       </div>
     </header>
 
-    <main class="mx-auto max-w-6xl px-4 py-6">
+    <main class="w-full px-3 py-4 lg:px-4 lg:py-5">
       <slot />
     </main>
   </div>
