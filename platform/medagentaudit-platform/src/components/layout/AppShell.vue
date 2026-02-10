@@ -43,4 +43,3 @@ const active = (path: string) => route.path === path || route.path.startsWith(pa
     </main>
   </div>
 </template>
-

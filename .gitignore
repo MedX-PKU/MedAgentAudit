@@ -49,6 +49,7 @@ refactor_file_system.md
 medagentaudit/framework/__pycache__
 annotation
 !platform/medagentaudit-platform/src/views/annotation/
+!platform/medagentaudit-platform/src/components/annotation/
 
 datasets/**/*
 !datasets/raw/
