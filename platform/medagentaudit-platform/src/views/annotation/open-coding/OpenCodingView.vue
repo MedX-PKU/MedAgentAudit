@@ -5,12 +5,15 @@ import TaxonomyChecklist from '../../../components/annotation/TaxonomyChecklist.
 import type { TaxonomyKey } from '../../../domain/taxonomy'
 import AppButton from '../../../components/ui/AppButton.vue'
 import AppCard from '../../../components/ui/AppCard.vue'
+import AppIconButton from '../../../components/ui/AppIconButton.vue'
 import AppInput from '../../../components/ui/AppInput.vue'
 import AppSelect from '../../../components/ui/AppSelect.vue'
 import AppTextarea from '../../../components/ui/AppTextarea.vue'
+import AppToast from '../../../components/ui/AppToast.vue'
 import ProgressBar from '../../../components/annotation/ProgressBar.vue'
 import TwoPane from '../../../components/layout/TwoPane.vue'
 import type { OpenCodingCase, OpenCodingAnnotation } from '../../../domain/types'
+import { copyToClipboard } from '../../../lib/clipboard'
 import { downloadJson } from '../../../lib/download'
 import { OPEN_CODING_CASES } from '../../../data/open-coding/cases'
 import { loadOpenCodingMap, saveOpenCoding } from './openCodingStorage'
@@ -58,6 +61,7 @@ const activeAnnotation = computed<OpenCodingAnnotation | null>(() => {
 
 const taxonomy = ref<TaxonomyKey[]>([])
 const novelFailureMode = ref('')
+const toast = ref<{ show: boolean; message: string }>({ show: false, message: '' })
 
 watch(
   activeAnnotation,
@@ -105,6 +109,15 @@ const exportJson = () => {
     annotations: loadOpenCodingMap(name),
   }
   downloadJson(`${name}_opencoding.json`, payload)
+}
+
+const copyLog = async () => {
+  if (!activeCase.value) return
+  await copyToClipboard(JSON.stringify(activeCase.value.collaborationLog, null, 2))
+  toast.value = { show: true, message: 'Copied collaboration log.' }
+  window.setTimeout(() => {
+    toast.value = { show: false, message: '' }
+  }, 1200)
 }
 </script>
 
@@ -224,7 +237,12 @@ const exportJson = () => {
           </AppCard>
 
           <AppCard class="p-5">
-            <div class="text-sm font-semibold text-slate-900">Collaboration log (full)</div>
+            <div class="flex items-center justify-between gap-3">
+              <div class="text-sm font-semibold text-slate-900">Collaboration log (full)</div>
+              <AppIconButton title="Copy log" variant="secondary" @click="copyLog">
+                <span class="font-mono text-xs">Copy</span>
+              </AppIconButton>
+            </div>
             <pre class="mt-3 max-h-[75vh] overflow-auto rounded-lg bg-slate-950 p-3 text-xs text-slate-100">{{
               JSON.stringify(activeCase.collaborationLog, null, 2)
             }}</pre>
@@ -236,5 +254,7 @@ const exportJson = () => {
         </AppCard>
       </template>
     </TwoPane>
+
+    <AppToast :show="toast.show" :message="toast.message" />
   </div>
 </template>
