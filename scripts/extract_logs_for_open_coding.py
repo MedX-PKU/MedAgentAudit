@@ -41,12 +41,15 @@ def main():
         print(f"Processing file: {jsonl_file}")
         data = load_jsonl(jsonl_file)
         print(f"  - Total records: {len(data)}")
+        # for MDAgents MAS, we need to extract the logs whose 'complextiy_level' is not 'basic'.
+        data = [record for record in data if record.get("complexity_level") != "basic"]
 
         open_coding_size = 20 ; open_coding_for_human_evaluation_size = 10
         # randomly shuffle the data and select 20 json records for open coding and 10 other records for open coding human evaluation
         total_needed = open_coding_size + open_coding_for_human_evaluation_size
-        if total_needed > len(data):
-            raise ValueError(f"the total data num requested ({total_needed})exceeds the total amount of avaliable data: ({len(data)}) in file: {jsonl_file}")
+        if len(data) < total_needed:
+            print(f"  [!] Warning: File {jsonl_file} only has {len(data)} valid records (less than {total_needed} required).")
+            print(f"      Taking all available records.")
         random.seed(42)
         shuffled_data = data.copy()
         random.shuffle(shuffled_data)
