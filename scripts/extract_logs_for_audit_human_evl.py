@@ -1,8 +1,7 @@
 '''
-./scripts/extract_logs_for_audit.py
+./scripts/extract_logs_for_audit_human_evl.py
 This script is designed to extract and preprocess logs from the MAS collaboration results (audit part) for audit human evaluation.
-and we need to change the figure's path for online human evaluation.
-
+and we need to change the figure's path for online human evaluation and exclude the audit part of the log.
 '''
 import random
 from pathlib import Path
@@ -14,7 +13,7 @@ from medagentaudit.utils.json_utils import save_jsonl, load_jsonl
 from medagentaudit.utils.logger import DualLogger
 
 # Define paths
-MAS_COLLABORATION_AUDIT_DIR = project_root / "logs" / "mas_collaboration_results" / "20260202"
+MAS_COLLABORATION_AUDIT_DIR = project_root / "logs" / "audit_results" / "20260202"
 EXTRACTED_FOR_AUDIT_LOG_DIR = project_root / "logs" / "extracted_logs_for_audit"
 EXTRACTED_FOR_AUDIT_HUMAN_EVL_LOG_DIR = project_root / "logs" / "extracted_logs_for_audit_human_evaluation"
 EXTRACTED_FOR_AUDIT_LOG_DIR.mkdir(parents=True, exist_ok=True)
