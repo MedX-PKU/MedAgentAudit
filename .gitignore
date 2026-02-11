@@ -47,17 +47,12 @@ medagentaudit/utils/simplified_code.json
 code2prompt.py
 refactor_file_system.md
 medagentaudit/framework/__pycache__
-annotation
-!platform/medagentaudit-platform/src/views/annotation/
-!platform/medagentaudit-platform/src/components/annotation/
 
 datasets/**/*
 !datasets/raw/
 datasets/raw/*
 !datasets/raw/preprocess_datasets.py
 scripts/audit*
-opencoding
-taxonomy
 scripts/audit_stas.py
 scripts/generate_taxonomy_statistics.py
 
