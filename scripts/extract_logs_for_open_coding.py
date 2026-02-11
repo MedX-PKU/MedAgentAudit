@@ -13,7 +13,7 @@ from medagentaudit.utils.json_utils import save_jsonl, load_jsonl
 from medagentaudit.utils.logger import DualLogger
 
 # Define paths
-MAS_COLLABORATION_DIR = project_root / "logs" / "mas_collaboration_results" / "20260202"
+MAS_COLLABORATION_FOR_OPENCODING_DIR = project_root / "logs" / "mas_collaboration_results" / "20260202"
 EXTRACTED_FOR_OPENCODING_LOG_DIR = project_root / "logs" / "extracted_logs_for_open_coding"
 EXTRACTED_FOR_OPENCODING_HUMAN_EVL_LOG_DIR = project_root / "logs" / "extracted_logs_for_open_coding_human_evaluation"
 EXTRACTED_FOR_OPENCODING_LOG_DIR.mkdir(parents=True, exist_ok=True)
@@ -21,7 +21,7 @@ EXTRACTED_FOR_OPENCODING_HUMAN_EVL_LOG_DIR.mkdir(parents=True, exist_ok=True)
 
 def main():
     # read all the jsonl files in the mas collaboration results, 
-    input_dir = MAS_COLLABORATION_DIR
+    input_dir = MAS_COLLABORATION_FOR_OPENCODING_DIR
     all_json_files = list(input_dir.glob("*.jsonl"))
     print(f"Found {len(all_json_files)} JSONL files in {input_dir}")
 

@@ -1,27 +1,24 @@
 '''
 ./scripts/extract_logs_for_audit.py
 This script is designed to extract and preprocess logs from the MAS collaboration results (audit part) for audit human evaluation.
+and we need to change the figure's path for online human evaluation.
+
 '''
 import random
-import argparse
-from typing import List, Dict, Any, Iterable, Tuple
-import pandas as pd
 from pathlib import Path
 import sys
-import re
-import json
-from medagentaudit.utils.json_utils import save_jsonl, load_jsonl
-from medagentaudit.utils.logger import DualLogger
 current_file_path = Path(__file__).resolve()
 project_root = current_file_path.parents[1]
+sys.path.append(str(project_root))
+from medagentaudit.utils.json_utils import save_jsonl, load_jsonl
+from medagentaudit.utils.logger import DualLogger
 
 # Define paths
-MAS_COLLABORATION_DIR = project_root / "logs" / "mas_collaboration_results" / "20260202"
-EXTRACTED_FOR_OPENCODING_LOG_DIR = project_root / "logs" / "extracted_logs_for_open_coding"
-EXTRACTED_FOR_OPENCODING_HUMAN_EVL_LOG_DIR = project_root / "logs" / "extracted_logs_for_open_coding_human_evaluation"
-EXTRACTED_FOR_OPENCODING_LOG_DIR.mkdir(parents=True, exist_ok=True)
-EXTRACTED_FOR_OPENCODING_HUMAN_EVL_LOG_DIR.mkdir(parents=True, exist_ok=True)
-
+MAS_COLLABORATION_AUDIT_DIR = project_root / "logs" / "mas_collaboration_results" / "20260202"
+EXTRACTED_FOR_AUDIT_LOG_DIR = project_root / "logs" / "extracted_logs_for_audit"
+EXTRACTED_FOR_AUDIT_HUMAN_EVL_LOG_DIR = project_root / "logs" / "extracted_logs_for_audit_human_evaluation"
+EXTRACTED_FOR_AUDIT_LOG_DIR.mkdir(parents=True, exist_ok=True)
+EXTRACTED_FOR_AUDIT_HUMAN_EVL_LOG_DIR.mkdir(parents=True, exist_ok=True)
 def main():
     # read all the jsonl files in the mas collaboration results, 
     input_dir = MAS_COLLABORATION_DIR
