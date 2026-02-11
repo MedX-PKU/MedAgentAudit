@@ -40,7 +40,7 @@ const normalizeDataset = (value: string) => {
   if (!trimmed) return 'Unknown'
   return trimmed
     .split(/[-_]+/)
-    .map((part) => (part ? part[0].toUpperCase() + part.slice(1) : part))
+    .map((part) => (part ? part.charAt(0).toUpperCase() + part.slice(1) : part))
     .join('-')
 }
 
@@ -74,12 +74,12 @@ const parseOptions = (text: string) => {
 const parseQuestion = (text: string) => {
   const match = text.match(/The question is:(.*?)(?:\nThis question has|\nOptions:|\nThe ground truth answer is:)/s)
   if (!match) return text.trim()
-  return match[1].trim().replace(/"\.?\s*$/, '')
+  return (match[1] ?? '').trim().replace(/"\.?\s*$/, '')
 }
 
 const parseAnswer = (text: string) => {
   const match = text.match(/The ground truth answer is:\s*([A-Z0-9]+)\b/i)
-  return match ? match[1].trim() : undefined
+  return match?.[1]?.trim()
 }
 
 const resolveImagePath = (imagePath?: string | null) => {
@@ -168,15 +168,15 @@ const parseCollaborationText = (text: string): ParsedCollaboration => {
       if (phase === 'review') {
         pushReview()
         currentReview = {
-          agent_id: normalizeWhitespace(agentMatch[1]),
-          specialty: normalizeWhitespace(agentMatch[2]),
+          agent_id: normalizeWhitespace(agentMatch[1] ?? ''),
+          specialty: normalizeWhitespace(agentMatch[2] ?? ''),
           log: { parsed_output: {} },
         }
       } else {
         pushOpinion()
         currentOpinion = {
-          agent_id: normalizeWhitespace(agentMatch[1]),
-          specialty: normalizeWhitespace(agentMatch[2]),
+          agent_id: normalizeWhitespace(agentMatch[1] ?? ''),
+          specialty: normalizeWhitespace(agentMatch[2] ?? ''),
           log: { parsed_output: {} },
         }
       }
