@@ -1,6 +1,6 @@
 '''
 ./scripts/extract_logs_for_open_coding.py
-This script is designed to extract and preprocess logs from the MAS collaboration results for open coding analysis.
+This script is designed to extract and preprocess logs from the MAS collaboration results (open coding part) for open coding analysis.
 '''
 import os
 import random

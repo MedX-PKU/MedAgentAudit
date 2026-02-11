@@ -1,6 +1,6 @@
 '''
 ./scripts/extract_logs_for_audit.py
-This script is designed to extract and preprocess logs from the MAS collaboration results for audit human evaluation.
+This script is designed to extract and preprocess logs from the MAS collaboration results (audit part) for audit human evaluation.
 '''
 import random
 import argparse
