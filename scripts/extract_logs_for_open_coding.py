@@ -1,22 +1,16 @@
 '''
 ./scripts/extract_logs_for_open_coding.py
 This script is designed to extract and preprocess logs from the MAS collaboration results (open coding part) for open coding analysis.
+and we need to change the figure's path for online human evaluation.
 '''
-import os
 import random
-import argparse
-from typing import List, Dict, Any, Iterable, Tuple
-import pandas as pd
 from pathlib import Path
 import sys
-import re
-import json
 current_file_path = Path(__file__).resolve()
 project_root = current_file_path.parents[1]
-utils_root = project_root / "medagentaudit" / "utils"
-sys.path.append(str(utils_root))
-from json_utils import save_jsonl, load_jsonl
-from logger import DualLogger
+sys.path.append(str(project_root))
+from medagentaudit.utils.json_utils import save_jsonl, load_jsonl
+from medagentaudit.utils.logger import DualLogger
 
 # Define paths
 MAS_COLLABORATION_DIR = project_root / "logs" / "mas_collaboration_results" / "20260202"
@@ -43,7 +37,6 @@ def main():
         print(f"  - Total records: {len(data)}")
         # for MDAgents MAS, we need to extract the logs whose 'complextiy_level' is not 'basic'.
         data = [record for record in data if record.get("complexity_level") != "basic"]
-
         open_coding_size = 20 ; open_coding_for_human_evaluation_size = 10
         # randomly shuffle the data and select 20 json records for open coding and 10 other records for open coding human evaluation
         total_needed = open_coding_size + open_coding_for_human_evaluation_size
@@ -64,6 +57,12 @@ def main():
         output_open_coding_human_evl_file = EXTRACTED_FOR_OPENCODING_HUMAN_EVL_LOG_DIR / f"{jsonl_file.stem}_open_coding_human_evl.jsonl"
         # write json records one record one line to the jsonl file
         for json_record in open_coding_human_evl_data:
+            # we change the image path for online human evaluation
+            image = json_record.get("image_path", "")
+            if image and Path(image).exists():
+                target = "datasets"
+                new_image_path = target + image.split(target)[1]
+                json_record["image_path"] = new_image_path
             save_jsonl(json_record, output_open_coding_human_evl_file)
         print(f"  - Extracted data saved to: {output_open_coding_human_evl_file}")
         
