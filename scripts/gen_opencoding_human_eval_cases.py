@@ -16,70 +16,83 @@ EXTRACTED_LOGS_FOR_OPENCODING_HUMAN_EVAL_DIR.mkdir(parents=True, exist_ok=True)
 STRUCTURED_LOGS_FOR_OPENCODING_HUMAN_EVAL_DIR = project_root / "logs" / "structured_logs_for_open_coding_human_evaluation"
 STRUCTURED_LOGS_FOR_OPENCODING_HUMAN_EVAL_DIR.mkdir(parents=True, exist_ok=True)
 
-def gen_case_history_text(case_history):
-    synthesizer_opinions_text = ""
-    domain_agent_past_history_opinions_text = ""
-    domain_agent_past_history_reviews_text = ""
-    decision_opinions_text = ""
-    
+def gen_collaboration_text(case_history):
+    '''
+    This function is designed to generate the text description of the multi-agent collaboration process based on the case history.
+    The generated text will be used for human evaluation to understand the multi-agent collaboration process.
+    '''
+    collaboration_text = (
+        f"Here is the multi-agent collaboration process for this case:\n\n"
+        f"Task Understanding Phase: Each domain agent independently assesses the case and provides its own judgment along with the supporting rationale:\n"
+    )
     if "rounds" in case_history and case_history["rounds"]:
         for r in case_history["rounds"]:
             round_num = r.get("round", "Unknown")
-            domain_agent_past_history_opinions_text += f"\n--- [Round {round_num}] ---\n"
+            collaboration_text += f"\n--- [Round {round_num}] ---\n"
 
             for opinion in r.get("opinions", []):
                 domain_agent_id= opinion.get("agent_id","").lower()
                 past_domain_agent_answer = opinion["log"]["parsed_output"].get("answer", "N/A")
                 past_domain_agent_explanation = opinion["log"]["parsed_output"].get("explanation", "N/A")
-                domain_agent_past_history_opinions_text += (
+                collaboration_text += (
                     f"agent ID: {domain_agent_id} (role: {opinion.get('specialty', 'N/A')})\n"
                     f"answer: {past_domain_agent_answer}\n"
                     f"explanation: {past_domain_agent_explanation}\n\n"
                 )
+            collaboration_text += (                
+                f"Multi-Agent Collaborative Discussion Phase:\n"
+            )
+            if r.get("synthesis"): # not any MAS has the synthesis stage
+                collaboration_text += (                
+                    f"This stage encompasses the generation of a preliminary conclusion by the meta-agent:\n"
+                )
+                if isinstance(r["synthesis"], list):
+                    for synth_item in r["synthesis"]:
+                        synth_log = synth_item.get("log", {}).get("parsed_output", {})
+                        past_ans = synth_log.get("answer", "N/A")
+                        past_expl = synth_log.get("explanation", "N/A")
+                        agent_id = synth_item.get("agent_id", "Unknown Lead")
+                        collaboration_text += (
+                            f"group lead ({agent_id}) answer: {past_ans}\n"
+                            f"group lead explanation: {past_expl}\n\n"
+                        )
+                elif isinstance(r["synthesis"], dict):
+                    past_synthesizer_answer = r["synthesis"]["parsed_output"].get("answer", "N/A")
+                    past_synthesizer_explanation = r["synthesis"]["parsed_output"].get("explanation", "N/A")
+                    collaboration_text += (
+                        f"synthesizer answer: {past_synthesizer_answer}\n"
+                        f"synthesizer explanation: {past_synthesizer_explanation}\n\n"
+                    )
+
             if r.get("reviews"): # not any MAS has the review stage
-                domain_agent_past_history_reviews_text += f"\n--- [Round {round_num}] ---\n"
+                collaboration_text += (                
+                    f"This stage encompasses a review from domain agent providing their perspectives and rationales. "
+                    f"It includes cross-evaluation among domain agents, where they exchange viewpoints to refine the collective outcome.\n"
+                )
                 for review in r["reviews"]:
                     past_domain_agent_review = review["log"]["parsed_output"].get("agree", "N/A")
                     past_domain_agent_review_reason = review["log"]["parsed_output"].get("reason", "N/A")
                     past_domain_agent_review_explanation = review["log"]["parsed_output"].get("explanation", "N/A")
                     past_domain_agent_review_answer = review["log"]["parsed_output"].get("answer", "N/A")
-                    domain_agent_past_history_reviews_text += (
+                    collaboration_text += (
                         f"agent ID: {review.get('agent_id', 'N/A')} (Role: {review.get('specialty', 'N/A')})\n"
                         f"review_result: {past_domain_agent_review}\n"
                         f"review_reason: {past_domain_agent_review_reason}\n"
                         f"review_explanation: {past_domain_agent_review_explanation}\n"
                         f"review_answer: {past_domain_agent_review_answer}\n\n"
                     )
-            if r.get("synthesis"): # not any MAS has the synthesis stage
-                if isinstance(r["synthesis"], list):
-                    synthesizer_opinions_text += f"\n--- [Round {round_num} - Group Reports] ---\n"
-                    for synth_item in r["synthesis"]:
-                        synth_log = synth_item.get("log", {}).get("parsed_output", {})
-                        past_ans = synth_log.get("answer", "N/A")
-                        past_expl = synth_log.get("explanation", "N/A")
-                        agent_id = synth_item.get("agent_id", "Unknown Lead")
-                        synthesizer_opinions_text += (
-                            f"group lead ({agent_id}) answer: {past_ans}\n"
-                            f"group lead explanation: {past_expl}\n\n"
-                        )
-                elif isinstance(r["synthesis"], dict):
-                    synthesizer_opinions_text += f"\n--- [Round {round_num}] ---\n"
-                    past_synthesizer_answer = r["synthesis"]["parsed_output"].get("answer", "N/A")
-                    past_synthesizer_explanation = r["synthesis"]["parsed_output"].get("explanation", "N/A")
-                    synthesizer_opinions_text += (
-                        f"synthesizer answer: {past_synthesizer_answer}\n"
-                        f"synthesizer explanation: {past_synthesizer_explanation}\n\n"
-                    )
+
             if r.get("decision"): 
-                decision_opinions_text += f"\n--- [Round {round_num}] ---\n"
+                collaboration_text += (                
+                    f"This stage encompasses the final decision-making process, where the meta-agent consolidates the insights from previous stages to arrive at a conclusive answer:\n"
+                )
                 past_decision_answer = r["decision"]["parsed_output"].get("answer", "N/A")
                 past_decision_explanation = r["decision"]["parsed_output"].get("explanation", "N/A")
-                decision_opinions_text += (
+                collaboration_text += (
                     f"decision answer: {past_decision_answer}\n"
                     f"decision explanation: {past_decision_explanation}\n\n"
                 )
-    return synthesizer_opinions_text, domain_agent_past_history_opinions_text, domain_agent_past_history_reviews_text, decision_opinions_text
-
+    return collaboration_text
 def main():
     input_dir = EXTRACTED_LOGS_FOR_OPENCODING_HUMAN_EVAL_DIR
     all_json_files = list(input_dir.glob("*.jsonl"))
@@ -118,19 +131,21 @@ def main():
                 f"This question has {len(options)} options: {options_text}"
                 f"The ground truth answer is: {ground_truth}. The multi agents system's predicted answer is: {mas_predicted_answer}.\n"
             )
-            synthesizer_opinions_text, domain_agent_past_history_opinions_text, domain_agent_past_history_reviews_text, decision_opinions_text = gen_case_history_text(case_history)
-            collaboration_process = (
-                f"Here is the multi-agent collaboration process for this case:\n"
-                f"Task Understanding Phase: Each domain agent independently assesses the case and provides its own judgment along with the supporting rationale:\n"
-                f"{domain_agent_past_history_opinions_text}\n\n"
-                f"Multi-Agent Collaborative Discussion Phase: This stage encompasses the generation of a preliminary conclusion by the meta-agent (some cases), followed by a review from domain agent providing their perspectives and rationales. "
-                f"It includes cross-evaluation among domain agents, where they exchange viewpoints to refine the collective outcome.\n"
-                f"Domain agents' reviews: {domain_agent_past_history_reviews_text}\n"
-                f"{synthesizer_opinions_text}\n"
-                f"{decision_opinions_text}\n"
+            collaboration_text = gen_collaboration_text(case_history)
+            instruction_text = (
+                f"Please conduct a comprehensive analysis of the multi-agent collaboration process for this case, utilizing the full case context and collaboration history provided.\n"
+                f"Your task is to evaluate the collaboration against 10 specific failure modes. For each of the 10 modes, you must provide a clear annotation (e.g., 1 (fail)/ 0 (pass))."
+                f"If you observe any other failure modes in the collaboration that fall outside the 10 categories, please document them as new failure modes."
             )
+            structured_case = {
+                "qid": qid,
+                "image_path": image_path,
+                "question_description": question_description,
+                "collaboration_text": collaboration_text,
+                "instruction_text": instruction_text
+            }
             # Save each structured case to a new JSONL file
-            save_jsonl([structured_case], output_file, mode="a")
+            save_jsonl(structured_case, output_jsonl_file)
         
 if __name__ == "__main__":
     main()
