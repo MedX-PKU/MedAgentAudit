@@ -325,6 +325,7 @@ export const parseAuditJsonl = (content: string, fileName: string): AuditCase[] 
       caseId,
       taxonomyKey: taxonomyKey as any,
       context: String(payload.instruction_text ?? '').trim(),
+      instructionText: String(payload.instruction_text ?? '').trim() || undefined,
     }
 
     const existing = casesById.get(caseId)
