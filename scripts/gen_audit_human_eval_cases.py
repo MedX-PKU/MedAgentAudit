@@ -23,11 +23,11 @@ def find_failure_step_and_agent_id(case_history, failure_mode_log_key):
     '''
     failure_step = None
     specific_agent_id = None
-    if "rounds" in case_history and case_history["rounds"]:
-        for r in case_history["rounds"]:
+    if "audit" in case_history and case_history["audit"]["rounds"]:
+        for r in case_history["audit"]["rounds"]:
             if failure_mode_log_key in r and r[failure_mode_log_key]:
-                specific_agent_id = r[failure_mode_log_key]["agent_id"]
-                failure_step = r[failure_mode_log_key]["step"]
+                specific_agent_id = r[failure_mode_log_key][0].get("agent_id", "this failure mode doesn't have specific agent id")
+                failure_step = r[failure_mode_log_key][0]["step"]
                 break
     return failure_step, specific_agent_id
 
@@ -37,8 +37,8 @@ def find_earliest_failure_round(case_history, failure_mode_log_key):
     The failure mode log key is the key in the case history logs that indicates whether the failure mode happens in that round.
     '''
     earliest_round = None
-    if "rounds" in case_history and case_history["rounds"]:
-        for r in case_history["rounds"]:
+    if "audit" in case_history and case_history["audit"]["rounds"]:
+        for r in case_history["audit"]["rounds"]:
             if failure_mode_log_key in r and r[failure_mode_log_key]:
                 earliest_round = r["round"]
                 break
@@ -67,10 +67,11 @@ def gen_collaboration_text(case_history):
                     f"answer: {past_domain_agent_answer}\n"
                     f"explanation: {past_domain_agent_explanation}\n\n"
                 )
-            collaboration_text += (                
-                f"Multi-Agent Collaborative Discussion Phase:\n"
-            )
+
             if r.get("synthesis"): # not any MAS has the synthesis stage
+                collaboration_text += (                
+                f"Multi-Agent collaborative discussion phase: the meta agent synthesizes the opinions of the domain agents to form a preliminary conclusion.\n"
+                )
                 collaboration_text += (                
                     f"This stage encompasses the generation of a preliminary conclusion by the meta-agent:\n"
                 )
@@ -93,8 +94,8 @@ def gen_collaboration_text(case_history):
                     )
 
             if r.get("reviews"): # not any MAS has the review stage
-                collaboration_text += (                
-                    f"This stage encompasses a review from domain agent providing their perspectives and rationales. "
+                collaboration_text += (
+                    f"Multi-Agent collaborative discussion phase: this stage encompasses a review from domain agents providing their perspectives and rationales. "
                     f"It includes cross-evaluation among domain agents, where they exchange viewpoints to refine the collective outcome.\n"
                 )
                 for review in r["reviews"]:
@@ -146,9 +147,57 @@ def main():
     }
 
     # every failure mode we needt to specificly give the definition of it for guiding the human evaluation.
-    # TODO
     failure_mode_definition_mapping = {
-
+        "1.1.1": {
+            "name": "Factual Hallucinations during Input Interpretation",
+            "definition": "The agent fabricates clinical findings not present in the source data or directly contradicts objective facts explicitly stated in the case description or medical imaging (e.g., misidentifying anatomical laterality Left/Right, or inventing pathologies).",
+            "human_eval_instruction": "Compare the agent's observation against the Ground Truth and source input. \n\nAudit Criterion (Failure = 1): Mark as 1 if the agent reports specific medical findings that are demonstrably absent in the text/image, or explicitly contradicts basic facts (e.g., saying 'fracture' when the bone is intact). \nPass (0): The observation is factually consistent with the input."
+        },
+        "1.2.1": {
+            "name": "Neglect or Misinterpretation of Modality Information during Input Interpretation",
+            "definition": "The agent fails to utilize the required input modality (typically visual data in VQA) to answer the specific diagnostic question, resorting to generic medical definitions or 'text-only' fallback responses.",
+            "human_eval_instruction": "Assess if the agent effectively utilized the specific modality (e.g., the image) required to answer the question. \n\nAudit Criterion (Failure = 1): Mark as 1 if the agent provides a generic 'textbook' definition instead of analyzing the specific patient case, or if it explicitly ignores the visual evidence required for diagnosis. \nPass (0): The agent attempts to interpret the specific case data provided."
+        },
+        "2.1.1": {
+            "name": "Mismatch Between Assigned Roles and Clinical Tasks during Collaborative discussion",
+            "definition": "The assigned specialist role lacks the necessary domain expertise or procedural competence required to interpret the specific pathology or modality of the case (e.g., a Psychiatrist assigned to read a CT scan).",
+            "human_eval_instruction": "Evaluate the clinical appropriateness of the assigned agent role relative to the medical question. \n\nAudit Criterion (Failure = 1): Mark as 1 if the specialist role is professionally irrelevant to the organ system or diagnostic modality (e.g., an Orthopedist treating a viral infection). \nPass (0): The role is plausible for the clinical context."
+        },
+        "2.1.2": {
+            "name": "Failure to Activate Specialist Knowledge During Role Execution during Collaborative discussion",
+            "definition": "The agent fails to demonstrate the depth of reasoning, technical terminology, or semiology characteristic of its assigned specialist role, offering instead generic or layperson-level descriptions.",
+            "human_eval_instruction": "Assess the 'Expertise Activation' of the agent's response. \n\nAudit Criterion (Failure = 1): Mark as 1 if the agent uses non-specialist language (e.g., vague descriptions like 'white spot' instead of 'consolidation') or produces a generic LLM response lacking specific clinical reasoning. \nPass (0): The response reflects the expected professional standard of the assigned role."
+        },
+        "2.2.1": {
+            "name": "Repetition of Initial Views during Collaborative discussion",
+            "definition": "The agent contributes no incremental information gain during the discussion, merely restating its own previous opinion or echoing others without adding new evidence, refinement, or critical reasoning (Lazy Agreement).",
+            "human_eval_instruction": "Evaluate the 'Net Information Gain' of the current statement given the discussion history. \n\nAudit Criterion (Failure = 1): Mark as 1 if the agent simply agrees with or repeats previous statements without citing specific supporting features or adding new analytical value. \nPass (0): The agent provides new evidence, a new perspective, or a constructive critique."
+        },
+        "2.2.2": {
+            "name": "Unresolved Conflicts during Collaborative discussion",
+            "definition": "Mutually exclusive clinical claims made by different agents (e.g., 'Normal' vs. 'Pathological') persist in the discussion history without being explicitly acknowledged, refuted, or reconciled by the current agent.",
+            "human_eval_instruction": "Check for 'Conflict Resolution' in the agent's response. \n\nAudit Criterion (Failure = 1): Mark as 1 if the agent proceeds with a conclusion while completely ignoring a direct contradiction raised by a peer in the previous rounds (acting as if the conflict never occurred). \nPass (0): The agent acknowledges the conflict, even if they simply stick to their own view with a reason."
+        },
+        "3.1.1": {
+            "name": "Suppression of Correct Minority Views by Incorrect Consensus during Decision-making",
+            "definition": "The final decision-maker adopts an incorrect majority opinion while dismissing a clinically correct minority view that had accurately identified the pathology or visual evidence.",
+            "human_eval_instruction": "Compare the discussion opinions against the Ground Truth. \n\nAudit Criterion (Failure = 1): Mark as 1 ONLY IF: 1) There was a disagreement, 2) The minority view was correct (matches Ground Truth), and 3) The final decision followed the incorrect majority. \nPass (0): The decision was correct, or the minority view was also wrong."
+        },
+        "3.1.2": {
+            "name": "Reasoning Distorted by Authority Bias during Decision-making",
+            "definition": "The synthesis or decision is explicitly based on the source of the claim (e.g., Agent ID, Role Title, or confidence tone) rather than the clinical validity of the reasoning or objective evidence.",
+            "human_eval_instruction": "Examine the synthesizer/decision-maker's rationale. \n\nAudit Criterion (Failure = 1): Mark as 1 if the rationale explicitly favors an opinion because of the speaker's title or role (e.g., 'I agree with Agent 1 because they are the Radiologist') without verifying the underlying clinical facts. \nPass (0): The decision is based on the content and evidence provided."
+        },
+        "3.1.3": {
+            "name": "Neglect of Contradictions in Reasoning Process during Decision-making",
+            "definition": "The final decision groups disparate opinions into a 'False Consensus,' claiming agreement exists while ignoring that the underlying clinical justifications are mutually exclusive (e.g., agents agreeing on the diagnosis but citing different anatomical locations).",
+            "human_eval_instruction": "Check for 'Logical Coherence' in the synthesis. \n\nAudit Criterion (Failure = 1): Mark as 1 if the synthesizer claims 'the team agrees' but ignores that the agents cited incompatible reasons or findings (e.g., Agent A says Left Lung, Agent B says Right Lung). \nPass (0): The summary accurately reflects the degree of consensus or disagreement."
+        },
+        "3.2.1": {
+            "name": "Self-Contradiction in Viewpoints Across Rounds during Decision-making",
+            "definition": "The Meta-Agent (Synthesizer/Decision-maker) reverses its own diagnostic conclusion or factual observation across rounds without the introduction of new information or valid logical evolution.",
+            "human_eval_instruction": "Track the Lead Agent's consistency across rounds. \n\nAudit Criterion (Failure = 1): Mark as 1 if the agent flips its diagnosis (e.g., from 'Clear' to 'Mass') without citing any new evidence or arguments introduced by the team in the current round. \nPass (0): The change in opinion is justified by new information."
+        }
     }
     for jsonl_file in all_json_files:
         # identify the failure mode
@@ -162,6 +211,7 @@ def main():
         print(f"  - Total records: {len(data)}")
         # we need to extract the info from the json file and assign it to the structured format for human evaluation.
         for json_record in data:
+            print(f"Processing record with qid: {json_record['qid']}")
             dataset = json_record["dataset"]
             llm = json_record["llm"]
             mas = json_record["mas"]
@@ -169,6 +219,7 @@ def main():
             if failure_code in ["1.1.1", "1.2.1"] :
                 # find the earliest round when the failure mode happens
                 earliest_round = find_earliest_failure_round(case_history, failure_mode_log_key_mapping[failure_code])
+                failure_step, specific_agent_id = find_failure_step_and_agent_id(json_record["case_history"], failure_mode_log_key_mapping[failure_code])
                 print(f"  - Earliest round for failure mode {failure_code}: {earliest_round}")
                 # choose the corresponding round case history
                 json_record["case_history"]["rounds"] = json_record["case_history"]["rounds"][:earliest_round]
@@ -184,6 +235,7 @@ def main():
                 # in this failure mode , we just need to judge whether the domain agents' specialties are aligned with the question's specialty.
                 # so we just need to keep the earliest round case history and the opinions of the domain agents in that round.
                 earliest_round = find_earliest_failure_round(case_history, failure_mode_log_key_mapping[failure_code])
+                failure_step, specific_agent_id = find_failure_step_and_agent_id(json_record["case_history"], failure_mode_log_key_mapping[failure_code])
                 print(f"  - Earliest round for failure mode {failure_code}: {earliest_round}")
                 json_record["case_history"]["rounds"] = json_record["case_history"]["rounds"][:earliest_round]
                 # delete the synthesis, review and decision stage in the audit history.
@@ -267,18 +319,51 @@ def main():
             )
             case_history = json_record["case_history"] # at this time the case history has been cut to the audit timing for shortening the recognition load for human eval.
             collaboration_text = gen_collaboration_text(case_history)
-            instruction_text = (
-                f"Please conduct a comprehensive analysis of the multi-agent collaboration process for this case, utilizing the full case context and collaboration history provided.\n"
-                f"Your task is to evaluate the collaboration against 10 specific failure modes. For each of the 10 modes, you must provide a clear annotation (e.g., 1 (fail)/ 0 (pass)).\n"
-                f"If you observe any other failure modes in the collaboration that fall outside the 10 categories, please document them as new failure modes.\n"
-            )
+            # this part need to point out which agent at which step make what failure,mode and then we inject the failure mode definition's definition and human evaluation instruction.
+            fm_info = failure_mode_definition_mapping[failure_code]
+            fm_name = fm_info["name"]
+
+            if failure_code != "2.1.1":
+                instruction_text = (
+                    f"Your task is to evaluate a specific step in a Multi-Agent System (MAS) collaboration log to determine if a failure occurred.\n\n"
+                    f"Target Failure Mode: {fm_name}\n"
+                    f"Target agent: {specific_agent_id}\n"
+                    f"You need to focus on the agent's opinions on {failure_step} step in the collaboration process. \n"
+                    f"Please review the provided question, ground truth, and collaboration history.\n\n"
+                    f"Detailed evaluation information:\n"
+                    f"The definition of the failure mode is as follows:\n"
+                    f"{fm_info['definition']}\n\n"
+                    f"The annotation guideline for this failure mode is as follows:\n"
+                    f"{fm_info['human_eval_instruction']}\n\n"
+                    f"Based on the definition and criteria provided, determine if this failure mode is present.\n"
+                )
+            else:
+                instruction_text = (
+                    f"Your task is to evaluate a specific step in a Multi-Agent System (MAS) collaboration log to determine if a failure occurred.\n\n"
+                    f"Target Failure Mode: {fm_name}\n"
+                    f"Target agent: {specific_agent_id}\n"
+                    f"You need to focus on assigned specialties of domain agents on {failure_step} step in the collaboration process. \n"
+                    f"Please review the provided question, ground truth, and collaboration history.\n\n"
+                    f"Detailed evaluation information:\n"
+                    f"The definition of the failure mode is as follows:\n"
+                    f"{fm_info['definition']}\n\n"
+                    f"The annotation guideline for this failure mode is as follows:\n"
+                    f"{fm_info['human_eval_instruction']}\n\n"
+                    f"Based on the definition and criteria provided, determine if this failure mode is present.\n"
+                )
             structured_case = {
                 "qid": qid,
                 "image_path": image_path,
+                "ground_truth": ground_truth,
+                "failure_code": failure_code,
+                "mas_audit_result": audit_result,
+                "llm": llm,
+                "mas": mas,
+                "dataset": dataset,
+                "mas_predicted_answer": mas_predicted_answer,
                 "question_description": question_description,
                 "collaboration_text": collaboration_text,
                 "instruction_text": instruction_text,
-                "failure_mode_definition": failure_mode_definition_mapping[failure_code],
             }
             # Save each structured case to a new JSONL file
             save_jsonl(structured_case, output_jsonl_file)
