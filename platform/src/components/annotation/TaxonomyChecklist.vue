@@ -22,8 +22,7 @@ const toggle = (key: TaxonomyKey) => {
       >
         <div class="min-w-0 flex-1 space-y-1">
           <div class="text-xs font-medium text-slate-500">{{ item.key }}</div>
-          <div class="text-sm font-semibold text-slate-900 md:text-base">{{ item.title }}</div>
-          <div class="text-xs text-slate-600">{{ item.short }}</div>
+          <div class="text-sm font-medium text-slate-800">{{ item.title }}</div>
         </div>
         <input
           class="mt-1 h-4 w-4 accent-blue-600"
