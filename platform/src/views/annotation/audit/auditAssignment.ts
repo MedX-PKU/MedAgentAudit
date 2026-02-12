@@ -1,18 +1,19 @@
 import type { AuditCase, AuditItem } from '../../../domain/types'
-import { fnv1a32 } from '../../../lib/seeded'
-
 export type AuditorId = 1 | 2 | 3 | 4 | 5 | 6
 
 export const AUDITOR_IDS: AuditorId[] = [1, 2, 3, 4, 5, 6]
 
-const pick3Of6 = (caseId: string): AuditorId[] => {
-  const scored = AUDITOR_IDS.map((id) => ({ id, score: fnv1a32(`${caseId}::auditor::${id}`) }))
-  scored.sort((a, b) => a.score - b.score)
-  return scored.slice(0, 3).map((s) => s.id)
-}
-
 export const isAssigned = (auditor: AuditorId, caseId: string): boolean => {
-  return pick3Of6(caseId).includes(auditor)
+  const m = caseId.match(/__seq_(\d+)\s*$/)
+  const n = m ? Number(m[1]) : Number.NaN
+  if (!Number.isFinite(n)) return false
+
+  const mod = ((n % 6) + 6) % 6
+  const a1 = (mod + 1) as AuditorId
+  const a2 = (((mod + 1) % 6) + 1) as AuditorId
+  const a3 = (((mod + 2) % 6) + 1) as AuditorId
+
+  return auditor === a1 || auditor === a2 || auditor === a3
 }
 
 export const assignedAuditItems = (auditor: AuditorId, cases: readonly AuditCase[]): AuditItem[] => {
@@ -24,3 +25,6 @@ export const assignedAuditItems = (auditor: AuditorId, cases: readonly AuditCase
   return items
 }
 
+export const assignedAuditCases = (auditor: AuditorId, cases: readonly AuditCase[]): AuditCase[] => {
+  return cases.filter((c) => isAssigned(auditor, c.caseId))
+}
