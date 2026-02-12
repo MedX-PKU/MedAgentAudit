@@ -5,7 +5,6 @@ import TaxonomyChecklist from '../../../components/annotation/TaxonomyChecklist.
 import type { TaxonomyKey } from '../../../domain/taxonomy'
 import AppButton from '../../../components/ui/AppButton.vue'
 import AppCard from '../../../components/ui/AppCard.vue'
-import AppIconButton from '../../../components/ui/AppIconButton.vue'
 import AppInput from '../../../components/ui/AppInput.vue'
 import AppSelect from '../../../components/ui/AppSelect.vue'
 import AppTextarea from '../../../components/ui/AppTextarea.vue'
@@ -202,12 +201,55 @@ const copyLog = async () => {
     toast.value = { show: false, message: '' }
   }, 1200)
 }
+
+const copyQuestion = async () => {
+  if (!activeCase.value) return
+  const questionText = activeCase.value.question ?? ''
+  const optionsText = (activeCase.value.options ?? []).join('\n')
+  const payload = `Question：${questionText}\nOptions：${optionsText}`
+  await copyToClipboard(payload)
+  toast.value = { show: true, message: 'Copied question + options.' }
+  window.setTimeout(() => {
+    toast.value = { show: false, message: '' }
+  }, 1200)
+}
+
+const copyImage = async () => {
+  const url = activeCase.value?.image?.path
+  if (!url) return
+  try {
+    toast.value = { show: true, message: 'Copying image...' }
+    const res = await fetch(url)
+    const blob = await res.blob()
+    // ClipboardItem may not exist in some browsers; fallback to copying URL.
+    if (typeof ClipboardItem === 'undefined' || !navigator.clipboard?.write) {
+      await copyToClipboard(url)
+      toast.value = { show: true, message: 'Copied image URL.' }
+      window.setTimeout(() => {
+        toast.value = { show: false, message: '' }
+      }, 1200)
+      return
+    }
+    await navigator.clipboard.write([new ClipboardItem({ [blob.type || 'image/png']: blob })])
+    toast.value = { show: true, message: 'Copied image.' }
+    window.setTimeout(() => {
+      toast.value = { show: false, message: '' }
+    }, 1200)
+  } catch (error) {
+    console.error(error)
+    await copyToClipboard(url)
+    toast.value = { show: true, message: 'Copied image URL.' }
+    window.setTimeout(() => {
+      toast.value = { show: false, message: '' }
+    }, 1200)
+  }
+}
 </script>
 
 <template>
   <div class="space-y-4">
     <div class="group fixed left-0 top-0 z-40 flex h-full items-center">
-      <div class="pointer-events-none h-full w-1 bg-slate-900/5 transition group-hover:bg-slate-900/10"></div>
+      <div class="pointer-events-none h-full w-[2px] bg-slate-900/5 transition group-hover:bg-slate-900/10"></div>
       <div
         class="pointer-events-auto ml-2 w-[320px] -translate-x-full rounded-2xl border border-slate-200 bg-white p-4 shadow-xl transition group-hover:translate-x-0"
       >
@@ -276,14 +318,20 @@ const copyLog = async () => {
 
           <div class="mt-4 space-y-4">
             <div>
-              <div class="text-sm font-semibold text-slate-900">Question</div>
+              <div class="flex items-center justify-between gap-3">
+                <div class="text-sm font-semibold text-slate-900">Question</div>
+                <AppButton variant="secondary" @click="copyQuestion">Copy</AppButton>
+              </div>
               <div class="mt-2 whitespace-pre-wrap rounded-xl border border-slate-200 bg-white p-3 text-sm text-slate-800">
                 {{ activeCase.question }}
               </div>
             </div>
 
             <div v-if="activeCase.modality === 'vqa' && activeCase.image?.path">
-              <div class="text-sm font-semibold text-slate-900">Image</div>
+              <div class="flex items-center justify-between gap-3">
+                <div class="text-sm font-semibold text-slate-900">Image</div>
+                <AppButton variant="secondary" @click="copyImage">Copy</AppButton>
+              </div>
               <img
                 class="mt-2 max-h-[360px] w-auto rounded-xl border border-slate-200 bg-white"
                 :src="activeCase.image.path"
@@ -328,20 +376,32 @@ const copyLog = async () => {
       </div>
 
       <div>
-        <AppCard v-if="activeCase" class="max-h-[86vh] overflow-auto p-5">
-          <div class="flex items-center justify-between gap-3">
-            <div class="text-sm font-semibold text-slate-900">Collaboration log</div>
-            <AppIconButton title="Copy log" variant="secondary" @click="copyLog">
-              <span class="font-mono text-xs">Copy</span>
-            </AppIconButton>
-          </div>
+          <AppCard v-if="activeCase" class="max-h-[86vh] overflow-auto p-5">
+            <div class="flex items-center justify-between gap-3">
+              <div class="text-sm font-semibold text-slate-900">Collaboration log</div>
+              <AppButton variant="secondary" @click="copyLog">Copy</AppButton>
+            </div>
 
-          <div v-if="collaborationRounds.length" class="mt-4 space-y-4">
-            <AppCard
-              v-for="round in collaborationRounds"
-              :key="round.round"
-              class="space-y-3 border border-slate-200 bg-white p-4"
-            >
+            <div v-if="activeCase.instructionText" class="mt-4">
+              <div class="flex items-center justify-between gap-3">
+                <div class="text-sm font-semibold text-slate-900">Instruction</div>
+                <div class="group relative">
+                  <AppButton variant="secondary">Instruction</AppButton>
+                  <div
+                    class="pointer-events-none absolute right-0 top-full z-50 mt-2 hidden w-[520px] whitespace-pre-wrap rounded-xl border border-slate-200 bg-white p-3 text-xs text-slate-900 shadow-lg group-hover:block"
+                  >
+                    {{ activeCase.instructionText ?? '' }}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div v-if="collaborationRounds.length" class="mt-4 space-y-4">
+              <AppCard
+                v-for="round in collaborationRounds"
+                :key="round.round"
+                class="space-y-3 border border-slate-200 bg-white p-4"
+              >
               <div class="text-xs font-medium text-slate-500">Round {{ round.round }}</div>
 
               <div v-if="round.opinions?.length" class="space-y-2">

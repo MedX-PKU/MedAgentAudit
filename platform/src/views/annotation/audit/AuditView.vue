@@ -9,8 +9,9 @@ import ProgressBar from '../../../components/annotation/ProgressBar.vue'
 import AppToast from '../../../components/ui/AppToast.vue'
 import type { AuditAnnotation, AuditCase, AuditItem } from '../../../domain/types'
 import { downloadJson } from '../../../lib/download'
+import { copyToClipboard } from '../../../lib/clipboard'
 import { loadAuditCases } from '../../../data/audit/cases'
-import { assignedAuditItems, type AuditorId } from './auditAssignment'
+import { assignedAuditCases, assignedAuditItems, type AuditorId } from './auditAssignment'
 import { loadAuditMap, saveAudit } from './auditStorage'
 
 type Verdict = 'yes' | 'no'
@@ -62,19 +63,17 @@ const assignedItems = computed<AuditItem[]>(() => {
   return assignedAuditItems(auditorId.value, auditCases.value)
 })
 
-const filteredItems = computed(() => {
-  const q = search.value.trim().toLowerCase()
-  if (!q) return assignedItems.value
-  return assignedItems.value.filter((it) => {
-    const hay = [it.auditId, it.caseId, it.taxonomyKey].join(' ').toLowerCase()
-    return hay.includes(q)
-  })
+const assignedCases = computed<AuditCase[]>(() => {
+  if (!auditorId.value) return []
+  return assignedAuditCases(auditorId.value, auditCases.value)
 })
 
 const activeItem = computed<AuditItem | null>(() => {
   if (!activeAuditId.value) return null
   return assignedItems.value.find((i) => i.auditId === activeAuditId.value) ?? null
 })
+
+const activeCaseId = computed(() => activeCase.value?.caseId ?? null)
 
 const activeCase = computed<AuditCase | null>(() => {
   if (!activeItem.value) return null
@@ -102,6 +101,10 @@ const collaborationRounds = computed<Round[]>(() => {
   return Array.isArray(rounds) ? rounds : []
 })
 
+const collaborationRaw = computed(() => {
+  const log = activeCase.value?.collaborationLog as { raw?: string } | undefined
+  return log?.raw
+})
 const activeTaxonomy = computed(() => {
   const key = activeItem.value?.taxonomyKey
   if (!key) return null
@@ -123,7 +126,7 @@ const isAllDone = computed(() => assignedItems.value.length > 0 && doneCount.val
 const completionHintShown = ref(false)
 
 const nextTodoAuditId = computed(() => {
-  const list = filteredItems.value
+  const list = assignedItems.value
   const idx = list.findIndex((it) => it.auditId === activeAuditId.value)
   const start = idx >= 0 ? idx : 0
   for (let offset = 0; offset < list.length; offset++) {
@@ -192,12 +195,64 @@ const exportJson = () => {
   }
   downloadJson(`${name}_audit.json`, payload)
 }
+
+const copyLog = async () => {
+  const raw = collaborationRaw.value
+  if (!raw) return
+  await copyToClipboard(raw)
+  toast.value = { show: true, message: 'Copied collaboration log.' }
+  window.setTimeout(() => {
+    toast.value = { show: false, message: '' }
+  }, 1200)
+}
+
+const copyQuestion = async () => {
+  if (!activeCase.value) return
+  const questionText = activeCase.value.question ?? ''
+  const optionsText = (activeCase.value.options ?? []).join('\n')
+  const payload = `Question：${questionText}\nOptions：${optionsText}`
+  await copyToClipboard(payload)
+  toast.value = { show: true, message: 'Copied question + options.' }
+  window.setTimeout(() => {
+    toast.value = { show: false, message: '' }
+  }, 1200)
+}
+
+const copyImage = async () => {
+  const url = activeCase.value?.image?.path
+  if (!url) return
+  try {
+    toast.value = { show: true, message: 'Copying image...' }
+    const res = await fetch(url)
+    const blob = await res.blob()
+    if (typeof ClipboardItem === 'undefined' || !navigator.clipboard?.write) {
+      await copyToClipboard(url)
+      toast.value = { show: true, message: 'Copied image URL.' }
+      window.setTimeout(() => {
+        toast.value = { show: false, message: '' }
+      }, 1200)
+      return
+    }
+    await navigator.clipboard.write([new ClipboardItem({ [blob.type || 'image/png']: blob })])
+    toast.value = { show: true, message: 'Copied image.' }
+    window.setTimeout(() => {
+      toast.value = { show: false, message: '' }
+    }, 1200)
+  } catch (error) {
+    console.error(error)
+    await copyToClipboard(url)
+    toast.value = { show: true, message: 'Copied image URL.' }
+    window.setTimeout(() => {
+      toast.value = { show: false, message: '' }
+    }, 1200)
+  }
+}
 </script>
 
 <template>
   <div class="space-y-4">
     <div class="group fixed left-0 top-0 z-40 flex h-full items-center">
-      <div class="pointer-events-none h-full w-1 bg-slate-900/5 transition group-hover:bg-slate-900/10"></div>
+      <div class="pointer-events-none h-full w-[2px] bg-slate-900/5 transition group-hover:bg-slate-900/10"></div>
       <div
         class="pointer-events-auto ml-2 w-[320px] -translate-x-full rounded-2xl border border-slate-200 bg-white p-4 shadow-xl transition group-hover:translate-x-0"
       >
@@ -250,27 +305,21 @@ const exportJson = () => {
 
           <div v-else class="space-y-2">
             <button
-              v-for="it in filteredItems"
-              :key="it.auditId"
+              v-for="c in assignedCases"
+              :key="c.caseId"
               type="button"
               class="w-full rounded-xl border p-3 text-left text-sm transition"
-              :class="it.auditId === activeAuditId ? 'border-blue-300 bg-blue-50' : 'border-slate-200 bg-white hover:bg-slate-50'"
-              @click="activeAuditId = it.auditId"
+              :class="c.caseId === activeCaseId ? 'border-blue-300 bg-blue-50' : 'border-slate-200 bg-white hover:bg-slate-50'"
+              @click="activeAuditId = assignedItems.find((it) => it.caseId === c.caseId)?.auditId ?? null"
             >
               <div class="flex items-center justify-between gap-2">
-                <div class="truncate font-medium text-slate-900">{{ it.auditId }}</div>
-                <div
-                  class="shrink-0 rounded-md px-2 py-0.5 text-xs"
-                  :class="annotations[it.auditId] ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-600'"
-                >
-                  {{ annotations[it.auditId] ? 'Done' : 'Todo' }}
-                </div>
+                <div class="truncate font-medium text-slate-900">{{ c.caseId }}</div>
               </div>
-              <div class="mt-1 text-xs text-slate-600">Case {{ it.caseId }} · {{ it.taxonomyKey }}</div>
+              <div class="mt-1 text-xs text-slate-600">{{ c.dataset }} · {{ c.framework }} · {{ c.modality }}</div>
             </button>
           </div>
         </div>
-        </AppCard>
+      </AppCard>
       </div>
     </div>
 
@@ -284,16 +333,22 @@ const exportJson = () => {
               </div>
             </div>
 
-            <div class="mt-4 space-y-4">
-              <div>
-                <div class="text-sm font-semibold text-slate-900">Question</div>
-                <div class="mt-2 whitespace-pre-wrap rounded-xl border border-slate-200 bg-white p-3 text-sm text-slate-800">
-                  {{ activeCase.question }}
-                </div>
-              </div>
+	            <div class="mt-4 space-y-4">
+	              <div>
+	                <div class="flex items-center justify-between gap-3">
+	                  <div class="text-sm font-semibold text-slate-900">Question</div>
+	                  <AppButton variant="secondary" @click="copyQuestion">Copy</AppButton>
+	                </div>
+	                <div class="mt-2 whitespace-pre-wrap rounded-xl border border-slate-200 bg-white p-3 text-sm text-slate-800">
+	                  {{ activeCase.question }}
+	                </div>
+	              </div>
 
               <div v-if="activeCase.modality === 'vqa' && activeCase.image?.path">
-                <div class="text-sm font-semibold text-slate-900">Image</div>
+                <div class="flex items-center justify-between gap-3">
+                  <div class="text-sm font-semibold text-slate-900">Image</div>
+                  <AppButton variant="secondary" @click="copyImage">Copy</AppButton>
+                </div>
                 <img
                   class="mt-2 max-h-[360px] w-auto rounded-xl border border-slate-200 bg-white"
                   :src="activeCase.image.path"
@@ -332,12 +387,8 @@ const exportJson = () => {
         </div>
 
         <div>
-          <AppCard class="max-h-[86vh] overflow-auto p-5">
-            <div class="flex items-center justify-between gap-3">
-              <div class="text-sm font-semibold text-slate-900">Collaboration log</div>
-            </div>
-
-            <div class="mt-4">
+	          <AppCard class="max-h-[86vh] overflow-auto p-5">
+            <div>
               <div class="text-sm font-semibold text-slate-900">Failure mode</div>
               <div class="mt-2 rounded-xl border border-slate-200 bg-white p-3 text-sm text-slate-800">
                 <div class="flex flex-wrap items-center gap-2">
@@ -350,7 +401,30 @@ const exportJson = () => {
               </div>
             </div>
 
-            <div v-if="collaborationRounds.length" class="mt-4 space-y-4">
+            <div class="mt-4">
+              <div class="flex items-center justify-between gap-3">
+                <div class="text-sm font-semibold text-slate-900">Instruction Text</div>
+                <div class="group relative">
+                  <AppButton variant="secondary">Instruction Text</AppButton>
+	                  <div
+	                    class="pointer-events-none absolute right-0 top-full z-50 mt-2 hidden w-[520px] whitespace-pre-wrap rounded-xl border border-slate-200 bg-white p-3 text-xs text-slate-900 shadow-lg group-hover:block"
+	                  >
+	                    {{ activeItem.instructionText ?? activeItem.context }}
+	                  </div>
+                </div>
+              </div>
+            </div>
+
+	            <div class="mt-4 flex items-center justify-between gap-3">
+	              <div class="text-sm font-semibold text-slate-900">Collaboration log</div>
+	              <AppButton variant="secondary" @click="copyLog">Copy</AppButton>
+	            </div>
+
+	            <div v-if="collaborationRaw" class="mt-3 whitespace-pre-wrap rounded-lg bg-white p-3 text-xs text-slate-900">
+	              {{ collaborationRaw }}
+	            </div>
+
+            <div v-else-if="collaborationRounds.length" class="mt-4 space-y-4">
               <AppCard
                 v-for="round in collaborationRounds"
                 :key="round.round"
