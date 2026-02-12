@@ -405,13 +405,13 @@ const copyImage = async () => {
               <div class="flex items-center justify-between gap-3">
                 <div class="text-sm font-semibold text-slate-900">Instruction Text</div>
                 <div class="group relative">
-                  <AppButton variant="secondary">Instruction Text</AppButton>
+	                  <AppButton variant="secondary">Instruction Text</AppButton>
 	                  <div
-	                    class="pointer-events-none absolute right-0 top-full z-50 mt-2 hidden w-[520px] whitespace-pre-wrap rounded-xl border border-slate-200 bg-white p-3 text-xs text-slate-900 shadow-lg group-hover:block"
+	                    class="pointer-events-none fixed right-4 top-[88px] z-[9999] hidden w-[520px] whitespace-pre-wrap rounded-xl border border-slate-200 bg-white p-3 text-xs text-slate-900 shadow-lg group-hover:block"
 	                  >
 	                    {{ activeItem.instructionText ?? activeItem.context }}
 	                  </div>
-                </div>
+	                </div>
               </div>
             </div>
 
