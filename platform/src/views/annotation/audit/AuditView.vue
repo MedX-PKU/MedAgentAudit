@@ -6,11 +6,10 @@ import AppButton from '../../../components/ui/AppButton.vue'
 import AppCard from '../../../components/ui/AppCard.vue'
 import AppSelect from '../../../components/ui/AppSelect.vue'
 import ProgressBar from '../../../components/annotation/ProgressBar.vue'
-import TwoPane from '../../../components/layout/TwoPane.vue'
 import AppToast from '../../../components/ui/AppToast.vue'
 import type { AuditAnnotation, AuditCase, AuditItem } from '../../../domain/types'
 import { downloadJson } from '../../../lib/download'
-import { AUDIT_CASES } from '../../../data/audit/cases'
+import { loadAuditCases } from '../../../data/audit/cases'
 import { assignedAuditItems, type AuditorId } from './auditAssignment'
 import { loadAuditMap, saveAudit } from './auditStorage'
 
@@ -25,10 +24,23 @@ const auditorId = computed<AuditorId | null>(() => {
 
 const search = ref('')
 const activeAuditId = ref<string | null>(null)
-const verdict = ref<Verdict>('no')
+const verdict = ref<Verdict | null>(null)
 const toast = ref<{ show: boolean; message: string }>({ show: false, message: '' })
 
 const annotations = ref<Record<string, AuditAnnotation>>({})
+const auditCases = ref<AuditCase[]>([])
+const casesLoaded = ref(false)
+
+const loadCases = async () => {
+  try {
+    auditCases.value = await loadAuditCases()
+  } catch (error) {
+    console.error(error)
+    auditCases.value = []
+  } finally {
+    casesLoaded.value = true
+  }
+}
 
 watch(
   auditorId,
@@ -39,7 +51,7 @@ watch(
       return
     }
     annotations.value = loadAuditMap(id)
-    const items = assignedAuditItems(id, AUDIT_CASES)
+    const items = assignedAuditItems(id, auditCases.value)
     if (!activeAuditId.value && items.length > 0) activeAuditId.value = items[0]!.auditId
   },
   { immediate: true },
@@ -47,7 +59,7 @@ watch(
 
 const assignedItems = computed<AuditItem[]>(() => {
   if (!auditorId.value) return []
-  return assignedAuditItems(auditorId.value, AUDIT_CASES)
+  return assignedAuditItems(auditorId.value, auditCases.value)
 })
 
 const filteredItems = computed(() => {
@@ -66,7 +78,28 @@ const activeItem = computed<AuditItem | null>(() => {
 
 const activeCase = computed<AuditCase | null>(() => {
   if (!activeItem.value) return null
-  return AUDIT_CASES.find((c) => c.caseId === activeItem.value!.caseId) ?? null
+  return auditCases.value.find((c) => c.caseId === activeItem.value!.caseId) ?? null
+})
+
+type ParsedOutput = { answer?: string; explanation?: string }
+type Opinion = { agent_id: string; specialty?: string; log?: { parsed_output?: ParsedOutput } }
+type Review = {
+  agent_id: string
+  specialty?: string
+  log?: { parsed_output?: { agree?: boolean; answer?: string; reason?: string; explanation?: string } }
+}
+type Round = {
+  round: number
+  opinions?: Opinion[]
+  synthesis?: { parsed_output?: ParsedOutput }
+  reviews?: Review[]
+  decision?: { parsed_output?: ParsedOutput }
+}
+
+const collaborationRounds = computed<Round[]>(() => {
+  const log = activeCase.value?.collaborationLog as { case_history?: { rounds?: Round[] } } | undefined
+  const rounds = log?.case_history?.rounds
+  return Array.isArray(rounds) ? rounds : []
 })
 
 const activeTaxonomy = computed(() => {
@@ -80,7 +113,7 @@ watch(
   (it) => {
     if (!it || !auditorId.value) return
     const existing = annotations.value[it.auditId]
-    verdict.value = existing?.verdict ?? 'no'
+    verdict.value = existing?.verdict ?? null
   },
   { immediate: true },
 )
@@ -102,6 +135,7 @@ const nextTodoAuditId = computed(() => {
 
 const persistActive = () => {
   if (!auditorId.value || !activeItem.value) return
+  if (!verdict.value) return
   const annotation: AuditAnnotation = {
     auditId: activeItem.value.auditId,
     caseId: activeItem.value.caseId,
@@ -115,6 +149,17 @@ const persistActive = () => {
 
 watch(verdict, persistActive)
 
+const next = () => {
+  if (!verdict.value) {
+    toast.value = { show: true, message: 'Please select a verdict (Yes/No) before moving on.' }
+    window.setTimeout(() => {
+      toast.value = { show: false, message: '' }
+    }, 1500)
+    return
+  }
+  activeAuditId.value = nextTodoAuditId.value
+}
+
 watch(isAllDone, (done) => {
   if (!done || completionHintShown.value) return
   completionHintShown.value = true
@@ -124,6 +169,18 @@ watch(isAllDone, (done) => {
   }, 2000)
 })
 
+loadCases()
+
+watch(
+  auditCases,
+  (list) => {
+    if (!activeAuditId.value && auditorId.value && list.length > 0) {
+      const items = assignedAuditItems(auditorId.value, list)
+      activeAuditId.value = items[0]?.auditId ?? null
+    }
+  },
+  { deep: true },
+)
 const exportJson = () => {
   if (!auditorId.value) return
   const name = `Auditor_${auditorId.value}`
@@ -138,9 +195,13 @@ const exportJson = () => {
 </script>
 
 <template>
-  <TwoPane>
-    <template #left>
-      <AppCard class="p-4">
+  <div class="space-y-4">
+    <div class="group fixed left-0 top-0 z-40 flex h-full items-center">
+      <div class="pointer-events-none h-full w-1 bg-slate-900/5 transition group-hover:bg-slate-900/10"></div>
+      <div
+        class="pointer-events-auto ml-2 w-[320px] -translate-x-full rounded-2xl border border-slate-200 bg-white p-4 shadow-xl transition group-hover:translate-x-0"
+      >
+        <AppCard class="p-4">
         <div class="space-y-3">
           <div>
             <div class="text-sm font-semibold text-slate-900">Auditor</div>
@@ -209,11 +270,152 @@ const exportJson = () => {
             </button>
           </div>
         </div>
-      </AppCard>
-    </template>
+        </AppCard>
+      </div>
+    </div>
 
-    <template #right>
-      <AppCard v-if="activeItem && activeCase" class="p-5">
+    <div class="min-w-0">
+      <div v-if="activeItem && activeCase" class="grid gap-4 lg:grid-cols-[minmax(0,360px)_minmax(0,1fr)_minmax(0,420px)]">
+        <div>
+          <AppCard class="max-h-[86vh] overflow-auto p-5">
+            <div class="flex flex-wrap items-start justify-between gap-2">
+              <div>
+                <div class="mt-1 text-lg font-semibold text-slate-900">Audit {{ activeItem.auditId }}</div>
+              </div>
+            </div>
+
+            <div class="mt-4 space-y-4">
+              <div>
+                <div class="text-sm font-semibold text-slate-900">Question</div>
+                <div class="mt-2 whitespace-pre-wrap rounded-xl border border-slate-200 bg-white p-3 text-sm text-slate-800">
+                  {{ activeCase.question }}
+                </div>
+              </div>
+
+              <div v-if="activeCase.modality === 'vqa' && activeCase.image?.path">
+                <div class="text-sm font-semibold text-slate-900">Image</div>
+                <img
+                  class="mt-2 max-h-[360px] w-auto rounded-xl border border-slate-200 bg-white"
+                  :src="activeCase.image.path"
+                  :alt="activeCase.image.alt ?? 'VQA image'"
+                />
+              </div>
+
+              <div v-if="activeCase.options?.length">
+                <div class="text-sm font-semibold text-slate-900">Options</div>
+                <ul class="mt-2 list-disc space-y-1 pl-5 text-sm text-slate-700">
+                  <li v-for="(opt, idx) in activeCase.options" :key="idx">{{ opt }}</li>
+                </ul>
+              </div>
+
+              <div v-if="activeCase.answer || activeCase.predictedAnswer" class="flex flex-wrap gap-2 text-sm">
+                <div v-if="activeCase.answer" class="rounded-md bg-emerald-50 px-2 py-1 font-semibold text-emerald-800">
+                  Ground Truth: {{ activeCase.answer }}
+                </div>
+                <div
+                  v-if="activeCase.predictedAnswer"
+                  class="rounded-md bg-indigo-50 px-2 py-1 font-semibold text-indigo-800"
+                >
+                  Predicted Answer: {{ activeCase.predictedAnswer }}
+                </div>
+                <div
+                  v-if="activeCase.answer && activeCase.predictedAnswer"
+                  class="rounded-md px-2 py-1 font-semibold text-white"
+                  :class="activeCase.answer === activeCase.predictedAnswer ? 'bg-emerald-600' : 'bg-rose-600'"
+                >
+                  {{ activeCase.answer === activeCase.predictedAnswer ? 'Correct' : 'Incorrect' }}
+                </div>
+              </div>
+
+            </div>
+          </AppCard>
+        </div>
+
+        <div>
+          <AppCard class="max-h-[86vh] overflow-auto p-5">
+            <div class="flex items-center justify-between gap-3">
+              <div class="text-sm font-semibold text-slate-900">Collaboration log</div>
+            </div>
+
+            <div class="mt-4">
+              <div class="text-sm font-semibold text-slate-900">Failure mode</div>
+              <div class="mt-2 rounded-xl border border-slate-200 bg-white p-3 text-sm text-slate-800">
+                <div class="flex flex-wrap items-center gap-2">
+                  <span class="rounded-md bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-700">
+                    {{ activeItem.taxonomyKey }}
+                  </span>
+                  <span class="font-medium text-slate-900">{{ activeTaxonomy?.title ?? '' }}</span>
+                </div>
+                <div class="mt-2 text-xs text-slate-600">{{ activeTaxonomy?.short ?? '' }}</div>
+              </div>
+            </div>
+
+            <div v-if="collaborationRounds.length" class="mt-4 space-y-4">
+              <AppCard
+                v-for="round in collaborationRounds"
+                :key="round.round"
+                class="space-y-3 border border-slate-200 bg-white p-4"
+              >
+                <div class="text-xs font-medium text-slate-500">Round {{ round.round }}</div>
+
+                <div v-if="round.opinions?.length" class="space-y-2">
+                  <div class="text-sm font-semibold text-slate-900">Opinions</div>
+                  <div v-for="op in round.opinions" :key="`${round.round}-${op.agent_id}`" class="space-y-1">
+                    <div class="text-xs font-medium text-slate-600">
+                      {{ op.agent_id }} <span v-if="op.specialty">· {{ op.specialty }}</span>
+                    </div>
+                    <div class="text-xs text-slate-700">Answer: {{ op.log?.parsed_output?.answer ?? '-' }}</div>
+                    <div v-if="op.log?.parsed_output?.explanation" class="text-xs text-slate-600 whitespace-pre-wrap">
+                      {{ op.log.parsed_output.explanation }}
+                    </div>
+                  </div>
+                </div>
+
+                <div v-if="round.synthesis?.parsed_output" class="space-y-1">
+                  <div class="text-sm font-semibold text-slate-900">Synthesis</div>
+                  <div class="text-xs text-slate-700">Answer: {{ round.synthesis.parsed_output.answer ?? '-' }}</div>
+                  <div v-if="round.synthesis.parsed_output.explanation" class="text-xs text-slate-600 whitespace-pre-wrap">
+                    {{ round.synthesis.parsed_output.explanation }}
+                  </div>
+                </div>
+
+                <div v-if="round.reviews?.length" class="space-y-2">
+                  <div class="text-sm font-semibold text-slate-900">Reviews</div>
+                  <div v-for="review in round.reviews" :key="`${round.round}-${review.agent_id}`" class="space-y-1">
+                    <div class="text-xs font-medium text-slate-600">
+                      {{ review.agent_id }} <span v-if="review.specialty">· {{ review.specialty }}</span>
+                    </div>
+                    <div class="text-xs text-slate-700">
+                      Agree: {{ review.log?.parsed_output?.agree === undefined ? '-' : review.log.parsed_output.agree ? 'Yes' : 'No' }}
+                    </div>
+                    <div v-if="review.log?.parsed_output?.answer" class="text-xs text-slate-700">
+                      Answer: {{ review.log.parsed_output.answer }}
+                    </div>
+                    <div v-if="review.log?.parsed_output?.reason" class="text-xs text-slate-600 whitespace-pre-wrap">
+                      {{ review.log.parsed_output.reason }}
+                    </div>
+                    <div v-if="review.log?.parsed_output?.explanation" class="text-xs text-slate-600 whitespace-pre-wrap">
+                      {{ review.log.parsed_output.explanation }}
+                    </div>
+                  </div>
+                </div>
+
+                <div v-if="round.decision?.parsed_output" class="space-y-1">
+                  <div class="text-sm font-semibold text-slate-900">Decision</div>
+                  <div class="text-xs text-slate-700">Answer: {{ round.decision.parsed_output.answer ?? '-' }}</div>
+                  <div v-if="round.decision.parsed_output.explanation" class="text-xs text-slate-600 whitespace-pre-wrap">
+                    {{ round.decision.parsed_output.explanation }}
+                  </div>
+                </div>
+              </AppCard>
+            </div>
+
+            <div v-else class="mt-3 text-xs text-slate-600">No structured collaboration log found.</div>
+          </AppCard>
+        </div>
+
+        <div>
+          <AppCard class="max-h-[86vh] overflow-auto p-5">
         <div class="space-y-4">
           <div class="flex items-center justify-between">
             <div class="text-sm font-semibold text-slate-900">Verdict</div>
@@ -244,69 +446,19 @@ const exportJson = () => {
           <div class="rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
             Auto-saved. Export from the left panel when finished.
           </div>
+
+          <AppButton variant="secondary" class="w-full" @click="next">Next</AppButton>
         </div>
-      </AppCard>
-    </template>
-
-    <template #main>
-      <div v-if="activeItem && activeCase" class="space-y-4">
-        <AppCard class="p-5">
-          <div class="flex flex-wrap items-start justify-between gap-2">
-            <div>
-              <div class="text-xs text-slate-600">{{ activeCase.dataset }} · {{ activeCase.framework }} · {{ activeCase.modality }}</div>
-              <div class="mt-1 text-lg font-semibold text-slate-900">Audit {{ activeItem.auditId }}</div>
-            </div>
-            <div class="text-xs text-slate-600">
-              Auto-saved
-              <span class="font-mono">medagentaudit:audit:auditor:{{ auditorId }}</span>
-            </div>
-          </div>
-
-          <div class="mt-4 space-y-4">
-            <div>
-              <div class="text-sm font-semibold text-slate-900">Question</div>
-              <div class="mt-2 whitespace-pre-wrap rounded-xl border border-slate-200 bg-white p-3 text-sm text-slate-800">
-                {{ activeCase.question }}
-              </div>
-            </div>
-
-            <div v-if="activeCase.modality === 'vqa' && activeCase.image?.path">
-              <div class="text-sm font-semibold text-slate-900">Image</div>
-              <img
-                class="mt-2 max-h-[360px] w-auto rounded-xl border border-slate-200 bg-white"
-                :src="activeCase.image.path"
-                :alt="activeCase.image.alt ?? 'VQA image'"
-              />
-            </div>
-
-            <div>
-              <div class="text-sm font-semibold text-slate-900">Failure mode</div>
-              <div class="mt-2 rounded-xl border border-slate-200 bg-white p-3 text-sm text-slate-800">
-                <div class="flex flex-wrap items-center gap-2">
-                  <span class="rounded-md bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-700">
-                    {{ activeItem.taxonomyKey }}
-                  </span>
-                  <span class="font-medium text-slate-900">{{ activeTaxonomy?.title ?? '' }}</span>
-                </div>
-                <div class="mt-2 text-xs text-slate-600">{{ activeTaxonomy?.short ?? '' }}</div>
-              </div>
-            </div>
-
-            <div>
-              <div class="text-sm font-semibold text-slate-900">Context (mode-level)</div>
-              <div class="mt-2 whitespace-pre-wrap rounded-xl border border-slate-200 bg-white p-3 text-sm text-slate-800">
-                {{ activeItem.context }}
-              </div>
-            </div>
-          </div>
-        </AppCard>
+          </AppCard>
+        </div>
       </div>
 
       <AppCard v-else class="p-5">
-        <div class="text-sm text-slate-600">No assigned audit items. Select an auditor and item.</div>
+        <div v-if="!casesLoaded" class="text-sm text-slate-600">Loading audit cases...</div>
+        <div v-else class="text-sm text-slate-600">No assigned audit items. Select an auditor and item.</div>
       </AppCard>
-    </template>
-  </TwoPane>
+    </div>
+  </div>
 
   <AppToast :show="toast.show" :message="toast.message" />
 </template>
