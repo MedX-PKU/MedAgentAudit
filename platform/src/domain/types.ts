@@ -7,6 +7,7 @@ export type QuestionModality = 'text' | 'vqa'
 
 export type QuestionBase = {
   caseId: string
+  caseNumber?: number
   dataset: DatasetName
   framework: FrameworkName
   modality: QuestionModality
@@ -23,6 +24,7 @@ export type VqaInfo = {
 export type OpenCodingCase = QuestionBase &
   VqaInfo & {
     collaborationLog: unknown
+    instructionText?: string
   }
 
 export type OpenCodingAnnotation = {
@@ -37,6 +39,7 @@ export type AuditItem = {
   caseId: string
   taxonomyKey: TaxonomyKey
   context: string
+  instructionText?: string
 }
 
 export type AuditCase = QuestionBase & VqaInfo & { items: AuditItem[]; collaborationLog?: unknown }
