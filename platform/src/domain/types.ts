@@ -13,6 +13,7 @@ export type QuestionBase = {
   question: string
   options?: string[]
   answer?: string
+  predictedAnswer?: string
 }
 
 export type VqaInfo = {
@@ -38,7 +39,7 @@ export type AuditItem = {
   context: string
 }
 
-export type AuditCase = QuestionBase & VqaInfo & { items: AuditItem[] }
+export type AuditCase = QuestionBase & VqaInfo & { items: AuditItem[]; collaborationLog?: unknown }
 
 export type AuditAnnotation = {
   auditId: string
