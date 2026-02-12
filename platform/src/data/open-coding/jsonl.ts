@@ -82,6 +82,11 @@ const parseAnswer = (text: string) => {
   return match?.[1]?.trim()
 }
 
+const parsePredictedAnswer = (text: string) => {
+  const match = text.match(/predicted answer is:\s*([A-Z0-9]+)\b/i)
+  return match?.[1]?.trim()
+}
+
 const resolveImagePath = (imagePath?: string | null) => {
   if (!imagePath) return undefined
   const cleaned = imagePath.replace(/^\.\//, '').replace(/^\/+/, '')
@@ -314,6 +319,7 @@ export const parseOpenCodingJsonl = (content: string, fileName: string): OpenCod
       const question = parseQuestion(questionDescription)
       const options = parseOptions(questionDescription)
       const answer = parseAnswer(questionDescription)
+      const predictedAnswer = parsePredictedAnswer(questionDescription)
       const collaborationLog = payload.collaboration_text
         ? parseCollaborationText(payload.collaboration_text)
         : (payload.collaboration_log as ParsedCollaboration | undefined) ?? payload
@@ -329,6 +335,7 @@ export const parseOpenCodingJsonl = (content: string, fileName: string): OpenCod
         question,
         options,
         answer,
+        ...(predictedAnswer ? { predictedAnswer } : null),
         ...(imagePath ? { image: { path: imagePath, alt: `${dataset} image` } } : null),
         collaborationLog,
       }
