@@ -129,6 +129,19 @@ const nextTodoCaseId = computed(() => {
   return list[0]?.caseId ?? null
 })
 
+const goNext = () => {
+  const hasTaxonomy = taxonomy.value.length > 0
+  const hasNovel = novelFailureMode.value.trim().length > 0
+  if (!hasTaxonomy && !hasNovel) {
+    toast.value = { show: true, message: 'Please select at least one taxonomy item or enter a novel failure mode before moving on.' }
+    window.setTimeout(() => {
+      toast.value = { show: false, message: '' }
+    }, 1500)
+    return
+  }
+  activeCaseId.value = nextTodoCaseId.value
+}
+
 loadCases()
 
 const persistActive = () => {
@@ -143,7 +156,22 @@ const persistActive = () => {
   annotations.value = loadOpenCodingMap(annotatorName.value.trim())
 }
 
-watch([taxonomy, novelFailureMode], persistActive, { deep: true })
+watch(
+  [taxonomy, novelFailureMode],
+  () => {
+    const a = activeAnnotation.value
+    const currentTaxonomy = a?.taxonomy ?? []
+    const currentNovel = a?.novelFailureMode ?? ''
+    const nextNovel = novelFailureMode.value.trim() || ''
+    const sortedTaxonomy = [...taxonomy.value].sort()
+    const sortedCurrent = [...currentTaxonomy].sort()
+    const sameTaxonomy =
+      sortedTaxonomy.length === sortedCurrent.length && sortedTaxonomy.every((k, i) => k === sortedCurrent[i])
+    if (sameTaxonomy && nextNovel === currentNovel) return
+    persistActive()
+  },
+  { deep: true },
+)
 
 watch(isAllDone, (done) => {
   if (!done || completionToastShown.value) return
@@ -179,7 +207,7 @@ const copyLog = async () => {
 <template>
   <div class="space-y-4">
     <div class="group fixed left-0 top-0 z-40 flex h-full items-center">
-      <div class="pointer-events-none h-full w-3 bg-slate-900/5 transition group-hover:bg-slate-900/10"></div>
+      <div class="pointer-events-none h-full w-1 bg-slate-900/5 transition group-hover:bg-slate-900/10"></div>
       <div
         class="pointer-events-auto ml-2 w-[320px] -translate-x-full rounded-2xl border border-slate-200 bg-white p-4 shadow-xl transition group-hover:translate-x-0"
       >
@@ -239,15 +267,10 @@ const copyLog = async () => {
 
     <div class="grid gap-4 lg:grid-cols-[minmax(0,360px)_minmax(0,1fr)_minmax(0,420px)]">
       <div>
-        <AppCard v-if="activeCase" class="max-h-[78vh] overflow-auto p-5">
+        <AppCard v-if="activeCase" class="max-h-[86vh] overflow-auto p-5">
           <div class="flex items-start justify-between gap-3">
             <div>
-              <div class="text-xs text-slate-600">{{ activeCase.dataset }} · {{ activeCase.framework }} · {{ activeCase.modality }}</div>
               <div class="mt-1 text-lg font-semibold text-slate-900">Case {{ activeCase.caseId }}</div>
-            </div>
-            <div class="text-xs text-slate-600">
-              Auto-saved
-              <span class="font-mono">medagentaudit:open-coding:{{ annotatorName.trim() }}</span>
             </div>
           </div>
 
@@ -274,6 +297,25 @@ const copyLog = async () => {
                 <li v-for="(opt, idx) in activeCase.options" :key="idx">{{ opt }}</li>
               </ul>
             </div>
+
+            <div v-if="activeCase.answer || activeCase.predictedAnswer" class="flex flex-wrap gap-2 text-sm">
+              <div v-if="activeCase.answer" class="rounded-md bg-emerald-50 px-2 py-1 font-semibold text-emerald-800">
+                Ground Truth: {{ activeCase.answer }}
+              </div>
+              <div
+                v-if="activeCase.predictedAnswer"
+                class="rounded-md bg-indigo-50 px-2 py-1 font-semibold text-indigo-800"
+              >
+                Predicted Answer: {{ activeCase.predictedAnswer }}
+              </div>
+              <div
+                v-if="activeCase.answer && activeCase.predictedAnswer"
+                class="rounded-md px-2 py-1 font-semibold text-white"
+                :class="activeCase.answer === activeCase.predictedAnswer ? 'bg-emerald-600' : 'bg-rose-600'"
+              >
+                {{ activeCase.answer === activeCase.predictedAnswer ? 'Correct' : 'Incorrect' }}
+              </div>
+            </div>
           </div>
         </AppCard>
 
@@ -286,7 +328,7 @@ const copyLog = async () => {
       </div>
 
       <div>
-        <AppCard v-if="activeCase" class="max-h-[78vh] overflow-auto p-5">
+        <AppCard v-if="activeCase" class="max-h-[86vh] overflow-auto p-5">
           <div class="flex items-center justify-between gap-3">
             <div class="text-sm font-semibold text-slate-900">Collaboration log</div>
             <AppIconButton title="Copy log" variant="secondary" @click="copyLog">
@@ -366,7 +408,7 @@ const copyLog = async () => {
       </div>
 
       <div>
-        <AppCard v-if="activeCase" class="max-h-[78vh] overflow-auto p-5">
+        <AppCard v-if="activeCase" class="max-h-[86vh] overflow-auto p-5">
           <div class="space-y-4">
             <div class="flex items-center justify-between">
               <div class="text-sm font-semibold text-slate-900">Labeling</div>
@@ -376,8 +418,14 @@ const copyLog = async () => {
             <div>
               <div class="text-sm font-semibold text-slate-900">Novel failure mode (optional)</div>
               <div class="mt-2">
-                <AppTextarea v-model="novelFailureMode" :rows="4" placeholder="Describe a new failure mode if needed..." />
+                <AppTextarea v-model="novelFailureMode" :rows="2" placeholder="Describe a new failure mode if needed..." />
               </div>
+            </div>
+
+            <div>
+              <AppButton variant="secondary" :disabled="!annotatorName.trim() || !nextTodoCaseId" class="w-full" @click="goNext">
+                Next
+              </AppButton>
             </div>
           </div>
         </AppCard>
