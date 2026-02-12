@@ -8,6 +8,7 @@ type JsonlRecord = {
   question_description?: string
   collaboration_text?: string
   collaboration_log?: unknown
+  instruction_text?: string
 }
 
 type ParsedOutput = { answer?: string; explanation?: string }
@@ -323,6 +324,7 @@ export const parseOpenCodingJsonl = (content: string, fileName: string): OpenCod
       const collaborationLog = payload.collaboration_text
         ? parseCollaborationText(payload.collaboration_text)
         : (payload.collaboration_log as ParsedCollaboration | undefined) ?? payload
+      const instructionText = String(payload.instruction_text ?? '').trim() || undefined
 
       const caseId = payload.qid || payload.case_id || payload.caseId || `${slugify(dataset)}-${idx + 1}`
       const imagePath = resolveImagePath(payload.image_path)
@@ -338,6 +340,7 @@ export const parseOpenCodingJsonl = (content: string, fileName: string): OpenCod
         ...(predictedAnswer ? { predictedAnswer } : null),
         ...(imagePath ? { image: { path: imagePath, alt: `${dataset} image` } } : null),
         collaborationLog,
+        instructionText,
       }
     })
 }
