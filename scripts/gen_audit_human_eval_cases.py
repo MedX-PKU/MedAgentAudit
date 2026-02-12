@@ -16,6 +16,34 @@ EXTRACTED_LOGS_FOR_AUDIT_HUMAN_EVAL_DIR.mkdir(parents=True, exist_ok=True)
 STRUCTURED_LOGS_FOR_AUDIT_HUMAN_EVAL_DIR = project_root / "logs" / "structured_logs_for_audit_human_evaluation"
 STRUCTURED_LOGS_FOR_AUDIT_HUMAN_EVAL_DIR.mkdir(parents=True, exist_ok=True)
 
+def find_failure_step_and_agent_id(case_history, failure_mode_log_key):
+    '''
+    This function is designed to find the failure step and the specific agent ID when a specific failure mode happens based on the case history and the failure mode log key.
+    The failure mode log key is the key in the case history logs that indicates whether the failure mode happens in that round, and it also contains the step information of the failure mode.
+    '''
+    failure_step = None
+    specific_agent_id = None
+    if "rounds" in case_history and case_history["rounds"]:
+        for r in case_history["rounds"]:
+            if failure_mode_log_key in r and r[failure_mode_log_key]:
+                specific_agent_id = r[failure_mode_log_key]["agent_id"]
+                failure_step = r[failure_mode_log_key]["step"]
+                break
+    return failure_step, specific_agent_id
+
+def find_earliest_failure_round(case_history, failure_mode_log_key):
+    '''
+    This function is designed to find the earliest round when a specific failure mode happens based on the case history and the failure mode log key.
+    The failure mode log key is the key in the case history logs that indicates whether the failure mode happens in that round.
+    '''
+    earliest_round = None
+    if "rounds" in case_history and case_history["rounds"]:
+        for r in case_history["rounds"]:
+            if failure_mode_log_key in r and r[failure_mode_log_key]:
+                earliest_round = r["round"]
+                break
+    return earliest_round
+
 def gen_collaboration_text(case_history):
     '''
     This function is designed to generate the text description of the multi-agent collaboration process based on the case history.
@@ -146,16 +174,10 @@ def main():
             llm = json_record["llm"]
             mas = json_record["mas"]
             case_history = json_record["case_history"]
-            if failure_code in ["1.1.1"] :
+            if failure_code in ["1.1.1", "1.2.1"] :
                 # find the earliest round when the failure mode happens
-                failure_mode_log_key = failure_mode_log_key_mapping[failure_code]
-                earliest_round = None
-                for r in case_history["audit"]["rounds"]:
-                    if failure_mode_log_key in r and r[failure_mode_log_key]:
-                        earliest_round = r["round"]
-                        break
+                earliest_round = find_earliest_failure_round(case_history, failure_mode_log_key_mapping[failure_code])
                 print(f"  - Earliest round for failure mode {failure_code}: {earliest_round}")
-                failure_mode_status = failure_mode_status_mapping[failure_code]
                 # choose the corresponding round case history
                 json_record["case_history"]["rounds"] = json_record["case_history"]["rounds"][:earliest_round]
                 # for 1.1.1 we just need the first domain agent's opinions
@@ -166,7 +188,72 @@ def main():
                     r.pop("synthesis", None)
                     r.pop("reviews", None)
                     r.pop("decision", None)
-                
+            elif failure_code == "2.1.1":
+                # in this failure mode , we just need to judge whether the domain agents' specialties are aligned with the question's specialty.
+                # so we just need to keep the earliest round case history and the opinions of the domain agents in that round.
+                earliest_round = find_earliest_failure_round(case_history, failure_mode_log_key_mapping[failure_code])
+                print(f"  - Earliest round for failure mode {failure_code}: {earliest_round}")
+                json_record["case_history"]["rounds"] = json_record["case_history"]["rounds"][:earliest_round]
+                # delete the synthesis, review and decision stage in the audit history.
+                for r in json_record["case_history"]["rounds"]:
+                    r.pop("synthesis", None)
+                    r.pop("reviews", None)
+                    r.pop("decision", None)
+            elif failure_code == "2.1.2":
+                # in this failure mode, we need to judge the failure step, if the step is analysis, we just need to remain the specific agent's opinions
+                # if the step is review, we need to remain the specific agent's reviews.
+                earliest_round = find_earliest_failure_round(case_history, failure_mode_log_key_mapping[failure_code])
+                print(f"  - Earliest round for failure mode {failure_code}: {earliest_round}")
+                json_record["case_history"]["rounds"] = json_record["case_history"]["rounds"][:earliest_round]
+                failure_step, specific_agent_id = find_failure_step_and_agent_id(json_record["case_history"], failure_mode_log_key_mapping[failure_code])
+                print(f"  - Failure step for failure mode {failure_code}: {failure_step}")
+                if failure_step == "analysis":
+                    # we just need to keep the opinions of the specific agent in the earliest round.
+                    for r in json_record["case_history"]["rounds"]:
+                        r.pop("synthesis", None)
+                        r.pop("reviews", None)
+                        r.pop("decision", None)
+                    json_record["case_history"]["rounds"][earliest_round-1]["opinions"] = [op for op in json_record["case_history"]["rounds"][earliest_round-1]["opinions"] if op["agent_id"] == specific_agent_id]
+                elif failure_step == "review":
+                    # we just need to keep the reviews of the specific agent in the earliest round.
+                    for r in json_record["case_history"]["rounds"]:
+                        r.pop("synthesis", None)
+                        r.pop("opinions", None)
+                        r.pop("decision", None)
+                    json_record["case_history"]["rounds"][earliest_round-1]["reviews"] = [review for review in json_record["case_history"]["rounds"][earliest_round-1].get("reviews", []) if review["agent_id"] == specific_agent_id]
+            elif failure_code in ["2.2.1", "2.2.2"]:
+                # for this 2 failure modes, we need to keep the whole collaboration history since the failure modes are related to the interaction among agents in the collaboration process.
+                earliest_round = find_earliest_failure_round(case_history, failure_mode_log_key_mapping[failure_code])
+                print(f"  - Earliest round for failure mode {failure_code}: {earliest_round}")
+                json_record["case_history"]["rounds"] = json_record["case_history"]["rounds"][:earliest_round]
+                failure_step, specific_agent_id = find_failure_step_and_agent_id(json_record["case_history"], failure_mode_log_key_mapping[failure_code])
+                print(f"  - Failure step for failure mode {failure_code}: {failure_step}")
+                # we don't need the info after this agent's failure happens in the happening round.
+                if failure_step == "analysis":
+                    for r in json_record["case_history"]["rounds"]:
+                        if r["round"] == earliest_round:
+                            r.pop("synthesis", None)
+                            r.pop("reviews", None)
+                            r.pop("decision", None)
+                            r["opinions"] = [op for op in r["opinions"] if op["agent_id"] != specific_agent_id]
+                elif failure_step == "review":
+                    for r in json_record["case_history"]["rounds"]:
+                        if r["round"] == earliest_round:
+                            r.pop("decision", None)
+                            r["reviews"] = [review for review in r.get("reviews", []) if review["agent_id"] != specific_agent_id]
+            elif failure_code in ["3.1.1", "3.1.2", "3.1.3", "3.2.1"]:
+                # for these failure modes, we need to keep the whole collaboration history since the failure modes are related to the interaction among agents in the collaboration process.
+                earliest_round = find_earliest_failure_round(case_history, failure_mode_log_key_mapping[failure_code])
+                print(f"  - Earliest round for failure mode {failure_code}: {earliest_round}")
+                json_record["case_history"]["rounds"] = json_record["case_history"]["rounds"][:earliest_round]
+                failure_step, specific_agent_id = find_failure_step_and_agent_id(json_record["case_history"], failure_mode_log_key_mapping[failure_code])
+                print(f"  - Failure step for failure mode {failure_code}: {failure_step}")
+                # we don't need the info after this agent's failure happens in the happening round.
+                if failure_step == "synthesis":
+                    for r in json_record["case_history"]["rounds"]:
+                        if r["round"] == earliest_round:
+                            r.pop("reviews", None)
+                            r.pop("decision", None)
             if dataset in ["MedQA", "PubMedQA", "MedXpertQA-text"]:
                 question_type = "plain text question answering"
             else:
