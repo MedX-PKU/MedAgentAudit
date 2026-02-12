@@ -1132,6 +1132,7 @@ class MDAgentsFramework:
 
         return {
             "qid": qid, "question": data_item["question"], "options": data_item.get("options"),
+            "image_path": data_item.get("image_path"),
             "ground_truth": data_item.get("answer"), "complexity_level": result_data.get("complexity"),
             "predicted_answer": result_data.get("predicted_answer"), "explanation": result_data.get("explanation"),
             "processing_time_seconds": processing_time,
