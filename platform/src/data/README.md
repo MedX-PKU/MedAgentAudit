@@ -4,17 +4,17 @@ All annotation data are shipped as static JS/TS modules and bundled by Vite.
 
 ## Open-coding data
 
-- Location: `src/data/open-coding/cases.ts`
-- Export: `OPEN_CODING_CASES: OpenCodingCase[]`
+- Location: `public/data/open-coding/*.jsonl`
+- Parser: `src/data/open-coding/jsonl.ts`
+- Loader: `loadOpenCodingCases(): Promise<OpenCodingCase[]>`
 
 ## Audit data (mode-level)
 
-- Location: `src/data/audit/cases.ts`
-- Export: `AUDIT_CASES: AuditCase[]`
+- Location: `public/data/audit/*.jsonl`
+- Loader: `loadAuditCases(): Promise<AuditCase[]>`
 
 ## Images (VQA)
 
-Place images under `public/data/images/...` and reference via:
+Place images under `public/data/...` and reference via:
 
-- `image.path`: `/data/images/<...>`
-
+- `image.path`: `/data/<...>`
