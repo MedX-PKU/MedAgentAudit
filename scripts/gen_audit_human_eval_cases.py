@@ -332,6 +332,8 @@ def main():
                 print(f"  - Earliest round for failure mode {failure_code}: {earliest_round}")
                 json_record["case_history"]["rounds"] = json_record["case_history"]["rounds"][:earliest_round]
                 failure_step, specific_agent_id = find_failure_step_and_agent_id(json_record["case_history"], failure_mode_log_key_mapping[failure_code])
+                if specific_agent_id == "supervisor" : 
+                    specific_agent_id = "supervisor (meta)"
                 print(f"  - Failure step for failure mode {failure_code}: {failure_step}")
                 # we don't need the info after this agent's failure happens in the happening round.
                 if failure_step == "synthesis":
