@@ -133,9 +133,13 @@ def main():
             )
             collaboration_text = gen_collaboration_text(case_history)
             instruction_text = (
-                f"Please conduct a comprehensive analysis of the multi-agent collaboration process for this case, utilizing the full case context and collaboration history provided.\n"
-                f"Your task is to evaluate the collaboration against 10 specific failure modes. For each of the 10 modes, you must provide a clear annotation (e.g., 1 (fail)/ 0 (pass))."
-                f"If you observe any other failure modes in the collaboration that fall outside the 10 categories, please document them as new failure modes."
+                "Please conduct a comprehensive analysis of the multi-agent collaboration process for this case, "
+                "utilizing the full case context and collaboration history provided.\n"
+                "Your task is to identify occurrences of the 10 specific failure modes listed in the taxonomy. "
+                "For each failure mode observed, please select (check) the corresponding checkbox. "
+                "If a failure mode is not present, leave it unchecked (do not take any action). "
+                "Should you encounter any other collaboration issues not covered by these 10 categories, "
+                "please describe them in the 'Novel failure mode' text box."
             )
             structured_case = {
                 "qid": qid,
