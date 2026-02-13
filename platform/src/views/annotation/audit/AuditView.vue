@@ -231,7 +231,17 @@ const copyLog = async () => {
   const raw = collaborationRaw.value
   if (!raw) return
   await copyToClipboard(raw)
-  toast.value = { show: true, message: 'Copied collaboration log.' }
+  toast.value = { show: true, message: 'Copied Collaboration Text.' }
+  window.setTimeout(() => {
+    toast.value = { show: false, message: '' }
+  }, 1200)
+}
+
+const copyInstruction = async () => {
+  const text = activeItem.value?.instructionText ?? activeItem.value?.context
+  if (!text) return
+  await copyToClipboard(text)
+  toast.value = { show: true, message: 'Copied Instruction Text.' }
   window.setTimeout(() => {
     toast.value = { show: false, message: '' }
   }, 1200)
@@ -243,41 +253,12 @@ const copyQuestion = async () => {
   const optionsText = (activeCase.value.options ?? []).join('\n')
   const payload = `Question：${questionText}\nOptions：${optionsText}`
   await copyToClipboard(payload)
-  toast.value = { show: true, message: 'Copied question + options.' }
+  toast.value = { show: true, message: 'Copied Question and Options.' }
   window.setTimeout(() => {
     toast.value = { show: false, message: '' }
   }, 1200)
 }
 
-const copyImage = async () => {
-  const url = activeCase.value?.image?.path
-  if (!url) return
-  try {
-    toast.value = { show: true, message: 'Copying image...' }
-    const res = await fetch(url)
-    const blob = await res.blob()
-    if (typeof ClipboardItem === 'undefined' || !navigator.clipboard?.write) {
-      await copyToClipboard(url)
-      toast.value = { show: true, message: 'Copied image URL.' }
-      window.setTimeout(() => {
-        toast.value = { show: false, message: '' }
-      }, 1200)
-      return
-    }
-    await navigator.clipboard.write([new ClipboardItem({ [blob.type || 'image/png']: blob })])
-    toast.value = { show: true, message: 'Copied image.' }
-    window.setTimeout(() => {
-      toast.value = { show: false, message: '' }
-    }, 1200)
-  } catch (error) {
-    console.error(error)
-    await copyToClipboard(url)
-    toast.value = { show: true, message: 'Copied image URL.' }
-    window.setTimeout(() => {
-      toast.value = { show: false, message: '' }
-    }, 1200)
-  }
-}
 </script>
 
 <template>
@@ -387,14 +368,13 @@ const copyImage = async () => {
 		                </div>
 		              </div>
 
-              <div v-if="activeCase.modality === 'vqa' && activeCase.image?.path">
-                <div class="flex items-center justify-between gap-3">
-                  <div class="text-sm font-semibold text-slate-900">Image</div>
-                  <AppButton variant="secondary" @click="copyImage">Copy</AppButton>
-                </div>
-                <img
-                  class="mt-2 max-h-[360px] w-auto rounded-xl border border-slate-200 bg-white"
-                  :src="activeCase.image.path"
+	              <div v-if="activeCase.modality === 'vqa' && activeCase.image?.path">
+	                <div class="flex items-center justify-between gap-3">
+	                  <div class="text-sm font-semibold text-slate-900">Image</div>
+	                </div>
+	                <img
+	                  class="mt-2 max-h-[360px] w-auto rounded-xl border border-slate-200 bg-white"
+	                  :src="activeCase.image.path"
                   :alt="activeCase.image.alt ?? 'VQA image'"
                 />
               </div>
@@ -444,19 +424,22 @@ const copyImage = async () => {
               </div>
             </div>
 
-            <div class="mt-4">
-              <div class="flex items-center justify-between gap-3">
-                <div class="text-sm font-semibold text-slate-900">Instruction Text</div>
-                <div class="group relative">
-	                  <AppButton variant="secondary">Instruction Text</AppButton>
-	                  <div
-	                    class="pointer-events-none fixed right-4 top-[88px] z-[9999] hidden w-[520px] whitespace-pre-wrap rounded-xl border border-slate-200 bg-white p-3 text-xs text-slate-900 shadow-lg group-hover:block"
-	                  >
-	                    {{ activeItem.instructionText ?? activeItem.context }}
-	                  </div>
+	            <div class="mt-4">
+	              <div class="flex items-center justify-between gap-3">
+	                <div class="text-sm font-semibold text-slate-900">Instruction Text</div>
+	                <div class="flex items-center gap-2">
+	                  <div class="group relative">
+		                <AppButton variant="secondary">Show</AppButton>
+		                <div
+		                  class="pointer-events-none fixed right-4 top-[88px] z-[9999] hidden w-[520px] whitespace-pre-wrap rounded-xl border border-slate-200 bg-white p-3 text-xs text-slate-900 shadow-lg group-hover:block"
+		                >
+		                  {{ activeItem.instructionText ?? activeItem.context }}
+		                </div>
+		              </div>
+	                  <AppButton variant="secondary" @click="copyInstruction">Copy</AppButton>
 	                </div>
-              </div>
-            </div>
+	              </div>
+	            </div>
 
 	            <div class="mt-4 flex items-center justify-between gap-3">
 	              <div class="text-sm font-semibold text-slate-900">Collaboration log</div>
