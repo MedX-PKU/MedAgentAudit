@@ -207,7 +207,7 @@ Your output must be a JSON object with three fields:
 
         text_content = {
             "type": "text",
-            "text": f"Synthesized report:\n{synthesis.get('reason', '')}\n\n"
+            "text": f"Synthesized report:\n{synthesis.get('explanation', '')}\n\n"
                     f"Do you agree with this synthesized report? Provide your response in JSON format with the following fields:\n"
                     f"1. 'agree': 'yes' or 'no'\n"
                     f"2. 'reason': Your rationale for agreeing or disagreeing\n"
