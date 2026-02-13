@@ -301,12 +301,12 @@ def main():
                             r.pop("synthesis", None)
                             r.pop("reviews", None)
                             r.pop("decision", None)
-                            r["opinions"] = [op for op in r["opinions"] if op["agent_id"] != specific_agent_id]
+                            r["opinions"] = [op for op in r["opinions"] if op["agent_id"] == specific_agent_id]
                 elif failure_step == "review":
                     for r in json_record["case_history"]["rounds"]:
                         if r["round"] == earliest_round:
                             r.pop("decision", None)
-                            r["reviews"] = [review for review in r.get("reviews", []) if review["agent_id"] != specific_agent_id]
+                            r["reviews"] = [review for review in r.get("reviews", []) if review["agent_id"] == specific_agent_id]
             elif failure_code in ["3.1.1", "3.1.2", "3.1.3", "3.2.1"]:
                 # for these failure modes, we need to keep the whole collaboration history since the failure modes are related to the interaction among agents in the collaboration process.
                 earliest_round = find_earliest_failure_round(case_history, failure_mode_log_key_mapping[failure_code])
