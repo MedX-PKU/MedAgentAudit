@@ -21,6 +21,9 @@ const search = ref('')
 const activeCaseId = ref<string | null>(null)
 const isDrawerOpen = ref(false)
 
+const OPEN_CODING_INSTRUCTION_TEXT =
+  "Please conduct a comprehensive analysis of the multi-agent collaboration process for this case, utilizing the full case context and collaboration history provided.\n\nYour task is to identify occurrences of the 10 specific failure modes listed in the taxonomy.\n\nFor each failure mode observed, please select (check) the corresponding checkbox. If a failure mode is not present, leave it unchecked (do not take any action).\n\nShould you encounter any other collaboration issues not covered by these 10 categories, please describe them in the 'Novel failure mode' text box."
+
 const annotations = ref<Record<string, OpenCodingAnnotation>>({})
 const cases = ref<OpenCodingCase[]>([])
 const casesLoaded = ref(false)
@@ -116,6 +119,18 @@ watch(
     novelFailureMode.value = a?.novelFailureMode ?? ''
   },
   { immediate: true },
+)
+
+watch(
+  taxonomy,
+  (list) => {
+    if (list.includes('0.0.0')) {
+      const onlyNone = list.length === 1 ? list : (['0.0.0'] as TaxonomyKey[])
+      if (onlyNone.length !== list.length) taxonomy.value = onlyNone
+      novelFailureMode.value = ''
+    }
+  },
+  { deep: true },
 )
 
 const doneCount = computed(() => Object.keys(annotations.value).length)
@@ -222,9 +237,7 @@ const copyQuestion = async () => {
 }
 
 const copyInstruction = async () => {
-  const text = activeCase.value?.instructionText
-  if (!text) return
-  await copyToClipboard(text)
+  await copyToClipboard(OPEN_CODING_INSTRUCTION_TEXT)
   toast.value = { show: true, message: 'Copied Instruction Text.' }
   window.setTimeout(() => {
     toast.value = { show: false, message: '' }
@@ -391,7 +404,7 @@ onBeforeUnmount(() => {
 
       <div>
         <AppCard v-if="activeCase" class="max-h-[86vh] overflow-auto p-5">
-          <div v-if="activeCase.instructionText" class="flex items-center justify-between gap-3">
+          <div class="flex items-center justify-between gap-3">
             <div class="text-sm font-semibold text-slate-900">Instruction Text</div>
             <div class="flex items-center gap-2">
               <div class="group relative">
@@ -399,7 +412,7 @@ onBeforeUnmount(() => {
                 <div
                   class="pointer-events-none fixed right-4 top-[88px] z-[9999] hidden w-[520px] whitespace-pre-wrap rounded-xl border border-slate-200 bg-white p-3 text-xs text-slate-900 shadow-lg group-hover:block"
                 >
-                  {{ activeCase.instructionText ?? '' }}
+                  {{ OPEN_CODING_INSTRUCTION_TEXT }}
                 </div>
               </div>
               <AppButton variant="secondary" @click="copyInstruction">Copy</AppButton>
@@ -493,7 +506,15 @@ onBeforeUnmount(() => {
             <div>
               <div class="text-sm font-semibold text-slate-900">Novel failure mode (optional)</div>
               <div class="mt-2">
-                <AppTextarea v-model="novelFailureMode" :rows="2" placeholder="Describe a new failure mode if needed..." />
+                <AppTextarea
+                  v-model="novelFailureMode"
+                  :rows="2"
+                  placeholder="Describe a new failure mode if needed..."
+                  :disabled="taxonomy.includes('0.0.0')"
+                />
+                <div v-if="taxonomy.includes('0.0.0')" class="mt-1 text-xs text-slate-500">
+                  Disabled when “No issues / No failure mode” is selected.
+                </div>
               </div>
             </div>
 
