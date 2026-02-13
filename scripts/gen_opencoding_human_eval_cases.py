@@ -175,7 +175,7 @@ def main():
                 f"This question has {len(options)} options: {options_text}"
                 f"The ground truth answer is: {ground_truth}. The multi agents system's predicted answer is: {mas_predicted_answer}.\n"
             )
-            collaboration_text = gen_collaboration_text(case_history)
+            collaboration_text_start, collaboration_text = gen_collaboration_text(case_history)
             instruction_text = (
                 "Please conduct a comprehensive analysis of the multi-agent collaboration process for this case, "
                 "utilizing the full case context and collaboration history provided.\n\n"
@@ -198,6 +198,7 @@ def main():
                 "mas_predicted_answer": mas_predicted_answer,
                 "question_description": question_description,
                 "collaboration_text": collaboration_text,
+                "collaboration_start_text" : collaboration_text_start,
                 "instruction_text": instruction_text
             }
             # Save each structured case to a new JSONL file
