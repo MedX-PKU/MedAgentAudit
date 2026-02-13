@@ -64,7 +64,11 @@ def gen_collaboration_text(case_history):
                     domain_agent_id= opinion.get("agent_id","").lower()
                     past_domain_agent_answer = opinion["log"]["parsed_output"].get("answer", None)
                     past_domain_agent_explanation = opinion["log"]["parsed_output"].get("explanation", None)
-                    collaboration_text += (f"### Domain agent ({domain_agent_id}) opinion:\n\n")
+                    role = opinion["log"].get("specialty", None)
+                    if role is not None:
+                        collaboration_text += (f"### Domain agent ({domain_agent_id}, role:{role}) opinion:\n\n")
+                    else:
+                        collaboration_text += (f"### Domain agent ({domain_agent_id}) opinion:\n\n")
                     if past_domain_agent_answer is not None:
                         collaboration_text += (f"**Answer:** {past_domain_agent_answer}\n\n")
                     if past_domain_agent_explanation is not None:
@@ -125,7 +129,7 @@ def gen_collaboration_text(case_history):
                     if past_domain_agent_review_explanation is not None:
                         collaboration_text += (f"**Review explanation:** {past_domain_agent_review_explanation}\n\n")
                     if past_domain_agent_review_answer is not None:
-                        collaboration_text += (f"**Review answer:** {past_domain_agent_review_answer}\n\n ")
+                        collaboration_text += (f"**Review answer:** {past_domain_agent_review_answer}\n\n")
 
             if r.get("decision"): 
                 collaboration_text += (                
