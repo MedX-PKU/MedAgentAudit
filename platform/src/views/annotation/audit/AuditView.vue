@@ -306,7 +306,7 @@ const copyQuestion = async () => {
               <AppButton variant="secondary" :disabled="!auditorId" @click="activeAuditId = nextTodoAuditId">
                 Next todo
               </AppButton>
-              <AppButton v-if="isAllDone" variant="secondary" :disabled="!auditorId" @click="exportJson">
+              <AppButton variant="secondary" :disabled="!auditorId" @click="exportJson">
                 Export JSON
               </AppButton>
             </div>

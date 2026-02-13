@@ -303,7 +303,7 @@ onBeforeUnmount(() => {
             <AppButton variant="secondary" :disabled="!annotatorName.trim()" @click="activeCaseId = nextTodoCaseId">
               Next todo
             </AppButton>
-            <AppButton v-if="isAllDone" variant="secondary" :disabled="!annotatorName.trim()" @click="exportJson">
+            <AppButton variant="secondary" :disabled="!annotatorName.trim()" @click="exportJson">
               Export JSON
             </AppButton>
           </div>
