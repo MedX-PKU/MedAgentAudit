@@ -132,6 +132,15 @@ const doneCount = computed(() => Object.keys(annotations.value).length)
 const isAllDone = computed(() => assignedItems.value.length > 0 && doneCount.value >= assignedItems.value.length)
 const completionHintShown = ref(false)
 
+const doneCaseIds = computed(() => {
+  const ids = new Set<string>()
+  // Per-auditor: `annotations` is loaded from `loadAuditMap(auditorId)` and thus already scoped.
+  for (const a of Object.values(annotations.value)) ids.add(a.caseId)
+  return ids
+})
+
+const isAllCasesDone = computed(() => assignedCases.value.length > 0 && doneCaseIds.value.size >= assignedCases.value.length)
+
 const nextTodoAuditId = computed(() => {
   const list = assignedItems.value
   const idx = list.findIndex((it) => it.auditId === activeAuditId.value)
@@ -306,9 +315,10 @@ const copyQuestion = async () => {
               <AppButton variant="secondary" :disabled="!auditorId" @click="activeAuditId = nextTodoAuditId">
                 Next todo
               </AppButton>
-              <AppButton variant="secondary" :disabled="!auditorId" @click="exportJson">
-                Export JSON
-              </AppButton>
+              <div class="flex items-center gap-2">
+                <AppButton variant="secondary" :disabled="!auditorId" @click="exportJson">Export JSON</AppButton>
+                <span v-if="isAllCasesDone" class="text-xs font-medium text-emerald-700">All done</span>
+              </div>
             </div>
 
             <input
@@ -335,6 +345,12 @@ const copyQuestion = async () => {
             >
               <div class="flex items-center justify-between gap-2">
                 <div class="truncate font-medium text-slate-900">{{ c.caseId }}</div>
+                <div
+                  class="shrink-0 rounded-md px-2 py-0.5 text-xs"
+                  :class="doneCaseIds.has(c.caseId) ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-600'"
+                >
+                  {{ doneCaseIds.has(c.caseId) ? 'Done' : 'Todo' }}
+                </div>
               </div>
               <div class="mt-1 text-xs text-slate-600">{{ c.dataset }} · {{ c.framework }} · {{ c.modality }}</div>
             </button>
