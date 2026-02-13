@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
 import TaxonomyChecklist from '../../../components/annotation/TaxonomyChecklist.vue'
 import type { TaxonomyKey } from '../../../domain/taxonomy'
@@ -19,6 +19,7 @@ import { loadOpenCodingMap, saveOpenCoding } from './openCodingStorage'
 const annotatorName = ref('Annotator_1')
 const search = ref('')
 const activeCaseId = ref<string | null>(null)
+const isDrawerOpen = ref(false)
 
 const annotations = ref<Record<string, OpenCodingAnnotation>>({})
 const cases = ref<OpenCodingCase[]>([])
@@ -58,6 +59,10 @@ watch(
   },
   { deep: true },
 )
+
+watch(activeCaseId, () => {
+  isDrawerOpen.value = false
+})
 
 const filteredCases = computed(() => {
   const q = search.value.trim().toLowerCase()
@@ -244,15 +249,44 @@ const copyImage = async () => {
     }, 1200)
   }
 }
+
+const toggleDrawer = () => {
+  isDrawerOpen.value = !isDrawerOpen.value
+}
+
+const onDocumentClick = (event: MouseEvent) => {
+  if (!isDrawerOpen.value) return
+  const target = event.target as HTMLElement | null
+  if (!target) return
+  if (target.closest('[data-drawer]')) return
+  isDrawerOpen.value = false
+}
+
+onMounted(() => {
+  document.addEventListener('click', onDocumentClick)
+})
+
+onBeforeUnmount(() => {
+  document.removeEventListener('click', onDocumentClick)
+})
 </script>
 
 <template>
   <div class="space-y-4">
-    <div class="group fixed left-0 top-0 z-40 flex h-full items-center">
-      <div class="pointer-events-none h-full w-[2px] bg-slate-900/5 transition group-hover:bg-slate-900/10"></div>
-      <div
-        class="pointer-events-auto ml-2 w-[320px] -translate-x-full rounded-2xl border border-slate-200 bg-white p-4 shadow-xl transition group-hover:translate-x-0"
+	    <div class="fixed left-0 top-0 z-40 flex h-full items-center w-6" data-drawer>
+      <button
+        type="button"
+        class="flex h-14 w-6 items-center justify-center rounded-r-lg border border-slate-200 bg-white text-slate-600 shadow-sm hover:bg-slate-50"
+        title="Toggle drawer"
+        @click="toggleDrawer"
       >
+        <span class="text-xs font-semibold">{{ isDrawerOpen ? '‹' : '›' }}</span>
+      </button>
+	      <div
+	        class="fixed left-8 top-3 w-[320px] rounded-2xl border border-slate-200 bg-white p-4 shadow-xl transition"
+	        :class="isDrawerOpen ? 'pointer-events-auto translate-x-0 opacity-100' : 'pointer-events-none -translate-x-full opacity-0'"
+	        :style="{ visibility: isDrawerOpen ? 'visible' : 'hidden' }"
+	      >
         <div class="space-y-3">
           <div>
             <div class="text-sm font-semibold text-slate-900">Annotator</div>

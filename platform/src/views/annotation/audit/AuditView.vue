@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
 import { TAXONOMY, type TaxonomyKey } from '../../../domain/taxonomy'
 import AppButton from '../../../components/ui/AppButton.vue'
@@ -10,6 +10,7 @@ import AppToast from '../../../components/ui/AppToast.vue'
 import type { AuditAnnotation, AuditCase, AuditItem } from '../../../domain/types'
 import { downloadJson } from '../../../lib/download'
 import { copyToClipboard } from '../../../lib/clipboard'
+import { renderMarkdownSafe } from '../../../lib/markdown'
 import { loadAuditCases } from '../../../data/audit/cases'
 import { assignedAuditCases, assignedAuditItems, type AuditorId } from './auditAssignment'
 import { loadAuditMap, saveAudit } from './auditStorage'
@@ -27,6 +28,7 @@ const search = ref('')
 const activeAuditId = ref<string | null>(null)
 const verdict = ref<Verdict | null>(null)
 const toast = ref<{ show: boolean; message: string }>({ show: false, message: '' })
+const isDrawerOpen = ref(false)
 
 const annotations = ref<Record<string, AuditAnnotation>>({})
 const auditCases = ref<AuditCase[]>([])
@@ -105,6 +107,11 @@ const collaborationRaw = computed(() => {
   const log = activeCase.value?.collaborationLog as { raw?: string } | undefined
   return log?.raw
 })
+
+const collaborationHtml = computed(() => {
+  if (!collaborationRaw.value) return null
+  return renderMarkdownSafe(collaborationRaw.value)
+})
 const activeTaxonomy = computed(() => {
   const key = activeItem.value?.taxonomyKey
   if (!key) return null
@@ -163,6 +170,18 @@ const next = () => {
   activeAuditId.value = nextTodoAuditId.value
 }
 
+const toggleDrawer = () => {
+  isDrawerOpen.value = !isDrawerOpen.value
+}
+
+const onDocumentClick = (event: MouseEvent) => {
+  if (!isDrawerOpen.value) return
+  const target = event.target as HTMLElement | null
+  if (!target) return
+  if (target.closest('[data-drawer]')) return
+  isDrawerOpen.value = false
+}
+
 watch(isAllDone, (done) => {
   if (!done || completionHintShown.value) return
   completionHintShown.value = true
@@ -184,6 +203,18 @@ watch(
   },
   { deep: true },
 )
+
+watch(activeAuditId, () => {
+  isDrawerOpen.value = false
+})
+
+onMounted(() => {
+  document.addEventListener('click', onDocumentClick)
+})
+
+onBeforeUnmount(() => {
+  document.removeEventListener('click', onDocumentClick)
+})
 const exportJson = () => {
   if (!auditorId.value) return
   const name = `Auditor_${auditorId.value}`
@@ -251,10 +282,19 @@ const copyImage = async () => {
 
 <template>
   <div class="space-y-4">
-    <div class="group fixed left-0 top-0 z-40 flex h-full items-center">
-      <div class="pointer-events-none h-full w-[2px] bg-slate-900/5 transition group-hover:bg-slate-900/10"></div>
+	    <div class="fixed left-0 top-0 z-40 flex h-full items-center w-6" data-drawer>
+      <button
+        type="button"
+        class="flex h-14 w-6 items-center justify-center rounded-r-lg border border-slate-200 bg-white text-slate-600 shadow-sm hover:bg-slate-50"
+        title="Toggle drawer"
+        @click="toggleDrawer"
+      >
+        <span class="text-xs font-semibold">{{ isDrawerOpen ? '‹' : '›' }}</span>
+      </button>
       <div
-        class="pointer-events-auto ml-2 w-[320px] -translate-x-full rounded-2xl border border-slate-200 bg-white p-4 shadow-xl transition group-hover:translate-x-0"
+        class="fixed left-8 top-3 w-[320px] rounded-2xl border border-slate-200 bg-white p-4 shadow-xl transition"
+        :class="isDrawerOpen ? 'pointer-events-auto translate-x-0 opacity-100' : 'pointer-events-none -translate-x-full opacity-0'"
+        :style="{ visibility: isDrawerOpen ? 'visible' : 'hidden' }"
       >
         <AppCard class="p-4">
         <div class="space-y-3">
@@ -334,15 +374,18 @@ const copyImage = async () => {
             </div>
 
 	            <div class="mt-4 space-y-4">
-	              <div>
-	                <div class="flex items-center justify-between gap-3">
-	                  <div class="text-sm font-semibold text-slate-900">Question</div>
-	                  <AppButton variant="secondary" @click="copyQuestion">Copy</AppButton>
-	                </div>
-	                <div class="mt-2 whitespace-pre-wrap rounded-xl border border-slate-200 bg-white p-3 text-sm text-slate-800">
-	                  {{ activeCase.question }}
-	                </div>
-	              </div>
+		              <div>
+		                <div class="flex items-center justify-between gap-3">
+		                  <div class="text-sm font-semibold text-slate-900">Question</div>
+		                  <AppButton variant="secondary" @click="copyQuestion">Copy</AppButton>
+		                </div>
+		                <div class="mt-2 whitespace-pre-wrap rounded-xl border border-slate-200 bg-white p-3 text-sm text-slate-800">
+		                  {{ activeCase.question }}
+		                </div>
+		                <div v-if="activeCase.modality" class="mt-2 text-xs text-slate-500">
+		                  Type: {{ activeCase.modality === 'vqa' ? 'visual question answering (VQA)' : 'plain text question answering' }}
+		                </div>
+		              </div>
 
               <div v-if="activeCase.modality === 'vqa' && activeCase.image?.path">
                 <div class="flex items-center justify-between gap-3">
@@ -420,9 +463,11 @@ const copyImage = async () => {
 	              <AppButton variant="secondary" @click="copyLog">Copy</AppButton>
 	            </div>
 
-	            <div v-if="collaborationRaw" class="mt-3 whitespace-pre-wrap rounded-lg bg-white p-3 text-xs text-slate-900">
-	              {{ collaborationRaw }}
-	            </div>
+	            <div
+	              v-if="collaborationHtml"
+	              class="prose prose-slate mt-3 max-w-none rounded-lg bg-white p-3 text-sm text-slate-900"
+	              v-html="collaborationHtml"
+	            ></div>
 
             <div v-else-if="collaborationRounds.length" class="mt-4 space-y-4">
               <AppCard
