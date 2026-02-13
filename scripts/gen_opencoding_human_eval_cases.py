@@ -108,6 +108,8 @@ def main():
         print(f"Processing file: {jsonl_file}")
         jsonl_file_name = jsonl_file.stem
         dataset = jsonl_file_name.split("_")[1]
+        mas = jsonl_file_name.split("_")[0]
+        llm = jsonl_file_name.split("_")[2]
         if dataset in ["MedQA", "PubMedQA", "MedXpertQA-text"]:
             question_type = "plain text question answering"
         else:
@@ -134,16 +136,24 @@ def main():
             collaboration_text = gen_collaboration_text(case_history)
             instruction_text = (
                 "Please conduct a comprehensive analysis of the multi-agent collaboration process for this case, "
-                "utilizing the full case context and collaboration history provided.\n"
-                "Your task is to identify occurrences of the 10 specific failure modes listed in the taxonomy. "
-                "For each failure mode observed, please select (check) the corresponding checkbox. "
-                "If a failure mode is not present, leave it unchecked (do not take any action). "
+                "utilizing the full case context and collaboration history provided.\n\n"
+                "Your task is to identify occurrences of the 10 specific failure modes listed in the taxonomy.\n\n"
+                "For each failure mode observed, please select (check) the corresponding checkbox.\n\n"
+                "If a failure mode is not present, leave it unchecked (do not take any action).\n\n"
                 "Should you encounter any other collaboration issues not covered by these 10 categories, "
                 "please describe them in the 'Novel failure mode' text box."
             )
             structured_case = {
                 "qid": qid,
                 "image_path": image_path,
+                "ground_truth": ground_truth,
+                "question_type": question_type,
+                "options": options,
+                "options_text": options_text,
+                "llm": llm,
+                "dataset": dataset,
+                "mas": mas,
+                "mas_predicted_answer": mas_predicted_answer,
                 "question_description": question_description,
                 "collaboration_text": collaboration_text,
                 "instruction_text": instruction_text
