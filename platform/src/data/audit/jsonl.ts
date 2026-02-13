@@ -10,6 +10,10 @@ type JsonlRecord = {
   ground_truth?: string
   mas_predicted_answer?: string
   failure_code?: string
+  question_type?: string
+  question?: string
+  options?: Record<string, string>
+  options_text?: string
   question_description?: string
   instruction_text?: string
   collaboration_text?: string
@@ -309,8 +313,15 @@ export const parseAuditJsonl = (content: string, fileName: string): AuditCase[] 
     const dataset = normalizeDataset(String(payload.dataset ?? 'Unknown'))
     const framework = normalizeFramework(String(payload.mas ?? 'Unknown'))
 
-    const question = parseQuestion(questionDescription)
-    const options = parseOptions(questionDescription)
+    const question = String(payload.question ?? '').trim() || parseQuestion(questionDescription)
+
+    const optionsFromMap =
+      payload.options && typeof payload.options === 'object'
+        ? Object.entries(payload.options).map(([k, v]) => `${k}. ${v}`.trim())
+        : undefined
+    const optionsFromText = payload.options_text ? parseOptions(String(payload.options_text)) : undefined
+    const options = optionsFromMap ?? optionsFromText ?? parseOptions(questionDescription)
+
     const answer = (payload.ground_truth ?? parseAnswer(questionDescription))?.trim()
     const predictedAnswer = payload.mas_predicted_answer?.trim()
 
