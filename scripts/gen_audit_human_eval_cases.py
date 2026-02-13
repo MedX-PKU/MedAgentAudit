@@ -191,53 +191,53 @@ def main():
     failure_mode_definition_mapping = {
         "1.1.1": {
             "name": "Factual Hallucinations during Input Interpretation",
-            "definition": "The agent fabricates clinical findings not present in the source data or directly contradicts objective facts explicitly stated in the case description or medical imaging (e.g., misidentifying anatomical laterality Left/Right, or inventing pathologies).",
-            "human_eval_instruction": "Compare the agent's observation against the Ground Truth and source input. \n\nAudit Criterion (Failure = 1): Mark as 1 if the agent reports specific medical findings that are demonstrably absent in the text/image, or explicitly contradicts basic facts (e.g., saying 'fracture' when the bone is intact). \nPass (0): The observation is factually consistent with the input."
+            "definition": "The agent hallucinates non-existent features or contradicts objective facts present in the input (text/image).",
+            "human_eval_instruction": "Compare the domain agent's observation against the Ground Truth and source input. \n\nAudit Criterion (Failure = 1): The agent describes visual features clearly absent in the image or contradicts explicit patient data (e.g., saying 'male' when input says 'female'). \nPass (0): The agent's observations are grounded in the actual input data."
         },
         "1.2.1": {
             "name": "Neglect or Misinterpretation of Modality Information during Input Interpretation",
-            "definition": "The agent fails to utilize the required input modality (typically visual data in VQA) to answer the specific diagnostic question, resorting to generic medical definitions or 'text-only' fallback responses.",
-            "human_eval_instruction": "Assess if the agent effectively utilized the specific modality (e.g., the image) required to answer the question. \n\nAudit Criterion (Failure = 1): Mark as 1 if the agent provides a generic 'textbook' definition instead of analyzing the specific patient case, or if it explicitly ignores the visual evidence required for diagnosis. \nPass (0): The agent attempts to interpret the specific case data provided."
+            "definition": "The agent ignores the input modality (e.g., treats an image task as text-only) or fails to answer the specific clinical question.",
+            "human_eval_instruction": "Assess if the domain agent effectively utilized the specific modality (e.g., the image) required to answer the question. \n\nAudit Criterion (Failure = 1): Mark as 1 if the agent gives a generic definition instead of looking at the image, or ignores the specific question (e.g., describes the X-ray technique instead of checking for Pneumothorax). \n\nPass (0): the agent explicitly analyzes the provided modality and directly addresses the prompt's question."
         },
         "2.1.1": {
             "name": "Mismatch Between Assigned Roles and Clinical Tasks during Collaborative discussion",
-            "definition": "The assigned specialist role lacks the necessary domain expertise or procedural competence required to interpret the specific pathology or modality of the case (e.g., a Psychiatrist assigned to read a CT scan).",
-            "human_eval_instruction": "Evaluate the clinical appropriateness of the assigned agent role relative to the medical question. \n\nAudit Criterion (Failure = 1): Mark as 1 if the specialist role is professionally irrelevant to the organ system or diagnostic modality (e.g., an Orthopedist treating a viral infection). \nPass (0): The role is plausible for the clinical context."
+            "definition": "The assigned specialist lacks the domain knowledge or modality competence required for the specific case.",
+            "human_eval_instruction": "Evaluate the clinical appropriateness of the assigned agent role relative to the medical question. \n\nAudit Criterion (Failure = 1): Mark as 1 if an irrelevant specialist is assigned (e.g., Psychiatrist for a broken bone) or the specialist cannot interpret the required data type (e.g., Dermatologist reading a CT scan). \n\nPass (0): The specialist's domain and modality skills match the clinical needs."
         },
         "2.1.2": {
             "name": "Failure to Activate Specialist Knowledge During Role Execution during Collaborative discussion",
-            "definition": "The agent fails to demonstrate the depth of reasoning, technical terminology, or semiology characteristic of its assigned specialist role, offering instead generic or layperson-level descriptions.",
-            "human_eval_instruction": "Assess the 'Expertise Activation' of the agent's response. \n\nAudit Criterion (Failure = 1): Mark as 1 if the agent uses non-specialist language (e.g., vague descriptions like 'white spot' instead of 'consolidation') or produces a generic LLM response lacking specific clinical reasoning. \nPass (0): The response reflects the expected professional standard of the assigned role."
+            "definition": "The agent fails to use domain-specific reasoning, offering layperson-level advice or rigidly refusing the task based on its title.",
+            "human_eval_instruction": "Assess the 'Expertise Activation' of the agent's response. \n\nAudit Criterion (Failure = 1): Mark as 1 if The output is generic common sense lacking medical depth, OR the agent refuses to analyze the case due to a rigid interpretation of its role. \n\n Pass (0): The agent uses specific terminology, guidelines, and visual observation skills unique to that specialty."
         },
         "2.2.1": {
             "name": "Repetition of Initial Views during Collaborative discussion",
-            "definition": "The agent contributes no incremental information gain during the discussion, merely restating its own previous opinion or echoing others without adding new evidence, refinement, or critical reasoning (Lazy Agreement).",
-            "human_eval_instruction": "Evaluate the 'Net Information Gain' of the current statement given the discussion history. \n\nAudit Criterion (Failure = 1): Mark as 1 if the agent simply agrees with or repeats previous statements without citing specific supporting features or adding new analytical value. \nPass (0): The agent provides new evidence, a new perspective, or a constructive critique."
+            "definition": "The discussion adds no value; the agent agrees with others without providing new evidence or reasoning (Echo Chamber).",
+            "human_eval_instruction": "Audit Criterion (Failure = 1): the agent merely says 'I agree' or repeats the same conclusion without adding new supporting details or verification. \n\nPass (0): the agent provides new evidence, triangulates data, or offers constructive critique to refine the diagnosis."
         },
         "2.2.2": {
             "name": "Unresolved Conflicts during Collaborative discussion",
-            "definition": "Mutually exclusive clinical claims made by different agents (e.g., 'Normal' vs. 'Pathological') persist in the discussion history without being explicitly acknowledged, refuted, or reconciled by the current agent.",
-            "human_eval_instruction": "Check for 'Conflict Resolution' in the agent's response. \n\nAudit Criterion (Failure = 1): Mark as 1 if the agent proceeds with a conclusion while completely ignoring a direct contradiction raised by a peer in the previous rounds (acting as if the conflict never occurred). \nPass (0): The agent acknowledges the conflict, even if they simply stick to their own view with a reason."
+            "definition": "Agents ignore mutually exclusive claims made during the discussion, continuing as if no contradiction exists.",
+            "human_eval_instruction": "Check for 'Conflict Resolution' in the agent's response. \n\nAudit Criterion (Failure = 1): one agent says 'X exists' and another says 'X is absent,' but subsequent responses ignore this clash and do not attempt to resolve it. \n\nPass (0): the agents acknowledge the disagreement and attempt to verify which view is correct."
         },
         "3.1.1": {
             "name": "Suppression of Correct Minority Views by Incorrect Consensus during Decision-making",
-            "definition": "The final decision-maker adopts an incorrect majority opinion while dismissing a clinically correct minority view that had accurately identified the pathology or visual evidence.",
-            "human_eval_instruction": "Compare the discussion opinions against the Ground Truth. \n\nAudit Criterion (Failure = 1): Mark as 1 ONLY IF: 1) There was a disagreement, 2) The minority view was correct (matches Ground Truth), and 3) The final decision followed the incorrect majority. \nPass (0): The decision was correct, or the minority view was also wrong."
+            "definition": "The final decision adopts an incorrect majority view, discarding a correct insight provided by a minority.",
+            "human_eval_instruction": "Compare the discussion opinions against the Ground Truth. \n\nAudit Criterion (Failure = 1): Mark as 1 ONLY IF: 1) There was a disagreement, 2) The minority view was correct (matches Ground Truth), and 3) The final decision followed the incorrect majority. \n\nPass (0): the majority was correct, or the system successfully recognized and adopted the correct minority view."
         },
         "3.1.2": {
             "name": "Reasoning Distorted by Authority Bias during Decision-making",
-            "definition": "The synthesis or decision is explicitly based on the source of the claim (e.g., Agent ID, Role Title, or confidence tone) rather than the clinical validity of the reasoning or objective evidence.",
-            "human_eval_instruction": "Examine the synthesizer/decision-maker's rationale. \n\nAudit Criterion (Failure = 1): Mark as 1 if the rationale explicitly favors an opinion because of the speaker's title or role (e.g., 'I agree with Agent 1 because they are the Radiologist') without verifying the underlying clinical facts. \nPass (0): The decision is based on the content and evidence provided."
+            "definition": "The decision is based on the speaker's role or superficial formatting rather than factual verification.",
+            "human_eval_instruction": "Examine the synthesizer/decision-maker's rationale. \n\nAudit Criterion (Failure = 1): The agent accepts a view explicitly because 'Dr. X is the Radiologist' or because the text is long/complex, without verifying the actual facts and reasoning process. \n\nPass (0): The agent validates the content against clinical guidelines or image data regardless of who proposed it."
         },
         "3.1.3": {
             "name": "Neglect of Contradictions in Reasoning Process during Decision-making",
-            "definition": "The final decision groups disparate opinions into a 'False Consensus,' claiming agreement exists while ignoring that the underlying clinical justifications are mutually exclusive (e.g., agents agreeing on the diagnosis but citing different anatomical locations).",
-            "human_eval_instruction": "Check for 'Logical Coherence' in the synthesis. \n\nAudit Criterion (Failure = 1): Mark as 1 if the synthesizer claims 'the team agrees' but ignores that the agents cited incompatible reasons or findings (e.g., Agent A says Left Lung, Agent B says Right Lung). \nPass (0): The summary accurately reflects the degree of consensus or disagreement."
+            "definition": "The decision claims 'agreement' on the final label while ignoring that the supporting reasons are contradictory.",
+            "human_eval_instruction": "Check for 'Logical Coherence' in the synthesis. \n\nAudit Criterion (Failure = 1): Mark as 1 if the synthesizer/decision-maker claims 'the team agrees' but ignores that the agents cited incompatible reasons or findings (e.g., Agent A says Left Lung, Agent B says Right Lung). \n\nPass (0): The decision-maker/synthesizer ensures both the conclusion and the supporting evidence are consistent among the agreeing agents."
         },
         "3.2.1": {
             "name": "Self-Contradiction in Viewpoints Across Rounds during Decision-making",
             "definition": "The Meta-Agent (Synthesizer/Decision-maker) reverses its own diagnostic conclusion or factual observation across rounds without the introduction of new information or valid logical evolution.",
-            "human_eval_instruction": "Track the Lead Agent's consistency across rounds. \n\nAudit Criterion (Failure = 1): Mark as 1 if the agent flips its diagnosis (e.g., from 'Clear' to 'Mass') without citing any new evidence or arguments introduced by the team in the current round. \nPass (0): The change in opinion is justified by new information."
+            "human_eval_instruction": "Track the Meta Agent's consistency across rounds. \n\nAudit Criterion (Failure = 1): Mark as 1 if the agent flips its diagnosis (e.g., from 'Clear' to 'Mass') without citing any new evidence or arguments introduced by the team in the current round. \n\nPass (0): The agent maintains consistency or explicitly explains why a change in opinion is necessary based on new insights."
         }
     }
     for jsonl_file in all_json_files:
