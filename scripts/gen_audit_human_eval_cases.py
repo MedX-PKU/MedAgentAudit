@@ -64,7 +64,7 @@ def gen_collaboration_text(case_history):
                     domain_agent_id= opinion.get("agent_id","").lower()
                     past_domain_agent_answer = opinion["log"]["parsed_output"].get("answer", None)
                     past_domain_agent_explanation = opinion["log"]["parsed_output"].get("explanation", None)
-                    role = opinion["log"].get("specialty", None)
+                    role = opinion.get("specialty", None)
                     if role is not None:
                         collaboration_text += (f"### Domain agent ({domain_agent_id}, role:{role}) opinion:\n\n")
                     else:
@@ -89,13 +89,25 @@ def gen_collaboration_text(case_history):
                         past_ans = synth_log.get("answer", None)
                         past_expl = synth_log.get("explanation", None)
                         agent_id = synth_item.get("agent_id", None)
-                        collaboration_text += (f"### Meta agent ({agent_id}) synthesis:\n\n")
+                        role = synth_item.get("specialty", None)
+                        collaboration_text += (f"### Meta agent's synthesis:\n\n")
+                        if agent_id is not None:
+                            agent_id = agent_id.lower()
+                            collaboration_text += (f"**Meta agent id: {agent_id}**\n\n")
+                        if role is not None:
+                            collaboration_text += (f"**Role**:{role}\n\n")
                         if past_ans is not None:
                             collaboration_text += (f"**Group lead ({agent_id}) answer:** {past_ans}\n\n")
                         if past_expl is not None:
                             collaboration_text += (f"**Group lead explanation:** {past_expl}\n\n")
                 elif isinstance(r["synthesis"], dict):
                     collaboration_text += (f"### Meta agent synthesis:\n\n")
+                    agent_id = r["synthesis"].get("agent_id", None)
+                    if agent_id is not None:
+                        collaboration_text += (f"**Meta agent id: {agent_id}**\n\n")
+                    role = r["synthesis"].get("specialty", None)
+                    if role is not None:
+                        collaboration_text += (f"**Role**:{role}\n\n")
                     past_synthesizer_answer = r["synthesis"]["parsed_output"].get("answer", None)
                     past_synthesizer_explanation = r["synthesis"]["parsed_output"].get("explanation", None)
                     if past_synthesizer_answer is not None:
@@ -137,6 +149,13 @@ def gen_collaboration_text(case_history):
                     f"this stage encompasses the final decision-making process, where the meta-agent consolidates the insights from previous stages to arrive at a conclusive answer:\n\n"
                 )
                 collaboration_text += (f"### Meta agent makes decision:\n\n")
+                agent_id = r["decision"].get("agent_id", None)
+                if agent_id: 
+                    agent_id = agent_id.lower()
+                    collaboration_text += (f"**Agent id: {agent_id}**\n\n")
+                role = r["decision"].get("specialty", None)
+                if role is not None:
+                    collaboration_text += (f"**Role**:{role}\n\n")
                 past_decision_answer = r["decision"]["parsed_output"].get("answer", None)
                 past_decision_explanation = r["decision"]["parsed_output"].get("explanation", None)
                 if past_decision_answer is not None:
