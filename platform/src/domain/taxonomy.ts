@@ -1,4 +1,5 @@
 export type TaxonomyKey =
+  | '0.0.0'
   | '1.1.1'
   | '1.2.1'
   | '2.1.1'
@@ -10,7 +11,7 @@ export type TaxonomyKey =
   | '3.1.3'
   | '3.2.1'
 
-export type TaxonomyItem = { key: TaxonomyKey; title: string; short: string; phase: 'I' | 'II' | 'III' }
+export type TaxonomyItem = { key: TaxonomyKey; title: string; short: string; phase: 'I' | 'II' | 'III' | 'None' }
 
 export const TAXONOMY: TaxonomyItem[] = [
   { key: '1.1.1', phase: 'I', title: 'Factual Hallucinations', short: 'Factual hallucination during input interpretation' },
@@ -25,5 +26,6 @@ export const TAXONOMY: TaxonomyItem[] = [
   { key: '3.1.2', phase: 'III', title: 'Authority Bias', short: 'Decision distorted by role/format authority rather than evidence' },
   { key: '3.1.3', phase: 'III', title: 'Neglect of Contradictions', short: 'Integrates views without checking reasoning contradictions' },
   { key: '3.2.1', phase: 'III', title: 'Self-Contradiction Across Rounds', short: 'Decision flips across rounds without new evidence' },
-]
 
+  { key: '0.0.0', phase: 'None', title: 'No issues / No failure mode', short: 'No taxonomy failure mode is present' },
+]
