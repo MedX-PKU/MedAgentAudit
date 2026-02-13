@@ -54,50 +54,56 @@ def gen_collaboration_text(case_history):
     if "rounds" in case_history and case_history["rounds"]:
         for r in case_history["rounds"]:
             round_num = r.get("round", "Unknown")
-            collaboration_text += f"**--- [Round {round_num}] ---**\n "
+            collaboration_text += f"# --- [Round {round_num}] --- \n\n"
             if r.get("opinions"):
                 collaboration_text += (                
-                    f"<font size='6'>**Task understanding phase:**</font> <font size='5'>each domain agent independently assesses the case and provides its own judgment along with the supporting rationale:</font>\n "
+                    f"## Task understanding phase:\n\n"
+                    f"each domain agent independently assesses the case and provides its own judgment along with the supporting rationale:\n\n"
                 )
                 for opinion in r.get("opinions", []):
                     domain_agent_id= opinion.get("agent_id","").lower()
                     past_domain_agent_answer = opinion["log"]["parsed_output"].get("answer", None)
                     past_domain_agent_explanation = opinion["log"]["parsed_output"].get("explanation", None)
-                    collaboration_text += (f"<font size='4'>**Domain agent ({domain_agent_id}) opinion:**</font>\n ")
+                    collaboration_text += (f"### Domain agent ({domain_agent_id}) opinion:\n\n")
                     if past_domain_agent_answer is not None:
-                        collaboration_text += (f"<font size='4'>**Answer:**</font> {past_domain_agent_answer}\n ")
+                        collaboration_text += (f"**Answer:** {past_domain_agent_answer}\n\n")
                     if past_domain_agent_explanation is not None:
-                        collaboration_text += (f"<font size='4'>**Explanation:**</font> {past_domain_agent_explanation}\n\n ")
+                        collaboration_text += (f"**Explanation:** {past_domain_agent_explanation}\n\n")
 
             if r.get("synthesis"): # not any MAS has the synthesis stage
                 collaboration_text += (                
-                f"<font size='6'>**Multi-Agent collaborative discussion phase:**</font> <font size='5'>the meta agent synthesizes the opinions of the domain agents to form a preliminary conclusion.</font>\n "
+                f"## Multi-Agent collaborative discussion phase: (meta agent's synthesis)\n\n"
+                f"the meta agent synthesizes the opinions of the domain agents to form a preliminary conclusion.\n\n"
                 )
                 collaboration_text += (                
-                    f"<font size='5'>**This stage encompasses the generation of a preliminary conclusion by the meta-agent:**</font>\n "
+                    f"This stage encompasses the generation of a preliminary conclusion by the meta-agent:\n\n"
                 )
+
                 if isinstance(r["synthesis"], list):
                     for synth_item in r["synthesis"]:
                         synth_log = synth_item.get("log", {}).get("parsed_output", {})
                         past_ans = synth_log.get("answer", None)
                         past_expl = synth_log.get("explanation", None)
                         agent_id = synth_item.get("agent_id", None)
+                        collaboration_text += (f"### Meta agent ({agent_id}) synthesis:\n\n")
                         if past_ans is not None:
-                            collaboration_text += (f"<font size='4'>**Group lead ({agent_id}) answer:**</font> {past_ans}\n ")
+                            collaboration_text += (f"**Group lead ({agent_id}) answer:** {past_ans}\n\n")
                         if past_expl is not None:
-                            collaboration_text += (f"<font size='4'>**Group lead explanation:**</font> {past_expl}\n\n")
+                            collaboration_text += (f"**Group lead explanation:** {past_expl}\n\n")
                 elif isinstance(r["synthesis"], dict):
+                    collaboration_text += (f"### Meta agent synthesis:\n\n")
                     past_synthesizer_answer = r["synthesis"]["parsed_output"].get("answer", None)
                     past_synthesizer_explanation = r["synthesis"]["parsed_output"].get("explanation", None)
                     if past_synthesizer_answer is not None:
-                        collaboration_text += (f"<font size='4'>**Synthesizer answer:**</font> {past_synthesizer_answer}\n ")
+                        collaboration_text += (f"**Synthesizer answer:** {past_synthesizer_answer}\n\n")
                     if past_synthesizer_explanation is not None:
-                        collaboration_text += (f"<font size='4'>**Synthesizer explanation:**</font> {past_synthesizer_explanation}\n\n ")
+                        collaboration_text += (f"**Synthesizer explanation:** {past_synthesizer_explanation}\n\n")
 
             if r.get("reviews"): # not any MAS has the review stage
                 collaboration_text += (
-                    f"<font size='6'>**Multi-Agent collaborative discussion phase:**</font> <font size='5'>this stage encompasses a review from domain agents providing their perspectives and rationales. "
-                    f"It includes cross-evaluation among domain agents, where they exchange viewpoints to refine the collective outcome.</font>\n "
+                    f"## Multi-Agent collaborative discussion phase (domain agents review):\n\n"
+                    f"this stage encompasses a review from domain agents providing their perspectives and rationales. "
+                    f"It includes cross-evaluation among domain agents, where they exchange viewpoints to refine the collective outcome.\n\n"
                 )
                 for review in r["reviews"]:
                     past_domain_agent_review = review["log"]["parsed_output"].get("agree", None)
@@ -106,30 +112,33 @@ def gen_collaboration_text(case_history):
                     past_domain_agent_review_answer = review["log"]["parsed_output"].get("answer", None)
                     agent_id = review.get("agent_id", None)
                     if agent_id: agent_id = agent_id.lower()
+                    collaboration_text += (f"### Domain agents ({agent_id}) review:\n\n")
                     role = review.get("specialty", None)
                     if agent_id is not None:
-                        collaboration_text += (f"**Agent id: {agent_id} ")
+                        collaboration_text += (f"**Agent id: {agent_id}**\n\n")
                     if role is not None:
-                        collaboration_text += (f"(role: {role})**\n ")
+                        collaboration_text += (f"**(role: {role})**\n\n")
                     if past_domain_agent_review is not None:
-                        collaboration_text += (f"<font size='4'>**Review result:**</font> {past_domain_agent_review}\n ")
+                        collaboration_text += (f"**Review result:** {past_domain_agent_review}\n\n")
                     if past_domain_agent_review_reason is not None:
-                        collaboration_text += (f"<font size='4'>**Review reason:**</font> {past_domain_agent_review_reason}\n ")
+                        collaboration_text += (f"**Review reason:** {past_domain_agent_review_reason}\n\n")
                     if past_domain_agent_review_explanation is not None:
-                        collaboration_text += (f"<font size='4'>**Review explanation:**</font> {past_domain_agent_review_explanation}\n ")
+                        collaboration_text += (f"**Review explanation:** {past_domain_agent_review_explanation}\n\n")
                     if past_domain_agent_review_answer is not None:
-                        collaboration_text += (f"<font size='4'>**Review answer:**</font> {past_domain_agent_review_answer}\n\n ")
+                        collaboration_text += (f"**Review answer:** {past_domain_agent_review_answer}\n\n ")
 
             if r.get("decision"): 
                 collaboration_text += (                
-                    f"<font size='6'>**Final decision-making phase:**</font> <font size='5'>this stage encompasses the final decision-making process, where the meta-agent consolidates the insights from previous stages to arrive at a conclusive answer:</font>\n"
+                    f"## Final decision-making phase: \n\n"
+                    f"this stage encompasses the final decision-making process, where the meta-agent consolidates the insights from previous stages to arrive at a conclusive answer:\n\n"
                 )
+                collaboration_text += (f"### Meta agent makes decision:\n\n")
                 past_decision_answer = r["decision"]["parsed_output"].get("answer", None)
                 past_decision_explanation = r["decision"]["parsed_output"].get("explanation", None)
                 if past_decision_answer is not None:
-                    collaboration_text += (f"<font size='4'>**Decision answer:**</font> {past_decision_answer}\n ")
+                    collaboration_text += (f"**Decision answer:** {past_decision_answer}\n\n")
                 if past_decision_explanation is not None:
-                    collaboration_text += (f"<font size='4'>**Decision explanation:**</font> {past_decision_explanation}\n\n ")
+                    collaboration_text += (f"**Decision explanation:** {past_decision_explanation}\n\n")
     return collaboration_text_start_text, collaboration_text
 def main():
     input_dir = EXTRACTED_LOGS_FOR_AUDIT_HUMAN_EVAL_DIR
