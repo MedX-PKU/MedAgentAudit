@@ -1,22 +1,36 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import type { Ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, provide, readonly, ref } from 'vue'
 import { useRoute } from 'vue-router'
+
+import { ANNOTATION_DRAWER_KEY } from './annotationDrawer'
 
 const props = defineProps<{
   title: string
+  /** When true (annotation sidebar open), header and main shift right to make room */
+  drawerOpen?: boolean
 }>()
 
 const route = useRoute()
 
 const isAnnotationMenuOpen = ref(false)
 
-const toggleAnnotationMenu = () => {
-  isAnnotationMenuOpen.value = !isAnnotationMenuOpen.value
+// Only provide when NOT in annotation routes. Under /annotation/*, AnnotationLayout
+// provides the drawer context; we must not override it or views would get the
+// wrong one (dropdown menu state instead of sidebar drawer).
+const inAnnotationRoute = route.path === '/annotation' || route.path.startsWith('/annotation/')
+if (!inAnnotationRoute) {
+  provide(ANNOTATION_DRAWER_KEY, {
+    isOpen: readonly(isAnnotationMenuOpen) as Ref<boolean>,
+    toggle: () => {
+      isAnnotationMenuOpen.value = !isAnnotationMenuOpen.value
+    },
+    close: () => {
+      isAnnotationMenuOpen.value = false
+    },
+  })
 }
 
-const closeAnnotationMenu = () => {
-  isAnnotationMenuOpen.value = false
-}
 
 const nav = computed(() => [{ to: '/', label: 'Home' }])
 
@@ -29,7 +43,7 @@ const onDocumentClick = (event: MouseEvent) => {
   const target = event.target as HTMLElement | null
   if (!target) return
   if (target.closest('[data-annotation-menu]')) return
-  closeAnnotationMenu()
+  isAnnotationMenuOpen.value = false
 }
 
 onMounted(() => {
@@ -43,9 +57,13 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="min-h-screen bg-slate-50 text-slate-900">
-    <header class="sticky top-0 z-40 border-b border-slate-200 bg-white/80 backdrop-blur">
+    <header
+      class="sticky top-0 z-40 border-b border-slate-200 bg-white/80 backdrop-blur transition-[margin] duration-300 ease-out"
+      :class="props.drawerOpen ? 'ml-[352px]' : 'ml-0'"
+    >
       <div class="flex w-full items-center gap-4 px-3 py-3 lg:px-4">
-        <div class="font-semibold tracking-tight">
+        <div class="flex items-center font-semibold tracking-tight">
+          <slot name="title-left" />
           {{ props.title }}
         </div>
         <div class="flex-1" />
@@ -65,7 +83,7 @@ onBeforeUnmount(() => {
               type="button"
               class="cursor-pointer rounded-lg px-3 py-2 text-sm transition hover:bg-slate-100"
               :class="inAnnotation ? 'bg-slate-100 text-slate-900' : 'text-slate-600'"
-              @click="toggleAnnotationMenu"
+              @click="isAnnotationMenuOpen = !isAnnotationMenuOpen"
             >
               Annotation
             </button>
@@ -77,7 +95,7 @@ onBeforeUnmount(() => {
                 to="/annotation/open-coding"
                 class="block px-3 py-2 text-sm hover:bg-slate-50 hover:text-slate-900"
                 :class="active('/annotation/open-coding') ? 'bg-blue-600 text-white hover:bg-blue-600 hover:text-slate-900' : 'text-slate-700'"
-                @click="closeAnnotationMenu"
+                @click="isAnnotationMenuOpen = false"
               >
                 OpenCoding
               </RouterLink>
@@ -85,7 +103,7 @@ onBeforeUnmount(() => {
                 to="/annotation/audit"
                 class="block px-3 py-2 text-sm hover:bg-slate-50 hover:text-slate-900"
                 :class="active('/annotation/audit') ? 'bg-blue-600 text-white hover:bg-blue-600 hover:text-slate-900' : 'text-slate-700'"
-                @click="closeAnnotationMenu"
+                @click="isAnnotationMenuOpen = false"
               >
                 Audit
               </RouterLink>
