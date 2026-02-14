@@ -10,7 +10,7 @@ import AppToast from '../../../components/ui/AppToast.vue'
 import type { AuditAnnotation, AuditCase, AuditItem } from '../../../domain/types'
 import { downloadJson } from '../../../lib/download'
 import { copyToClipboard } from '../../../lib/clipboard'
-import { renderMarkdownSafe } from '../../../lib/markdown'
+import MarkdownIt from 'markdown-it'
 import { loadAuditCases } from '../../../data/audit/cases'
 import { assignedAuditCases, assignedAuditItems, type AuditorId } from './auditAssignment'
 import { loadAuditMap, saveAudit } from './auditStorage'
@@ -82,35 +82,20 @@ const activeCase = computed<AuditCase | null>(() => {
   return auditCases.value.find((c) => c.caseId === activeItem.value!.caseId) ?? null
 })
 
-type ParsedOutput = { answer?: string; explanation?: string }
-type Opinion = { agent_id: string; specialty?: string; log?: { parsed_output?: ParsedOutput } }
-type Review = {
-  agent_id: string
-  specialty?: string
-  log?: { parsed_output?: { agree?: boolean; answer?: string; reason?: string; explanation?: string } }
-}
-type Round = {
-  round: number
-  opinions?: Opinion[]
-  synthesis?: { parsed_output?: ParsedOutput }
-  reviews?: Review[]
-  decision?: { parsed_output?: ParsedOutput }
-}
-
-const collaborationRounds = computed<Round[]>(() => {
-  const log = activeCase.value?.collaborationLog as { case_history?: { rounds?: Round[] } } | undefined
-  const rounds = log?.case_history?.rounds
-  return Array.isArray(rounds) ? rounds : []
-})
-
 const collaborationRaw = computed(() => {
   const log = activeCase.value?.collaborationLog as { raw?: string } | undefined
   return log?.raw
 })
 
+const md = new MarkdownIt({
+  html: false,
+  linkify: true,
+  breaks: true,
+})
+
 const collaborationHtml = computed(() => {
   if (!collaborationRaw.value) return null
-  return renderMarkdownSafe(collaborationRaw.value)
+  return md.render(collaborationRaw.value)
 })
 const activeTaxonomy = computed(() => {
   const key = activeItem.value?.taxonomyKey
@@ -259,8 +244,9 @@ const copyInstruction = async () => {
 const copyQuestion = async () => {
   if (!activeCase.value) return
   const questionText = activeCase.value.question ?? ''
+  const questionTypeText = activeCase.value.questionType ?? ''
   const optionsText = (activeCase.value.options ?? []).join('\n')
-  const payload = `Question：${questionText}\nOptions：${optionsText}`
+  const payload = `Question: ${questionText}\nQuestion Type: ${questionTypeText}\nOptions: ${optionsText}`
   await copyToClipboard(payload)
   toast.value = { show: true, message: 'Copied Question and Options.' }
   window.setTimeout(() => {
@@ -379,8 +365,8 @@ const copyQuestion = async () => {
 		                <div class="mt-2 whitespace-pre-wrap rounded-xl border border-slate-200 bg-white p-3 text-sm text-slate-800">
 		                  {{ activeCase.question }}
 		                </div>
-		                <div v-if="activeCase.modality" class="mt-2 text-xs text-slate-500">
-		                  Type: {{ activeCase.modality === 'vqa' ? 'visual question answering (VQA)' : 'plain text question answering' }}
+		                <div v-if="activeCase.questionType" class="mt-4 text-sm text-slate-600">
+		                  Question Type: {{ activeCase.questionType }}
 		                </div>
 		              </div>
 
@@ -468,67 +454,7 @@ const copyQuestion = async () => {
 	              v-html="collaborationHtml"
 	            ></div>
 
-            <div v-else-if="collaborationRounds.length" class="mt-4 space-y-4">
-              <AppCard
-                v-for="round in collaborationRounds"
-                :key="round.round"
-                class="space-y-3 border border-slate-200 bg-white p-4"
-              >
-                <div class="text-xs font-medium text-slate-500">Round {{ round.round }}</div>
-
-                <div v-if="round.opinions?.length" class="space-y-2">
-                  <div class="text-sm font-semibold text-slate-900">Opinions</div>
-                  <div v-for="op in round.opinions" :key="`${round.round}-${op.agent_id}`" class="space-y-1">
-                    <div class="text-xs font-medium text-slate-600">
-                      {{ op.agent_id }} <span v-if="op.specialty">· {{ op.specialty }}</span>
-                    </div>
-                    <div class="text-xs text-slate-700">Answer: {{ op.log?.parsed_output?.answer ?? '-' }}</div>
-                    <div v-if="op.log?.parsed_output?.explanation" class="text-xs text-slate-600 whitespace-pre-wrap">
-                      {{ op.log.parsed_output.explanation }}
-                    </div>
-                  </div>
-                </div>
-
-                <div v-if="round.synthesis?.parsed_output" class="space-y-1">
-                  <div class="text-sm font-semibold text-slate-900">Synthesis</div>
-                  <div class="text-xs text-slate-700">Answer: {{ round.synthesis.parsed_output.answer ?? '-' }}</div>
-                  <div v-if="round.synthesis.parsed_output.explanation" class="text-xs text-slate-600 whitespace-pre-wrap">
-                    {{ round.synthesis.parsed_output.explanation }}
-                  </div>
-                </div>
-
-                <div v-if="round.reviews?.length" class="space-y-2">
-                  <div class="text-sm font-semibold text-slate-900">Reviews</div>
-                  <div v-for="review in round.reviews" :key="`${round.round}-${review.agent_id}`" class="space-y-1">
-                    <div class="text-xs font-medium text-slate-600">
-                      {{ review.agent_id }} <span v-if="review.specialty">· {{ review.specialty }}</span>
-                    </div>
-                    <div class="text-xs text-slate-700">
-                      Agree: {{ review.log?.parsed_output?.agree === undefined ? '-' : review.log.parsed_output.agree ? 'Yes' : 'No' }}
-                    </div>
-                    <div v-if="review.log?.parsed_output?.answer" class="text-xs text-slate-700">
-                      Answer: {{ review.log.parsed_output.answer }}
-                    </div>
-                    <div v-if="review.log?.parsed_output?.reason" class="text-xs text-slate-600 whitespace-pre-wrap">
-                      {{ review.log.parsed_output.reason }}
-                    </div>
-                    <div v-if="review.log?.parsed_output?.explanation" class="text-xs text-slate-600 whitespace-pre-wrap">
-                      {{ review.log.parsed_output.explanation }}
-                    </div>
-                  </div>
-                </div>
-
-                <div v-if="round.decision?.parsed_output" class="space-y-1">
-                  <div class="text-sm font-semibold text-slate-900">Decision</div>
-                  <div class="text-xs text-slate-700">Answer: {{ round.decision.parsed_output.answer ?? '-' }}</div>
-                  <div v-if="round.decision.parsed_output.explanation" class="text-xs text-slate-600 whitespace-pre-wrap">
-                    {{ round.decision.parsed_output.explanation }}
-                  </div>
-                </div>
-              </AppCard>
-            </div>
-
-            <div v-else class="mt-3 text-xs text-slate-600">No structured collaboration log found.</div>
+            <div v-else class="mt-3 text-xs text-slate-600">No collaboration log found.</div>
           </AppCard>
         </div>
 

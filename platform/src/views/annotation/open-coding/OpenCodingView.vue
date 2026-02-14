@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import MarkdownIt from 'markdown-it'
 
-import TaxonomyChecklist from '../../../components/annotation/TaxonomyChecklist.vue'
 import type { TaxonomyKey } from '../../../domain/taxonomy'
 import AppButton from '../../../components/ui/AppButton.vue'
 import AppCard from '../../../components/ui/AppCard.vue'
@@ -22,7 +22,7 @@ const activeCaseId = ref<string | null>(null)
 const isDrawerOpen = ref(false)
 
 const OPEN_CODING_INSTRUCTION_TEXT =
-  "Please conduct a comprehensive analysis of the multi-agent collaboration process for this case, utilizing the full case context and collaboration history provided.\n\nYour task is to identify occurrences of the 10 specific failure modes listed in the taxonomy.\n\nFor each failure mode observed, please select (check) the corresponding checkbox. If a failure mode is not present, leave it unchecked (do not take any action).\n\nShould you encounter any other collaboration issues not covered by these 10 categories, please describe them in the 'Novel failure mode' text box."
+  "Please conduct a comprehensive analysis of the multi-agent collaboration process for this case, utilizing the full case context and collaboration history provided.\n\nYour task is to identify occurrences of the 10 specific failure modes listed in the taxonomy.\n\nFor each failure mode observed, please select (check) the corresponding checkbox.\n\nIf a failure mode is not present, leave it unchecked (do not take any action).\n\nShould you encounter any other collaboration issues not covered by these 10 categories, please describe them in the 'Novel failure mode' text box."
 
 const annotations = ref<Record<string, OpenCodingAnnotation>>({})
 const cases = ref<OpenCodingCase[]>([])
@@ -105,6 +105,19 @@ const collaborationRounds = computed<Round[]>(() => {
   const log = activeCase.value?.collaborationLog as { case_history?: { rounds?: Round[] } } | undefined
   const rounds = log?.case_history?.rounds
   return Array.isArray(rounds) ? rounds : []
+})
+
+const md = new MarkdownIt({
+  html: false,
+  linkify: true,
+  breaks: true,
+})
+
+const collaborationMarkdownHtml = computed(() => {
+  const log = activeCase.value?.collaborationLog as { raw?: string } | undefined
+  const raw = log?.raw
+  if (!raw) return ''
+  return md.render(raw)
 })
 
 
@@ -192,6 +205,53 @@ watch(
   { deep: true },
 )
 
+const formatFailureModePayload = (item: {
+  name?: string
+  definition?: string
+  human_eval_instruction?: string
+  humanEvalInstruction?: string
+}) => {
+  const name = item.name ?? ''
+  const definition = item.definition ?? ''
+  const instruction = item.human_eval_instruction ?? item.humanEvalInstruction ?? ''
+  return `Name: ${name}\n\nDefinition: ${definition}\n\nHuman eval instruction: ${instruction}`.trim()
+}
+
+const copyFailureMode = async (item: {
+  name?: string
+  definition?: string
+  human_eval_instruction?: string
+  humanEvalInstruction?: string
+}) => {
+  await copyToClipboard(formatFailureModePayload(item))
+  toast.value = { show: true, message: 'Copied Failure Mode details.' }
+  window.setTimeout(() => {
+    toast.value = { show: false, message: '' }
+  }, 1200)
+}
+
+const copyNoIssues = async () => {
+  const payload = 'Key: 0.0.0\nTitle: No issues / No failure mode'
+  await copyToClipboard(payload)
+  toast.value = { show: true, message: 'Copied.' }
+  window.setTimeout(() => {
+    toast.value = { show: false, message: '' }
+  }, 1200)
+}
+
+const toggle = (key: TaxonomyKey) => {
+  const set = new Set(taxonomy.value)
+  const noneKey: TaxonomyKey = '0.0.0'
+  if (key === noneKey) {
+    taxonomy.value = set.has(noneKey) ? [] : [noneKey]
+    return
+  }
+  if (set.has(key)) set.delete(key)
+  else set.add(key)
+  if (set.has(noneKey)) set.delete(noneKey)
+  taxonomy.value = Array.from(set)
+}
+
 watch(isAllDone, (done) => {
   if (!done || completionToastShown.value) return
   toast.value = { show: true, message: 'All cases labeled. Please export your JSON.' }
@@ -227,8 +287,9 @@ const copyLog = async () => {
 const copyQuestion = async () => {
   if (!activeCase.value) return
   const questionText = activeCase.value.question ?? ''
+  const questionTypeText = activeCase.value.questionType ?? ''
   const optionsText = (activeCase.value.options ?? []).join('\n')
-  const payload = `Question：${questionText}\nOptions：${optionsText}`
+  const payload = `Question: ${questionText}\nQuestion Type: ${questionTypeText}\nOptions: ${optionsText}`
   await copyToClipboard(payload)
   toast.value = { show: true, message: 'Copied Question and Options.' }
   window.setTimeout(() => {
@@ -248,6 +309,43 @@ const toggleDrawer = () => {
   isDrawerOpen.value = !isDrawerOpen.value
 }
 
+type FailureModeTooltipState = {
+  open: boolean
+  x: number
+  y: number
+  payload: { definition: string; instruction: string }
+}
+
+const failureModeTooltip = ref<FailureModeTooltipState>({
+  open: false,
+  x: 0,
+  y: 0,
+  payload: { definition: '', instruction: '' },
+})
+
+const showFailureModeTooltip = (
+  event: MouseEvent,
+  item: { definition?: string; human_eval_instruction?: string; humanEvalInstruction?: string },
+) => {
+  const target = event.currentTarget as HTMLElement | null
+  if (!target) return
+  const rect = target.getBoundingClientRect()
+  failureModeTooltip.value = {
+    open: true,
+    x: Math.min(rect.right, window.innerWidth - 24),
+    y: Math.min(rect.bottom + 8, window.innerHeight - 24),
+    payload: {
+      definition: item.definition ?? '-',
+      instruction: item.human_eval_instruction ?? item.humanEvalInstruction ?? '-',
+    },
+  }
+}
+
+const hideFailureModeTooltip = () => {
+  if (!failureModeTooltip.value.open) return
+  failureModeTooltip.value = { ...failureModeTooltip.value, open: false }
+}
+
 const onDocumentClick = (event: MouseEvent) => {
   if (!isDrawerOpen.value) return
   const target = event.target as HTMLElement | null
@@ -258,10 +356,14 @@ const onDocumentClick = (event: MouseEvent) => {
 
 onMounted(() => {
   document.addEventListener('click', onDocumentClick)
+  window.addEventListener('scroll', hideFailureModeTooltip, true)
+  window.addEventListener('resize', hideFailureModeTooltip)
 })
 
 onBeforeUnmount(() => {
   document.removeEventListener('click', onDocumentClick)
+  window.removeEventListener('scroll', hideFailureModeTooltip, true)
+  window.removeEventListener('resize', hideFailureModeTooltip)
 })
 </script>
 
@@ -335,7 +437,7 @@ onBeforeUnmount(() => {
       </div>
     </div>
 
-    <div class="grid gap-4 lg:grid-cols-[minmax(0,360px)_minmax(0,1fr)_minmax(0,420px)]">
+    <div class="grid gap-4 lg:grid-cols-[minmax(0,360px)_minmax(0,1fr)_minmax(0,520px)]">
       <div>
         <AppCard v-if="activeCase" class="max-h-[86vh] overflow-auto p-5">
           <div class="flex items-start justify-between gap-3">
@@ -352,6 +454,9 @@ onBeforeUnmount(() => {
               </div>
               <div class="mt-2 whitespace-pre-wrap rounded-xl border border-slate-200 bg-white p-3 text-sm text-slate-800">
                 {{ activeCase.question }}
+              </div>
+              <div v-if="activeCase.questionType" class="mt-4 text-sm text-slate-600">
+                Question Type: {{ activeCase.questionType }}
               </div>
             </div>
 
@@ -371,6 +476,13 @@ onBeforeUnmount(() => {
               <ul class="mt-2 list-disc space-y-1 pl-5 text-sm text-slate-700">
                 <li v-for="(opt, idx) in activeCase.options" :key="idx">{{ opt }}</li>
               </ul>
+            </div>
+
+            <div v-if="activeCase.collectionText">
+              <div class="text-sm font-semibold text-slate-900">Collection Text</div>
+              <div class="mt-2 whitespace-pre-wrap rounded-xl border border-slate-200 bg-white p-3 text-sm text-slate-800">
+                {{ activeCase.collectionText }}
+              </div>
             </div>
 
             <div v-if="activeCase.answer || activeCase.predictedAnswer" class="flex flex-wrap gap-2 text-sm">
@@ -424,7 +536,11 @@ onBeforeUnmount(() => {
             <AppButton variant="secondary" @click="copyLog">Copy</AppButton>
           </div>
 
-            <div v-if="collaborationRounds.length" class="mt-4 space-y-4">
+          <div v-if="collaborationMarkdownHtml" class="mt-3 rounded-xl border border-slate-200 bg-white p-4">
+            <div class="prose prose-slate max-w-none text-sm" v-html="collaborationMarkdownHtml" />
+          </div>
+
+            <div v-else-if="collaborationRounds.length" class="mt-4 space-y-4">
               <AppCard
                 v-for="round in collaborationRounds"
                 :key="round.round"
@@ -498,22 +614,83 @@ onBeforeUnmount(() => {
       <div>
         <AppCard v-if="activeCase" class="max-h-[86vh] overflow-auto p-5">
           <div class="space-y-4">
-            <div class="flex items-center justify-between">
-              <div class="text-sm font-semibold text-slate-900">Labeling</div>
-              <div class="text-xs text-slate-500">Always visible</div>
+            <div class="grid gap-2 md:grid-cols-2">
+              <div
+                v-for="(item, key) in activeCase.failureModeDefinitionMapping"
+                :key="String(key)"
+                class="relative z-0 flex flex-col gap-2 rounded-xl border border-slate-200 bg-white p-3 hover:bg-slate-50"
+              >
+                <div class="min-w-0 space-y-1">
+                  <div class="text-xs font-medium text-slate-800">{{ `${key}: ${item.name ?? '-'}` }}</div>
+                </div>
+
+                <div class="flex items-center justify-end gap-2">
+                  <button
+                    type="button"
+                    class="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs text-slate-700 hover:bg-slate-50"
+                    title="Show definition & instruction"
+                    @mouseenter="showFailureModeTooltip($event, item)"
+                    @mouseleave="hideFailureModeTooltip"
+                  >
+                    show
+                  </button>
+                  <button
+                    type="button"
+                    class="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs text-slate-700 hover:bg-slate-50"
+                    title="Copy name/definition/instruction"
+                    @click.prevent="copyFailureMode(item)"
+                  >
+                    copy
+                  </button>
+                  <label class="flex cursor-pointer items-start">
+                    <input
+                      class="mt-1 h-4 w-4 accent-blue-600"
+                      type="checkbox"
+                      :checked="taxonomy.includes(String(key) as TaxonomyKey)"
+                      @change="toggle(String(key) as TaxonomyKey)"
+                    />
+                  </label>
+                </div>
+              </div>
             </div>
-            <TaxonomyChecklist v-model="taxonomy" />
-            <div>
-              <div class="text-sm font-semibold text-slate-900">Novel failure mode (optional)</div>
-              <div class="mt-2">
-                <AppTextarea
-                  v-model="novelFailureMode"
-                  :rows="2"
-                  placeholder="Describe a new failure mode if needed..."
-                  :disabled="taxonomy.includes('0.0.0')"
-                />
-                <div v-if="taxonomy.includes('0.0.0')" class="mt-1 text-xs text-slate-500">
-                  Disabled when “No issues / No failure mode” is selected.
+            <div class="grid gap-3 md:grid-cols-2">
+              <div class="rounded-xl border border-slate-200 bg-white p-3">
+                <div class="space-y-1">
+                  <div class="text-xs font-medium text-slate-500">0.0.0</div>
+                  <div class="text-xs font-medium text-slate-800">No issues / No failure mode</div>
+                </div>
+                <div class="mt-2 flex items-center justify-end gap-2">
+                  <button
+                    type="button"
+                    class="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs text-slate-700 hover:bg-slate-50"
+                    title="Copy"
+                    @click.prevent="copyNoIssues"
+                  >
+                    copy
+                  </button>
+                  <label class="flex cursor-pointer items-start">
+                    <input
+                      class="mt-1 h-4 w-4 accent-blue-600"
+                      type="checkbox"
+                      :checked="taxonomy.includes('0.0.0')"
+                      @change="toggle('0.0.0')"
+                    />
+                  </label>
+                </div>
+              </div>
+
+              <div>
+                <div class="text-sm font-semibold text-slate-900">Novel failure mode (optional)</div>
+                <div class="mt-2">
+                  <AppTextarea
+                    v-model="novelFailureMode"
+                    :rows="2"
+                    placeholder="Describe a new failure mode if needed..."
+                    :disabled="taxonomy.includes('0.0.0')"
+                  />
+                  <div v-if="taxonomy.includes('0.0.0')" class="mt-1 text-xs text-slate-500">
+                    Disabled when “No issues / No failure mode” is selected.
+                  </div>
                 </div>
               </div>
             </div>
@@ -526,6 +703,17 @@ onBeforeUnmount(() => {
           </div>
         </AppCard>
       </div>
+    </div>
+
+    <div
+      v-if="failureModeTooltip.open"
+      class="pointer-events-none fixed z-[2147483647] w-[520px] whitespace-pre-wrap rounded-xl border border-slate-200 bg-white p-3 text-left text-xs text-slate-900 shadow-lg"
+      :style="{ left: `${failureModeTooltip.x}px`, top: `${failureModeTooltip.y}px`, transform: 'translate(-100%, 0)' }"
+    >
+      <div class="font-semibold">Definition</div>
+      <div class="mt-1 text-slate-800">{{ failureModeTooltip.payload.definition }}</div>
+      <div class="mt-3 font-semibold">Human eval instruction</div>
+      <div class="mt-1 text-slate-800">{{ failureModeTooltip.payload.instruction }}</div>
     </div>
 
     <AppToast :show="toast.show" :message="toast.message" />
