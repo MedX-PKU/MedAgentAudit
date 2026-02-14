@@ -23,6 +23,7 @@ export const loadOpenCodingCases = async (): Promise<OpenCodingCase[]> => {
     const content = await fetchText(`${FILE_BASE_URL}/${file}`)
     cases.push(...parseOpenCodingJsonl(content, file))
   }
-  cached = cases
-  return cases
+  // Ensure every case has a stable 1-based sequence number for display.
+  cached = cases.map((c, idx) => ({ ...c, seq: c.seq ?? idx + 1 }))
+  return cached
 }

@@ -7,9 +7,11 @@ export type QuestionModality = 'text' | 'vqa'
 
 export type QuestionBase = {
   caseId: string
-  caseNumber?: number
+  seq?: number
   dataset: DatasetName
   framework: FrameworkName
+  /** LLM identifier (e.g. gpt-5.2, qwen3-vl-8b-thinking); used for dedup when same case has different LLMs */
+  llm?: string
   modality: QuestionModality
   question: string
   questionType?: string
@@ -43,6 +45,8 @@ export type OpenCodingAnnotation = {
 export type AuditItem = {
   auditId: string
   caseId: string
+  /** Stable 1-based sequence (1-400), used as primary key for assignment and aggregation */
+  seq?: number
   taxonomyKey: TaxonomyKey
   context: string
   instructionText?: string
@@ -53,6 +57,10 @@ export type AuditCase = QuestionBase & VqaInfo & { items: AuditItem[]; collabora
 export type AuditAnnotation = {
   auditId: string
   caseId: string
+  /** Stable 1-based sequence (1-400), primary key for aggregation */
+  seq?: number
+  /** Auditor who made this annotation (1-6); enables multi-auditor per case */
+  auditorId?: number
   taxonomyKey: TaxonomyKey
   verdict: 'yes' | 'no'
   updatedAt: string
