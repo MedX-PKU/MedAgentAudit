@@ -1,6 +1,8 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, inject, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import MarkdownIt from 'markdown-it'
+
+import { ANNOTATION_DRAWER_KEY, type AnnotationDrawerContext } from '../../../components/layout/annotationDrawer'
 
 import type { TaxonomyKey } from '../../../domain/taxonomy'
 import AppButton from '../../../components/ui/AppButton.vue'
@@ -19,6 +21,8 @@ const annotatorName = ref('Annotator_1')
 const activeCaseId = ref<string | null>(null)
 const isDrawerOpen = ref(false)
 const isInstructionPopoverOpen = ref(false)
+
+const annotationDrawer = inject<AnnotationDrawerContext | null>(ANNOTATION_DRAWER_KEY, null)
 
 const OPEN_CODING_INSTRUCTION_TEXT =
   "Please conduct a comprehensive analysis of the multi-agent collaboration process for this case, utilizing the full case context and collaboration history provided.\n\nYour task is to identify occurrences of the 10 specific failure modes listed in the taxonomy.\n\nFor each failure mode observed, please select (check) the corresponding checkbox.\n\nIf a failure mode is not present, leave it unchecked (do not take any action).\n\nShould you encounter any other collaboration issues not covered by these 10 categories, please describe them in the 'Novel failure mode' text box."
@@ -56,6 +60,16 @@ watch(
   { immediate: true },
 )
 
+// Sync from layout (hamburger/rail) -> local drawer state.
+watch(
+  () => annotationDrawer?.isOpen.value,
+  (open) => {
+    if (open == null) return
+    isDrawerOpen.value = open
+  },
+  { immediate: true },
+)
+
 watch(
   cases,
   (list) => {
@@ -69,9 +83,10 @@ watch(
 )
 
 watch(activeCaseId, () => {
-  isDrawerOpen.value = false
+  // Keep drawer state when switching cases; close only popovers.
   isInstructionPopoverOpen.value = false
 })
+
 
 const activeCase = computed<OpenCodingCase | null>(() => {
   if (!activeCaseId.value) return null
@@ -202,47 +217,48 @@ watch(
   { deep: true },
 )
 
-const formatFailureModePayload = (item: {
-  name?: string
-  definition?: string
-  human_eval_instruction?: string
-  humanEvalInstruction?: string
-}) => {
-  const definition = item.definition ?? ''
-  const instruction = item.human_eval_instruction ?? item.humanEvalInstruction ?? ''
-  return `Definition: ${definition}\n\nHumanEvalAnnotation: ${instruction}`.trim()
+type FailureModePopoverState = {
+  open: boolean
+  x: number
+  y: number
+  payload: { definition: string; instruction: string }
 }
 
-const failureModeHoverDelayMs = 1000
+const failureModePopover = ref<FailureModePopoverState>({
+  open: false,
+  x: 0,
+  y: 0,
+  payload: { definition: '', instruction: '' },
+})
 
-const failureModeTitleOverrides = ref<Record<string, string>>({})
-const failureModeHoverTimers = new Map<string, number>()
-
-const onFailureModeMouseEnter = (
-  key: string,
+const showFailureModePopover = (
+  event: MouseEvent,
   item: { definition?: string; human_eval_instruction?: string; humanEvalInstruction?: string },
 ) => {
-  const existing = failureModeHoverTimers.get(key)
-  if (existing) window.clearTimeout(existing)
-  const timerId = window.setTimeout(() => {
-    failureModeTitleOverrides.value = {
-      ...failureModeTitleOverrides.value,
-      [key]: formatFailureModePayload(item),
-    }
-  }, failureModeHoverDelayMs)
-  failureModeHoverTimers.set(key, timerId)
+  const target = event.currentTarget as HTMLElement | null
+  if (!target) return
+  const rect = target.getBoundingClientRect()
+  const popoverWidth = 520
+  const margin = 12
+
+  const left = Math.min(rect.left + rect.width / 2, window.innerWidth - margin)
+  const top = rect.bottom + 8
+  const translateX = Math.min(0, window.innerWidth - (rect.left + popoverWidth) - margin)
+
+  failureModePopover.value = {
+    open: true,
+    x: left + translateX,
+    y: Math.min(top, window.innerHeight - margin),
+    payload: {
+      definition: item.definition ?? '-',
+      instruction: item.human_eval_instruction ?? item.humanEvalInstruction ?? '-',
+    },
+  }
 }
 
-const onFailureModeMouseLeave = (key: string) => {
-  const timerId = failureModeHoverTimers.get(key)
-  if (timerId) {
-    window.clearTimeout(timerId)
-    failureModeHoverTimers.delete(key)
-  }
-  if (!(key in failureModeTitleOverrides.value)) return
-  const next = { ...failureModeTitleOverrides.value }
-  delete next[key]
-  failureModeTitleOverrides.value = next
+const hideFailureModePopover = () => {
+  if (!failureModePopover.value.open) return
+  failureModePopover.value = { ...failureModePopover.value, open: false }
 }
 
 const toggle = (key: TaxonomyKey) => {
@@ -311,10 +327,6 @@ const copyInstruction = async () => {
   }, 1200)
 }
 
-const toggleDrawer = () => {
-  isDrawerOpen.value = !isDrawerOpen.value
-}
-
 const toggleInstructionPopover = () => {
   isInstructionPopoverOpen.value = !isInstructionPopoverOpen.value
 }
@@ -332,12 +344,14 @@ const onDocumentClick = (event: MouseEvent) => {
 
 onMounted(() => {
   document.addEventListener('click', onDocumentClick)
+  window.addEventListener('scroll', hideFailureModePopover, true)
+  window.addEventListener('resize', hideFailureModePopover)
 })
 
 onBeforeUnmount(() => {
   document.removeEventListener('click', onDocumentClick)
-  for (const timerId of failureModeHoverTimers.values()) window.clearTimeout(timerId)
-  failureModeHoverTimers.clear()
+  window.removeEventListener('scroll', hideFailureModePopover, true)
+  window.removeEventListener('resize', hideFailureModePopover)
 })
 </script>
 
@@ -346,9 +360,10 @@ onBeforeUnmount(() => {
 	    <div class="fixed left-0 top-0 z-40 flex h-full items-center w-6" data-drawer>
       <button
         type="button"
-        class="flex h-14 w-6 items-center justify-center rounded-r-lg border border-slate-200 bg-white text-slate-600 shadow-sm hover:bg-slate-50"
-        title="Toggle drawer"
-        @click="toggleDrawer"
+        class="flex h-14 w-6 items-center justify-center rounded-r-lg border transition-colors"
+        :class="isDrawerOpen ? 'border-slate-300 bg-slate-100 text-slate-800' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'"
+        :title="isDrawerOpen ? 'Close sidebar' : 'Open sidebar'"
+        @click="annotationDrawer?.toggle?.()"
       >
         <span class="text-xs font-semibold">{{ isDrawerOpen ? '‹' : '›' }}</span>
       </button>
@@ -594,73 +609,95 @@ onBeforeUnmount(() => {
             <div class="flex items-center justify-between">
               <div class="text-sm font-semibold text-slate-900">Labeling</div>
             </div>
-            <div class="grid gap-2 md:grid-cols-2">
+            <div class="space-y-2">
               <div
                 v-for="(item, key) in activeCase.failureModeDefinitionMapping"
                 :key="String(key)"
-                class="relative z-0 flex flex-col gap-2 rounded-xl border border-slate-200 bg-white p-3 hover:bg-slate-50"
-                :title="failureModeTitleOverrides[String(key)] ?? ''"
-                @mouseenter="onFailureModeMouseEnter(String(key), item)"
-                @mouseleave="onFailureModeMouseLeave(String(key))"
+                class="relative z-0 flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-3 py-2 hover:bg-slate-50"
               >
-                <div class="min-w-0 space-y-1">
-                  <div class="text-xs font-medium text-slate-800">{{ `${key}: ${item.name ?? '-'}` }}</div>
+                <label class="flex cursor-pointer items-center">
+                  <input
+                    class="h-4 w-4 accent-blue-600"
+                    type="checkbox"
+                    :checked="taxonomy.includes(String(key) as TaxonomyKey)"
+                    @change="toggle(String(key) as TaxonomyKey)"
+                  />
+                </label>
+
+                <div class="min-w-0 flex-1 text-xs font-medium text-slate-800">
+                  <span class="block whitespace-normal break-words">
+                    {{ `${key}: ${item.name ?? '-'}` }}
+                  </span>
                 </div>
 
-                <div class="flex items-center justify-end gap-2">
-                  <label class="flex cursor-pointer items-start">
-                    <input
-                      class="mt-1 h-4 w-4 accent-blue-600"
-                      type="checkbox"
-                      :checked="taxonomy.includes(String(key) as TaxonomyKey)"
-                      @change="toggle(String(key) as TaxonomyKey)"
-                    />
-                  </label>
-                </div>
+                <button
+                  type="button"
+                  class="shrink-0 rounded-full border border-blue-300 bg-blue-300 px-1.5 py-0.5 text-[10px] font-semibold leading-none text-white hover:bg-blue-700 hover:border-blue-700"
+                  @mouseenter="showFailureModePopover($event, item)"
+                  @mouseleave="hideFailureModePopover"
+                >
+                  i
+                </button>
               </div>
             </div>
-            <div class="grid gap-3 md:grid-cols-2">
-              <div class="rounded-xl border border-slate-200 bg-white p-3">
-                <div class="space-y-1">
-                  <div class="text-xs font-medium text-slate-500">0.0.0</div>
-                  <div class="text-xs font-medium text-slate-800">No issues / No failure mode</div>
-                </div>
-                <div class="mt-2 flex items-center justify-end gap-2">
-                  <label class="flex cursor-pointer items-start">
-                    <input
-                      class="mt-1 h-4 w-4 accent-blue-600"
-                      type="checkbox"
-                      :checked="taxonomy.includes('0.0.0')"
-                      @change="toggle('0.0.0')"
-                    />
-                  </label>
+            <div class="space-y-3">
+              <div class="relative z-0 flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-3 py-2 hover:bg-slate-50">
+                <label class="flex cursor-pointer items-center">
+                  <input
+                    class="h-4 w-4 accent-blue-600"
+                    type="checkbox"
+                    :checked="taxonomy.includes('0.0.0')"
+                    @change="toggle('0.0.0')"
+                  />
+                </label>
+                <div class="min-w-0 flex-1 text-xs font-medium text-slate-800">
+                  <span class="block whitespace-normal break-words">0.0.0: No issues / No failure mode</span>
                 </div>
               </div>
 
-              <div>
-                <div class="text-sm font-semibold text-slate-900">Novel failure mode (optional)</div>
-                <div class="mt-2">
-                  <AppTextarea
-                    v-model="novelFailureMode"
-                    :rows="2"
-                    placeholder="Describe a new failure mode if needed..."
-                    :disabled="taxonomy.includes('0.0.0')"
-                  />
-                  <div v-if="taxonomy.includes('0.0.0')" class="mt-1 text-xs text-slate-500">
-                    Disabled when “No issues / No failure mode” is selected.
+              <div class="grid gap-4">
+                <div class="max-w-none">
+                  <div class="text-sm font-semibold text-slate-900">Novel failure mode (optional)</div>
+                  <div class="mt-2 flex items-end gap-4">
+                    <AppTextarea
+                      v-model="novelFailureMode"
+                      :rows="2"
+                      :placeholder="
+                        taxonomy.includes('0.0.0')
+                          ? 'Disabled when “No issues / No failure mode” is selected.'
+                          : 'Describe a new failure mode if needed...'
+                      "
+                      :disabled="taxonomy.includes('0.0.0')"
+                      class="h-[50px] w-1/2"
+                    />
+                    <AppButton
+                      variant="secondary"
+                      :disabled="!annotatorName.trim() || !nextTodoCaseId"
+                      class="h-[50px] w-1/2 py-0"
+                      @click="goNext"
+                    >
+                      Next TODO
+                    </AppButton>
                   </div>
                 </div>
-              </div>
-            </div>
 
-            <div>
-              <AppButton variant="secondary" :disabled="!annotatorName.trim() || !nextTodoCaseId" class="w-full" @click="goNext">
-                Next TODO
-              </AppButton>
+                <div />
+              </div>
             </div>
           </div>
         </AppCard>
       </div>
+    </div>
+
+    <div
+      v-if="failureModePopover.open"
+      class="pointer-events-none fixed z-[2147483647] w-[520px] whitespace-pre-wrap rounded-xl border border-slate-200 bg-white p-3 text-left text-xs text-slate-900 shadow-lg"
+      :style="{ left: `${failureModePopover.x}px`, top: `${failureModePopover.y}px`, transform: 'translate(-50%, 0)' }"
+    >
+      <div class="font-semibold">Definition</div>
+      <div class="mt-1 text-slate-800">{{ failureModePopover.payload.definition }}</div>
+      <div class="mt-3 font-semibold">Evaluation Instruction</div>
+      <div class="mt-1 text-slate-800">{{ failureModePopover.payload.instruction }}</div>
     </div>
 
     <AppToast :show="toast.show" :message="toast.message" />

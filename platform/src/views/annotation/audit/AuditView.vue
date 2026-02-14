@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, inject, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
-import { TAXONOMY, type TaxonomyKey } from '../../../domain/taxonomy'
+import { FAILURE_MODE_DEFINITION_MAPPING } from '../../../domain/failureModes'
 import AppButton from '../../../components/ui/AppButton.vue'
 import AppCard from '../../../components/ui/AppCard.vue'
 import AppSelect from '../../../components/ui/AppSelect.vue'
@@ -14,6 +14,8 @@ import MarkdownIt from 'markdown-it'
 import { loadAuditCases } from '../../../data/audit/cases'
 import { assignedAuditCases, assignedAuditItems, type AuditorId } from './auditAssignment'
 import { loadAuditMap, saveAudit } from './auditStorage'
+
+import { ANNOTATION_DRAWER_KEY, type AnnotationDrawerContext } from '../../../components/layout/annotationDrawer'
 
 type Verdict = 'yes' | 'no'
 
@@ -29,6 +31,8 @@ const verdict = ref<Verdict | null>(null)
 const toast = ref<{ show: boolean; message: string }>({ show: false, message: '' })
 const isDrawerOpen = ref(false)
 const isInstructionPopoverOpen = ref(false)
+
+const annotationDrawer = inject<AnnotationDrawerContext | null>(ANNOTATION_DRAWER_KEY, null)
 
 const annotations = ref<Record<string, AuditAnnotation>>({})
 const auditCases = ref<AuditCase[]>([])
@@ -63,6 +67,16 @@ watch(
   { immediate: true },
 )
 
+// Sync from layout (hamburger/rail) -> local drawer state.
+watch(
+  () => annotationDrawer?.isOpen.value,
+  (open) => {
+    if (open == null) return
+    isDrawerOpen.value = open
+  },
+  { immediate: true },
+)
+
 const assignedItems = computed<AuditItem[]>(() => {
   if (!auditorId.value) return []
   return assignedAuditItems(auditorId.value, auditCases.value)
@@ -77,6 +91,7 @@ const activeItem = computed<AuditItem | null>(() => {
   if (!activeAuditId.value) return null
   return assignedItems.value.find((i) => i.auditId === activeAuditId.value) ?? null
 })
+
 
 const activeCase = computed<AuditCase | null>(() => {
   if (!activeItem.value) return null
@@ -103,10 +118,12 @@ const collaborationHtml = computed(() => {
   if (!collaborationRaw.value) return null
   return md.render(collaborationRaw.value)
 })
-const activeTaxonomy = computed(() => {
-  const key = activeItem.value?.taxonomyKey
-  if (!key) return null
-  return TAXONOMY.find((t) => t.key === key) ?? null
+
+const activeFailureCode = computed(() => activeItem.value?.failureCode ?? activeItem.value?.taxonomyKey ?? null)
+const activeFailureMode = computed(() => {
+  const code = activeFailureCode.value
+  if (!code) return null
+  return FAILURE_MODE_DEFINITION_MAPPING[code] ?? null
 })
 
 watch(
@@ -147,17 +164,17 @@ const nextTodoAuditId = computed(() => {
 const persistActive = () => {
   if (!auditorId.value || !activeItem.value) return
   if (!verdict.value) return
-  const annotation: AuditAnnotation = {
-    auditId: activeItem.value.auditId,
-    caseId: activeItem.value.caseId,
-    seq: activeItem.value.seq,
-    auditorId: auditorId.value,
-    taxonomyKey: activeItem.value.taxonomyKey as TaxonomyKey,
-    verdict: verdict.value,
-    updatedAt: new Date().toISOString(),
-  }
-  saveAudit(auditorId.value, annotation)
-  annotations.value = loadAuditMap(auditorId.value)
+    const annotation: AuditAnnotation = {
+      auditId: activeItem.value.auditId,
+      caseId: activeItem.value.caseId,
+      seq: activeItem.value.seq,
+      auditorId: auditorId.value,
+      taxonomyKey: activeItem.value.taxonomyKey as any,
+      verdict: verdict.value,
+      updatedAt: new Date().toISOString(),
+    }
+    saveAudit(auditorId.value, annotation)
+    annotations.value = loadAuditMap(auditorId.value)
 }
 
 watch(verdict, persistActive)
@@ -171,10 +188,6 @@ const next = () => {
     return
   }
   activeAuditId.value = nextTodoAuditId.value
-}
-
-const toggleDrawer = () => {
-  isDrawerOpen.value = !isDrawerOpen.value
 }
 
 const onDocumentClick = (event: MouseEvent) => {
@@ -213,7 +226,7 @@ watch(
 )
 
 watch(activeAuditId, () => {
-  isDrawerOpen.value = false
+  // Keep drawer state when switching items; close only popovers.
   isInstructionPopoverOpen.value = false
 })
 
@@ -280,9 +293,10 @@ const toggleInstructionPopover = () => {
 	    <div class="fixed left-0 top-0 z-40 flex h-full items-center w-6" data-drawer>
       <button
         type="button"
-        class="flex h-14 w-6 items-center justify-center rounded-r-lg border border-slate-200 bg-white text-slate-600 shadow-sm hover:bg-slate-50"
-        title="Toggle drawer"
-        @click="toggleDrawer"
+        class="flex h-14 w-6 items-center justify-center rounded-r-lg border transition-colors"
+        :class="isDrawerOpen ? 'border-slate-300 bg-slate-100 text-slate-800' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'"
+        :title="isDrawerOpen ? 'Close sidebar' : 'Open sidebar'"
+        @click="annotationDrawer?.toggle?.()"
       >
         <span class="text-xs font-semibold">{{ isDrawerOpen ? '‹' : '›' }}</span>
       </button>
@@ -466,12 +480,9 @@ const toggleInstructionPopover = () => {
             <div class="text-sm font-semibold text-slate-900">Failure mode</div>
             <div class="mt-2 rounded-xl border border-slate-200 bg-white p-3 text-sm text-slate-800">
               <div class="flex flex-wrap items-center gap-2">
-                <span class="rounded-md bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-700">
-                  {{ activeItem.taxonomyKey }}
-                </span>
-                <span class="font-medium text-slate-900">{{ activeTaxonomy?.title ?? '' }}</span>
+                <span class="font-medium text-slate-900">{{ activeFailureCode }}: {{ activeFailureMode?.name ?? '' }}</span>
               </div>
-              <div class="mt-2 text-xs text-slate-600">{{ activeTaxonomy?.short ?? '' }}</div>
+              <div class="mt-2 text-sm text-slate-600">{{ activeFailureMode?.definition ?? '' }}</div>
             </div>
           </div>
 
