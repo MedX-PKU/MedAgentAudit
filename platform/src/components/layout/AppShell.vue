@@ -59,7 +59,7 @@ onBeforeUnmount(() => {
   <div class="min-h-screen bg-slate-50 text-slate-900">
     <header
       class="sticky top-0 z-40 border-b border-slate-200 bg-white/80 backdrop-blur transition-[margin] duration-300 ease-out"
-      :class="props.drawerOpen ? 'ml-[352px]' : 'ml-0'"
+      :class="props.drawerOpen ? 'ml-[320px]' : 'ml-0'"
     >
       <div class="flex w-full items-center gap-4 px-3 py-3 lg:px-4">
         <div class="flex items-center font-semibold tracking-tight">

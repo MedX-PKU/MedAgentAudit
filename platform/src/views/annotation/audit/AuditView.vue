@@ -197,7 +197,7 @@ const onDocumentClick = (event: MouseEvent) => {
   if (!target) return
   if (target.closest('[data-drawer]')) return
   if (target.closest('[data-instruction-popover]')) return
-  isDrawerOpen.value = false
+  annotationDrawer?.close?.()
   isInstructionPopoverOpen.value = false
 }
 
@@ -290,22 +290,13 @@ const toggleInstructionPopover = () => {
 
 <template>
   <div class="space-y-4">
-	    <div class="fixed left-0 top-0 z-40 flex h-full items-center w-6" data-drawer>
-      <button
-        type="button"
-        class="flex h-14 w-6 items-center justify-center rounded-r-lg border transition-colors"
-        :class="isDrawerOpen ? 'border-slate-300 bg-slate-100 text-slate-800' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'"
-        :title="isDrawerOpen ? 'Close sidebar' : 'Open sidebar'"
-        @click="annotationDrawer?.toggle?.()"
-      >
-        <span class="text-xs font-semibold">{{ isDrawerOpen ? '‹' : '›' }}</span>
-      </button>
-      <div
-        class="fixed left-8 top-3 w-[320px] rounded-2xl border border-slate-200 bg-white p-4 shadow-xl transition"
+	    <div
+        class="fixed left-0 top-3 z-40 w-[320px] max-h-[calc(100vh-1.5rem)] flex flex-col rounded-2xl border border-slate-200 bg-white p-4 shadow-xl transition"
+        data-drawer
         :class="isDrawerOpen ? 'pointer-events-auto translate-x-0 opacity-100' : 'pointer-events-none -translate-x-full opacity-0'"
         :style="{ visibility: isDrawerOpen ? 'visible' : 'hidden' }"
       >
-        <AppCard class="p-4">
+        <AppCard class="p-4 flex flex-col min-h-0">
         <div class="space-y-3">
           <div>
             <div class="text-sm font-semibold text-slate-900">Auditor</div>
@@ -342,7 +333,7 @@ const toggleInstructionPopover = () => {
           </div>
         </div>
 
-        <div class="mt-4 max-h-[60vh] overflow-auto pr-1">
+        <div class="mt-4 max-h-[60vh] min-h-[200px] overflow-auto pr-1">
           <div v-if="!auditorId" class="rounded-xl border border-slate-200 bg-white p-3 text-sm text-slate-600">
             Select an auditor ID to load assigned items.
           </div>
@@ -370,7 +361,6 @@ const toggleInstructionPopover = () => {
           </div>
         </div>
       </AppCard>
-      </div>
     </div>
 
     <div class="min-w-0">
