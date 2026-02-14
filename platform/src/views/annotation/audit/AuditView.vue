@@ -29,6 +29,7 @@ const activeAuditId = ref<string | null>(null)
 const verdict = ref<Verdict | null>(null)
 const toast = ref<{ show: boolean; message: string }>({ show: false, message: '' })
 const isDrawerOpen = ref(false)
+const isInstructionPopoverOpen = ref(false)
 
 const annotations = ref<Record<string, AuditAnnotation>>({})
 const auditCases = ref<AuditCase[]>([])
@@ -169,11 +170,14 @@ const toggleDrawer = () => {
 }
 
 const onDocumentClick = (event: MouseEvent) => {
-  if (!isDrawerOpen.value) return
+  // Close drawer + instruction popover when clicking outside.
+  if (!isDrawerOpen.value && !isInstructionPopoverOpen.value) return
   const target = event.target as HTMLElement | null
   if (!target) return
   if (target.closest('[data-drawer]')) return
+  if (target.closest('[data-instruction-popover]')) return
   isDrawerOpen.value = false
+  isInstructionPopoverOpen.value = false
 }
 
 watch(isAllDone, (done) => {
@@ -200,6 +204,7 @@ watch(
 
 watch(activeAuditId, () => {
   isDrawerOpen.value = false
+  isInstructionPopoverOpen.value = false
 })
 
 onMounted(() => {
@@ -252,6 +257,10 @@ const copyQuestion = async () => {
   window.setTimeout(() => {
     toast.value = { show: false, message: '' }
   }, 1200)
+}
+
+const toggleInstructionPopover = () => {
+  isInstructionPopoverOpen.value = !isInstructionPopoverOpen.value
 }
 
 </script>
@@ -330,7 +339,7 @@ const copyQuestion = async () => {
               @click="activeAuditId = assignedItems.find((it) => it.caseId === c.caseId)?.auditId ?? null"
             >
               <div class="flex items-center justify-between gap-2">
-                <div class="truncate font-medium text-slate-900">{{ c.caseId }}</div>
+                <div class="truncate font-medium text-slate-900">Case {{ c.seq }}: {{ c.caseId }}</div>
                 <div
                   class="shrink-0 rounded-md px-2 py-0.5 text-xs"
                   :class="doneCaseIds.has(c.caseId) ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-600'"
@@ -352,7 +361,7 @@ const copyQuestion = async () => {
           <AppCard class="max-h-[86vh] overflow-auto p-5">
             <div class="flex flex-wrap items-start justify-between gap-2">
               <div>
-                <div class="mt-1 text-lg font-semibold text-slate-900">Audit {{ activeItem.auditId }}</div>
+                <div class="mt-1 text-lg font-semibold text-slate-900">Case {{ activeCase.seq }}: {{ activeCase.caseId }}</div>
               </div>
             </div>
 
@@ -365,7 +374,7 @@ const copyQuestion = async () => {
 		                <div class="mt-2 whitespace-pre-wrap rounded-xl border border-slate-200 bg-white p-3 text-sm text-slate-800">
 		                  {{ activeCase.question }}
 		                </div>
-		                <div v-if="activeCase.questionType" class="mt-4 text-sm text-slate-600">
+		                <div v-if="activeCase.questionType" class="mt-4 text-xs text-slate-600">
 		                  Question Type: {{ activeCase.questionType }}
 		                </div>
 		              </div>
@@ -412,7 +421,7 @@ const copyQuestion = async () => {
         </div>
 
         <div>
-	          <AppCard class="max-h-[86vh] overflow-auto p-5">
+	          <AppCard class="max-h-[86vh] overflow-visible p-5">
             <div>
               <div class="text-sm font-semibold text-slate-900">Failure mode</div>
               <div class="mt-2 rounded-xl border border-slate-200 bg-white p-3 text-sm text-slate-800">
@@ -426,26 +435,26 @@ const copyQuestion = async () => {
               </div>
             </div>
 
-	            <div class="mt-4">
-	              <div class="flex items-center justify-between gap-3">
-	                <div class="text-sm font-semibold text-slate-900">Instruction Text</div>
-	                <div class="flex items-center gap-2">
-	                  <div class="group relative">
-		                <AppButton variant="secondary">Show</AppButton>
-		                <div
-		                  class="pointer-events-none fixed right-4 top-[88px] z-[9999] hidden w-[520px] whitespace-pre-wrap rounded-xl border border-slate-200 bg-white p-3 text-xs text-slate-900 shadow-lg group-hover:block"
-		                >
-		                  {{ activeItem.instructionText ?? activeItem.context }}
-		                </div>
-		              </div>
-	                  <AppButton variant="secondary" @click="copyInstruction">Copy</AppButton>
-	                </div>
-	              </div>
-	            </div>
-
 	            <div class="mt-4 flex items-center justify-between gap-3">
 	              <div class="text-sm font-semibold text-slate-900">Collaboration log</div>
-	              <AppButton variant="secondary" @click="copyLog">Copy</AppButton>
+	              <div class="flex items-center gap-2">
+	                <div class="relative inline-block" data-instruction-popover>
+	                  <AppButton variant="secondary" @click="toggleInstructionPopover">
+	                    {{ isInstructionPopoverOpen ? 'Hide Instruction' : 'Show Instruction' }}
+	                  </AppButton>
+	                  <div
+	                    v-if="isInstructionPopoverOpen"
+	                    class="absolute left-0 top-full z-[99999] mt-2 w-[520px] rounded-xl border border-slate-200 bg-white p-3 text-xs text-slate-900 shadow-lg"
+	                  >
+	                    <div class="mb-2 flex items-center justify-between gap-3">
+	                      <div class="text-sm font-semibold text-slate-900">Instruction Text</div>
+	                      <AppButton variant="secondary" @click="copyInstruction">Copy Instruction</AppButton>
+	                    </div>
+	                    <div class="whitespace-pre-wrap">{{ activeItem.instructionText ?? activeItem.context }}</div>
+	                  </div>
+	                </div>
+	                <AppButton variant="secondary" @click="copyLog">Copy Collaboration</AppButton>
+	              </div>
 	            </div>
 
 	            <div

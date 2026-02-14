@@ -20,6 +20,7 @@ const annotatorName = ref('Annotator_1')
 const search = ref('')
 const activeCaseId = ref<string | null>(null)
 const isDrawerOpen = ref(false)
+const isInstructionPopoverOpen = ref(false)
 
 const OPEN_CODING_INSTRUCTION_TEXT =
   "Please conduct a comprehensive analysis of the multi-agent collaboration process for this case, utilizing the full case context and collaboration history provided.\n\nYour task is to identify occurrences of the 10 specific failure modes listed in the taxonomy.\n\nFor each failure mode observed, please select (check) the corresponding checkbox.\n\nIf a failure mode is not present, leave it unchecked (do not take any action).\n\nShould you encounter any other collaboration issues not covered by these 10 categories, please describe them in the 'Novel failure mode' text box."
@@ -65,6 +66,7 @@ watch(
 
 watch(activeCaseId, () => {
   isDrawerOpen.value = false
+  isInstructionPopoverOpen.value = false
 })
 
 const filteredCases = computed(() => {
@@ -309,6 +311,10 @@ const toggleDrawer = () => {
   isDrawerOpen.value = !isDrawerOpen.value
 }
 
+const toggleInstructionPopover = () => {
+  isInstructionPopoverOpen.value = !isInstructionPopoverOpen.value
+}
+
 type FailureModeTooltipState = {
   open: boolean
   x: number
@@ -347,11 +353,14 @@ const hideFailureModeTooltip = () => {
 }
 
 const onDocumentClick = (event: MouseEvent) => {
-  if (!isDrawerOpen.value) return
+  // Close drawer + instruction popover when clicking outside.
+  if (!isDrawerOpen.value && !isInstructionPopoverOpen.value) return
   const target = event.target as HTMLElement | null
   if (!target) return
   if (target.closest('[data-drawer]')) return
+  if (target.closest('[data-instruction-popover]')) return
   isDrawerOpen.value = false
+  isInstructionPopoverOpen.value = false
 }
 
 onMounted(() => {
@@ -422,7 +431,7 @@ onBeforeUnmount(() => {
               @click="activeCaseId = c.caseId"
             >
               <div class="flex items-center justify-between gap-2">
-                <div class="truncate font-medium text-slate-900">{{ c.caseId }}</div>
+                <div class="truncate font-medium text-slate-900">Case {{ c.seq }}: {{ c.caseId }}</div>
                 <div
                   class="shrink-0 rounded-md px-2 py-0.5 text-xs"
                   :class="annotations[c.caseId] ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-600'"
@@ -442,7 +451,7 @@ onBeforeUnmount(() => {
         <AppCard v-if="activeCase" class="max-h-[86vh] overflow-auto p-5">
           <div class="flex items-start justify-between gap-3">
             <div>
-              <div class="mt-1 text-lg font-semibold text-slate-900">Case {{ activeCase.caseId }}</div>
+              <div class="mt-1 text-lg font-semibold text-slate-900">Case {{ activeCase.seq }}: {{ activeCase.caseId }}</div>
             </div>
           </div>
 
@@ -455,7 +464,7 @@ onBeforeUnmount(() => {
               <div class="mt-2 whitespace-pre-wrap rounded-xl border border-slate-200 bg-white p-3 text-sm text-slate-800">
                 {{ activeCase.question }}
               </div>
-              <div v-if="activeCase.questionType" class="mt-4 text-sm text-slate-600">
+              <div v-if="activeCase.questionType" class="mt-4 text-xs text-slate-600">
                 Question Type: {{ activeCase.questionType }}
               </div>
             </div>
@@ -515,25 +524,27 @@ onBeforeUnmount(() => {
       </div>
 
       <div>
-        <AppCard v-if="activeCase" class="max-h-[86vh] overflow-auto p-5">
-          <div class="flex items-center justify-between gap-3">
-            <div class="text-sm font-semibold text-slate-900">Instruction Text</div>
-            <div class="flex items-center gap-2">
-              <div class="group relative">
-                <AppButton variant="secondary">Show</AppButton>
-                <div
-                  class="pointer-events-none fixed right-4 top-[88px] z-[9999] hidden w-[520px] whitespace-pre-wrap rounded-xl border border-slate-200 bg-white p-3 text-xs text-slate-900 shadow-lg group-hover:block"
-                >
-                  {{ OPEN_CODING_INSTRUCTION_TEXT }}
-                </div>
-              </div>
-              <AppButton variant="secondary" @click="copyInstruction">Copy</AppButton>
-            </div>
-          </div>
-
+        <AppCard v-if="activeCase" class="max-h-[86vh] overflow-visible p-5">
           <div class="mt-4 flex items-center justify-between gap-3">
             <div class="text-sm font-semibold text-slate-900">Collaboration log</div>
-            <AppButton variant="secondary" @click="copyLog">Copy</AppButton>
+            <div class="flex items-center gap-2">
+              <div class="relative inline-block" data-instruction-popover>
+                <AppButton variant="secondary" @click="toggleInstructionPopover">
+                  {{ isInstructionPopoverOpen ? 'Hide Instruction' : 'Show Instruction' }}
+                </AppButton>
+                <div
+                  v-if="isInstructionPopoverOpen"
+                  class="absolute left-0 top-full z-[99999] mt-2 w-[520px] rounded-xl border border-slate-200 bg-white p-3 text-xs text-slate-900 shadow-lg"
+                >
+                  <div class="mb-2 flex items-center justify-between gap-3">
+                    <div class="text-sm font-semibold text-slate-900">Instruction Text</div>
+                    <AppButton variant="secondary" @click="copyInstruction">Copy Instruction</AppButton>
+                  </div>
+                  <div class="whitespace-pre-wrap">{{ OPEN_CODING_INSTRUCTION_TEXT }}</div>
+                </div>
+              </div>
+              <AppButton variant="secondary" @click="copyLog">Copy Collaboration</AppButton>
+            </div>
           </div>
 
           <div v-if="collaborationMarkdownHtml" class="mt-3 rounded-xl border border-slate-200 bg-white p-4">
