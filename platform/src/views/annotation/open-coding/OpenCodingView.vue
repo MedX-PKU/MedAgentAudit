@@ -208,32 +208,41 @@ const formatFailureModePayload = (item: {
   human_eval_instruction?: string
   humanEvalInstruction?: string
 }) => {
-  const name = item.name ?? ''
   const definition = item.definition ?? ''
   const instruction = item.human_eval_instruction ?? item.humanEvalInstruction ?? ''
-  return `Name: ${name}\n\nDefinition: ${definition}\n\nHuman eval instruction: ${instruction}`.trim()
+  return `Definition: ${definition}\n\nHumanEvalAnnotation: ${instruction}`.trim()
 }
 
-const copyFailureMode = async (item: {
-  name?: string
-  definition?: string
-  human_eval_instruction?: string
-  humanEvalInstruction?: string
-}) => {
-  await copyToClipboard(formatFailureModePayload(item))
-  toast.value = { show: true, message: 'Copied Failure Mode details.' }
-  window.setTimeout(() => {
-    toast.value = { show: false, message: '' }
-  }, 1200)
+const failureModeHoverDelayMs = 1000
+
+const failureModeTitleOverrides = ref<Record<string, string>>({})
+const failureModeHoverTimers = new Map<string, number>()
+
+const onFailureModeMouseEnter = (
+  key: string,
+  item: { definition?: string; human_eval_instruction?: string; humanEvalInstruction?: string },
+) => {
+  const existing = failureModeHoverTimers.get(key)
+  if (existing) window.clearTimeout(existing)
+  const timerId = window.setTimeout(() => {
+    failureModeTitleOverrides.value = {
+      ...failureModeTitleOverrides.value,
+      [key]: formatFailureModePayload(item),
+    }
+  }, failureModeHoverDelayMs)
+  failureModeHoverTimers.set(key, timerId)
 }
 
-const copyNoIssues = async () => {
-  const payload = 'Key: 0.0.0\nTitle: No issues / No failure mode'
-  await copyToClipboard(payload)
-  toast.value = { show: true, message: 'Copied.' }
-  window.setTimeout(() => {
-    toast.value = { show: false, message: '' }
-  }, 1200)
+const onFailureModeMouseLeave = (key: string) => {
+  const timerId = failureModeHoverTimers.get(key)
+  if (timerId) {
+    window.clearTimeout(timerId)
+    failureModeHoverTimers.delete(key)
+  }
+  if (!(key in failureModeTitleOverrides.value)) return
+  const next = { ...failureModeTitleOverrides.value }
+  delete next[key]
+  failureModeTitleOverrides.value = next
 }
 
 const toggle = (key: TaxonomyKey) => {
@@ -310,43 +319,6 @@ const toggleInstructionPopover = () => {
   isInstructionPopoverOpen.value = !isInstructionPopoverOpen.value
 }
 
-type FailureModeTooltipState = {
-  open: boolean
-  x: number
-  y: number
-  payload: { definition: string; instruction: string }
-}
-
-const failureModeTooltip = ref<FailureModeTooltipState>({
-  open: false,
-  x: 0,
-  y: 0,
-  payload: { definition: '', instruction: '' },
-})
-
-const showFailureModeTooltip = (
-  event: MouseEvent,
-  item: { definition?: string; human_eval_instruction?: string; humanEvalInstruction?: string },
-) => {
-  const target = event.currentTarget as HTMLElement | null
-  if (!target) return
-  const rect = target.getBoundingClientRect()
-  failureModeTooltip.value = {
-    open: true,
-    x: Math.min(rect.right, window.innerWidth - 24),
-    y: Math.min(rect.bottom + 8, window.innerHeight - 24),
-    payload: {
-      definition: item.definition ?? '-',
-      instruction: item.human_eval_instruction ?? item.humanEvalInstruction ?? '-',
-    },
-  }
-}
-
-const hideFailureModeTooltip = () => {
-  if (!failureModeTooltip.value.open) return
-  failureModeTooltip.value = { ...failureModeTooltip.value, open: false }
-}
-
 const onDocumentClick = (event: MouseEvent) => {
   // Close drawer + instruction popover when clicking outside.
   if (!isDrawerOpen.value && !isInstructionPopoverOpen.value) return
@@ -360,14 +332,12 @@ const onDocumentClick = (event: MouseEvent) => {
 
 onMounted(() => {
   document.addEventListener('click', onDocumentClick)
-  window.addEventListener('scroll', hideFailureModeTooltip, true)
-  window.addEventListener('resize', hideFailureModeTooltip)
 })
 
 onBeforeUnmount(() => {
   document.removeEventListener('click', onDocumentClick)
-  window.removeEventListener('scroll', hideFailureModeTooltip, true)
-  window.removeEventListener('resize', hideFailureModeTooltip)
+  for (const timerId of failureModeHoverTimers.values()) window.clearTimeout(timerId)
+  failureModeHoverTimers.clear()
 })
 </script>
 
@@ -405,7 +375,7 @@ onBeforeUnmount(() => {
 
           <div class="flex flex-wrap gap-2">
             <AppButton variant="secondary" :disabled="!annotatorName.trim()" @click="activeCaseId = nextTodoCaseId">
-              Next todo
+              Next TODO
             </AppButton>
             <AppButton variant="secondary" :disabled="!annotatorName.trim()" @click="exportJson">
               Export JSON
@@ -429,7 +399,7 @@ onBeforeUnmount(() => {
                   class="shrink-0 rounded-md px-2 py-0.5 text-xs"
                   :class="annotations[c.caseId] ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-600'"
                 >
-                  {{ annotations[c.caseId] ? 'Done' : 'Todo' }}
+                  {{ annotations[c.caseId] ? 'Done' : 'TODO' }}
                 </div>
               </div>
               <div class="mt-1 text-xs text-slate-600">{{ c.dataset }} · {{ c.framework }} · {{ c.modality }}</div>
@@ -452,7 +422,7 @@ onBeforeUnmount(() => {
             <div>
               <div class="flex items-center justify-between gap-3">
                 <div class="text-sm font-semibold text-slate-900">Question</div>
-                <AppButton variant="secondary" @click="copyQuestion">Copy</AppButton>
+                <AppButton variant="secondary" @click="copyQuestion">Copy Question & Options</AppButton>
               </div>
               <div class="mt-2 whitespace-pre-wrap rounded-xl border border-slate-200 bg-white p-3 text-sm text-slate-800">
                 {{ activeCase.question }}
@@ -518,7 +488,7 @@ onBeforeUnmount(() => {
 
       <div>
         <AppCard v-if="activeCase" class="max-h-[86vh] overflow-visible p-5">
-          <div class="mt-4 flex items-center justify-between gap-3">
+          <div class="flex items-center justify-between gap-3">
             <div class="text-sm font-semibold text-slate-900">Collaboration log</div>
             <div class="flex items-center gap-2">
               <div class="relative inline-block" data-instruction-popover>
@@ -540,7 +510,10 @@ onBeforeUnmount(() => {
             </div>
           </div>
 
-          <div v-if="collaborationMarkdownHtml" class="mt-3 rounded-xl border border-slate-200 bg-white p-4">
+          <div
+            v-if="collaborationMarkdownHtml"
+            class="mt-3 max-h-[75vh] overflow-auto rounded-xl border border-slate-200 bg-white p-4"
+          >
             <div class="prose prose-slate max-w-none text-sm" v-html="collaborationMarkdownHtml" />
           </div>
 
@@ -618,34 +591,23 @@ onBeforeUnmount(() => {
       <div>
         <AppCard v-if="activeCase" class="max-h-[86vh] overflow-auto p-5">
           <div class="space-y-4">
+            <div class="flex items-center justify-between">
+              <div class="text-sm font-semibold text-slate-900">Labeling</div>
+            </div>
             <div class="grid gap-2 md:grid-cols-2">
               <div
                 v-for="(item, key) in activeCase.failureModeDefinitionMapping"
                 :key="String(key)"
                 class="relative z-0 flex flex-col gap-2 rounded-xl border border-slate-200 bg-white p-3 hover:bg-slate-50"
+                :title="failureModeTitleOverrides[String(key)] ?? ''"
+                @mouseenter="onFailureModeMouseEnter(String(key), item)"
+                @mouseleave="onFailureModeMouseLeave(String(key))"
               >
                 <div class="min-w-0 space-y-1">
                   <div class="text-xs font-medium text-slate-800">{{ `${key}: ${item.name ?? '-'}` }}</div>
                 </div>
 
                 <div class="flex items-center justify-end gap-2">
-                  <button
-                    type="button"
-                    class="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs text-slate-700 hover:bg-slate-50"
-                    title="Show definition & instruction"
-                    @mouseenter="showFailureModeTooltip($event, item)"
-                    @mouseleave="hideFailureModeTooltip"
-                  >
-                    show
-                  </button>
-                  <button
-                    type="button"
-                    class="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs text-slate-700 hover:bg-slate-50"
-                    title="Copy name/definition/instruction"
-                    @click.prevent="copyFailureMode(item)"
-                  >
-                    copy
-                  </button>
                   <label class="flex cursor-pointer items-start">
                     <input
                       class="mt-1 h-4 w-4 accent-blue-600"
@@ -664,14 +626,6 @@ onBeforeUnmount(() => {
                   <div class="text-xs font-medium text-slate-800">No issues / No failure mode</div>
                 </div>
                 <div class="mt-2 flex items-center justify-end gap-2">
-                  <button
-                    type="button"
-                    class="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs text-slate-700 hover:bg-slate-50"
-                    title="Copy"
-                    @click.prevent="copyNoIssues"
-                  >
-                    copy
-                  </button>
                   <label class="flex cursor-pointer items-start">
                     <input
                       class="mt-1 h-4 w-4 accent-blue-600"
@@ -701,23 +655,12 @@ onBeforeUnmount(() => {
 
             <div>
               <AppButton variant="secondary" :disabled="!annotatorName.trim() || !nextTodoCaseId" class="w-full" @click="goNext">
-                Next
+                Next TODO
               </AppButton>
             </div>
           </div>
         </AppCard>
       </div>
-    </div>
-
-    <div
-      v-if="failureModeTooltip.open"
-      class="pointer-events-none fixed z-[2147483647] w-[520px] whitespace-pre-wrap rounded-xl border border-slate-200 bg-white p-3 text-left text-xs text-slate-900 shadow-lg"
-      :style="{ left: `${failureModeTooltip.x}px`, top: `${failureModeTooltip.y}px`, transform: 'translate(-100%, 0)' }"
-    >
-      <div class="font-semibold">Definition</div>
-      <div class="mt-1 text-slate-800">{{ failureModeTooltip.payload.definition }}</div>
-      <div class="mt-3 font-semibold">Human eval instruction</div>
-      <div class="mt-1 text-slate-800">{{ failureModeTooltip.payload.instruction }}</div>
     </div>
 
     <AppToast :show="toast.show" :message="toast.message" />

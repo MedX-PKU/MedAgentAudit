@@ -318,7 +318,7 @@ const toggleInstructionPopover = () => {
 
             <div class="flex flex-wrap gap-2">
               <AppButton variant="secondary" :disabled="!auditorId" @click="activeAuditId = nextTodoAuditId">
-                Next todo
+                Next TODO
               </AppButton>
               <div class="flex items-center gap-2">
                 <AppButton variant="secondary" :disabled="!auditorId" @click="exportJson">Export JSON</AppButton>
@@ -348,7 +348,7 @@ const toggleInstructionPopover = () => {
                   class="shrink-0 rounded-md px-2 py-0.5 text-xs"
                   :class="isCaseDone(c) ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-600'"
                 >
-                  {{ isCaseDone(c) ? 'Done' : 'Todo' }}
+                  {{ isCaseDone(c) ? 'Done' : 'TODO' }}
                 </div>
               </div>
               <div class="mt-1 text-xs text-slate-600">{{ c.dataset }} · {{ c.framework }} · {{ c.modality }}</div>
@@ -373,7 +373,7 @@ const toggleInstructionPopover = () => {
 		              <div>
 		                <div class="flex items-center justify-between gap-3">
 		                  <div class="text-sm font-semibold text-slate-900">Question</div>
-		                  <AppButton variant="secondary" @click="copyQuestion">Copy</AppButton>
+		                  <AppButton variant="secondary" @click="copyQuestion">Copy Question & Options</AppButton>
 		                </div>
 		                <div class="mt-2 whitespace-pre-wrap rounded-xl border border-slate-200 bg-white p-3 text-sm text-slate-800">
 		                  {{ activeCase.question }}
@@ -426,20 +426,7 @@ const toggleInstructionPopover = () => {
 
         <div>
 	          <AppCard class="max-h-[86vh] overflow-visible p-5">
-            <div>
-              <div class="text-sm font-semibold text-slate-900">Failure mode</div>
-              <div class="mt-2 rounded-xl border border-slate-200 bg-white p-3 text-sm text-slate-800">
-                <div class="flex flex-wrap items-center gap-2">
-                  <span class="rounded-md bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-700">
-                    {{ activeItem.taxonomyKey }}
-                  </span>
-                  <span class="font-medium text-slate-900">{{ activeTaxonomy?.title ?? '' }}</span>
-                </div>
-                <div class="mt-2 text-xs text-slate-600">{{ activeTaxonomy?.short ?? '' }}</div>
-              </div>
-            </div>
-
-	            <div class="mt-4 flex items-center justify-between gap-3">
+	            <div class="flex items-center justify-between gap-3">
 	              <div class="text-sm font-semibold text-slate-900">Collaboration log</div>
 	              <div class="flex items-center gap-2">
 	                <div class="relative inline-block" data-instruction-popover>
@@ -463,9 +450,10 @@ const toggleInstructionPopover = () => {
 
 	            <div
 	              v-if="collaborationHtml"
-	              class="prose prose-slate mt-3 max-w-none rounded-lg bg-white p-3 text-sm text-slate-900"
-	              v-html="collaborationHtml"
-	            ></div>
+	              class="mt-3 max-h-[75vh] overflow-auto rounded-xl border border-slate-200 bg-white p-4"
+	            >
+	              <div class="prose prose-slate max-w-none text-sm text-slate-900" v-html="collaborationHtml"></div>
+	            </div>
 
             <div v-else class="mt-3 text-xs text-slate-600">No collaboration log found.</div>
           </AppCard>
@@ -474,6 +462,19 @@ const toggleInstructionPopover = () => {
         <div>
           <AppCard class="max-h-[86vh] overflow-auto p-5">
         <div class="space-y-4">
+          <div>
+            <div class="text-sm font-semibold text-slate-900">Failure mode</div>
+            <div class="mt-2 rounded-xl border border-slate-200 bg-white p-3 text-sm text-slate-800">
+              <div class="flex flex-wrap items-center gap-2">
+                <span class="rounded-md bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-700">
+                  {{ activeItem.taxonomyKey }}
+                </span>
+                <span class="font-medium text-slate-900">{{ activeTaxonomy?.title ?? '' }}</span>
+              </div>
+              <div class="mt-2 text-xs text-slate-600">{{ activeTaxonomy?.short ?? '' }}</div>
+            </div>
+          </div>
+
           <div class="flex items-center justify-between">
             <div class="text-sm font-semibold text-slate-900">Verdict</div>
           </div>
@@ -499,7 +500,7 @@ const toggleInstructionPopover = () => {
             </button>
           </div>
 
-          <AppButton variant="secondary" class="w-full" @click="next">Next</AppButton>
+          <AppButton variant="secondary" class="w-full" @click="next">Next TODO</AppButton>
         </div>
           </AppCard>
         </div>
