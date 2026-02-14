@@ -12,6 +12,7 @@ export type QuestionBase = {
   framework: FrameworkName
   modality: QuestionModality
   question: string
+  questionType?: string
   options?: string[]
   answer?: string
   predictedAnswer?: string
@@ -23,6 +24,11 @@ export type VqaInfo = {
 
 export type OpenCodingCase = QuestionBase &
   VqaInfo & {
+    collectionText?: string
+    failureModeDefinitionMapping?: Record<
+      string,
+      { name?: string; definition?: string; human_eval_instruction?: string; humanEvalInstruction?: string }
+    >
     collaborationLog: unknown
     instructionText?: string
   }

@@ -12,7 +12,7 @@ type JsonlRecord = {
   failure_code?: string
   question_type?: string
   question?: string
-  options?: Record<string, string>
+  options?: Record<string, string> | string[] | null
   options_text?: string
   question_description?: string
   instruction_text?: string
@@ -59,38 +59,20 @@ const normalizeDataset = (value: string) => {
     .join('-')
 }
 
-const parseQuestion = (text: string) => {
-  const match = text.match(/The question is:(.*?)(?:\nThis question has|\nOptions:|\nThe ground truth answer is:)/s)
-  if (!match) return text.trim()
-  return (match[1] ?? '').trim().replace(/"\.?\s*$/, '')
-}
-
-const parseOptions = (text: string) => {
-  const lines = text.split(/\r?\n/)
-  const options: string[] = []
-  let inOptions = false
-  for (const raw of lines) {
-    const line = raw.trim()
-    if (!line) continue
-    if (line.startsWith('Options:')) {
-      inOptions = true
-      continue
-    }
-    if (!inOptions) continue
-    const match = line.match(/^([A-Z]|\d+)\s*[:.)]\s*(.+)$/)
-    if (match) {
-      options.push(`${match[1]}. ${match[2]}`.trim())
-      continue
-    }
-    if (/^The ground truth answer is:/i.test(line)) break
-    if (options.length > 0) options[options.length - 1] = `${options[options.length - 1]} ${line}`.trim()
-  }
-  return options.length ? options : undefined
-}
-
 const parseAnswer = (text: string) => {
   const match = text.match(/The ground truth answer is:\s*([A-Z0-9]+)\b/i)
   return match?.[1]?.trim()
+}
+
+const parseOptionsFromPayload = (options: JsonlRecord['options']) => {
+  if (!options) return undefined
+  if (Array.isArray(options)) return options.map((v) => String(v))
+  if (typeof options === 'object') {
+    const entries = Object.entries(options)
+    const sorted = entries.sort(([a], [b]) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }))
+    return sorted.map(([key, value]) => `${key}. ${String(value)}`)
+  }
+  return undefined
 }
 
 const resolveImagePath = (imagePath?: string | null) => {
@@ -313,14 +295,10 @@ export const parseAuditJsonl = (content: string, fileName: string): AuditCase[] 
     const dataset = normalizeDataset(String(payload.dataset ?? 'Unknown'))
     const framework = normalizeFramework(String(payload.mas ?? 'Unknown'))
 
-    const question = String(payload.question ?? '').trim() || parseQuestion(questionDescription)
+    const question = String(payload.question ?? '').trim()
+    const questionType = String(payload.question_type ?? '').trim() || undefined
 
-    const optionsFromMap =
-      payload.options && typeof payload.options === 'object'
-        ? Object.entries(payload.options).map(([k, v]) => `${k}. ${v}`.trim())
-        : undefined
-    const optionsFromText = payload.options_text ? parseOptions(String(payload.options_text)) : undefined
-    const options = optionsFromMap ?? optionsFromText ?? parseOptions(questionDescription)
+    const options = parseOptionsFromPayload(payload.options)
 
     const answer = (payload.ground_truth ?? parseAnswer(questionDescription))?.trim()
     const predictedAnswer = payload.mas_predicted_answer?.trim()
@@ -351,6 +329,7 @@ export const parseAuditJsonl = (content: string, fileName: string): AuditCase[] 
       framework,
       modality: modality as any,
       question,
+      ...(questionType ? { questionType } : null),
       options,
       answer,
       ...(predictedAnswer ? { predictedAnswer } : null),

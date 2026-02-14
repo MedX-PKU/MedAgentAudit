@@ -6,9 +6,16 @@ type JsonlRecord = {
   caseId?: string
   image_path?: string | null
   question_description?: string
+  question_type?: string
+  options?: Record<string, string> | string[] | null
+  collection_text?: string
   collaboration_text?: string
   collaboration_log?: unknown
   instruction_text?: string
+  failure_mode_definition_mapping?: Record<
+    string,
+    { name?: string; definition?: string; human_eval_instruction?: string; humanEvalInstruction?: string }
+  >
 }
 
 type ParsedOutput = { answer?: string; explanation?: string }
@@ -45,35 +52,12 @@ const normalizeDataset = (value: string) => {
     .join('-')
 }
 
-const parseOptions = (text: string) => {
-  const lines = text.split(/\r?\n/)
-  const options: string[] = []
-  let inOptions = false
-  for (const raw of lines) {
-    const line = raw.trim()
-    if (!line) continue
-    if (line.startsWith('Options:')) {
-      inOptions = true
-      continue
-    }
-    if (!inOptions) continue
-    const match = line.match(/^([A-Z]|\d+)\s*[:.)]\s*(.+)$/)
-    if (match) {
-      const label = match[1]
-      const content = match[2]
-      options.push(`${label}. ${content}`.trim())
-      continue
-    }
-    if (/^The ground truth answer is:/i.test(line)) break
-    if (options.length > 0) {
-      options[options.length - 1] = `${options[options.length - 1]} ${line}`.trim()
-    }
-  }
-  return options.length ? options : undefined
-}
-
 const parseQuestion = (text: string) => {
-  const match = text.match(/The question is:(.*?)(?:\nThis question has|\nOptions:|\nThe ground truth answer is:)/s)
+  // Extract content after "The question is:" and stop before "This question has X options"
+  // (or other known delimiters). This should match the open-coding data format.
+  const match = text.match(
+    /The question is:\s*(.*?)(?:\n\s*This question has|\n\s*Options:|\n\s*The ground truth answer is:|$)/is,
+  )
   if (!match) return text.trim()
   return (match[1] ?? '').trim().replace(/"\.?\s*$/, '')
 }
@@ -86,6 +70,18 @@ const parseAnswer = (text: string) => {
 const parsePredictedAnswer = (text: string) => {
   const match = text.match(/predicted answer is:\s*([A-Z0-9]+)\b/i)
   return match?.[1]?.trim()
+}
+
+const parseOptionsFromPayload = (options: JsonlRecord['options']) => {
+  if (!options) return undefined
+  if (Array.isArray(options)) return options.map((v) => String(v))
+  if (typeof options === 'object') {
+    const entries = Object.entries(options)
+    // Sort like A,B,C... then 1,2,3...
+    const sorted = entries.sort(([a], [b]) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }))
+    return sorted.map(([key, value]) => `${key}. ${String(value)}`)
+  }
+  return undefined
 }
 
 const resolveImagePath = (imagePath?: string | null) => {
@@ -318,13 +314,16 @@ export const parseOpenCodingJsonl = (content: string, fileName: string): OpenCod
     .map((payload, idx) => {
       const questionDescription = String(payload.question_description ?? '').trim()
       const question = parseQuestion(questionDescription)
-      const options = parseOptions(questionDescription)
+      const options = parseOptionsFromPayload(payload.options)
       const answer = parseAnswer(questionDescription)
       const predictedAnswer = parsePredictedAnswer(questionDescription)
       const collaborationLog = payload.collaboration_text
         ? parseCollaborationText(payload.collaboration_text)
         : (payload.collaboration_log as ParsedCollaboration | undefined) ?? payload
       const instructionText = String(payload.instruction_text ?? '').trim() || undefined
+      const questionType = String(payload.question_type ?? '').trim() || undefined
+      const collectionText = String(payload.collection_text ?? '').trim() || undefined
+      const failureModeDefinitionMapping = payload.failure_mode_definition_mapping
 
       const caseId = payload.qid || payload.case_id || payload.caseId || `${slugify(dataset)}-${idx + 1}`
       const imagePath = resolveImagePath(payload.image_path)
@@ -335,10 +334,13 @@ export const parseOpenCodingJsonl = (content: string, fileName: string): OpenCod
         framework,
         modality,
         question,
+        ...(questionType ? { questionType } : null),
         options,
         answer,
         ...(predictedAnswer ? { predictedAnswer } : null),
         ...(imagePath ? { image: { path: imagePath, alt: `${dataset} image` } } : null),
+        ...(collectionText ? { collectionText } : null),
+        ...(failureModeDefinitionMapping ? { failureModeDefinitionMapping } : null),
         collaborationLog,
         instructionText,
       }
