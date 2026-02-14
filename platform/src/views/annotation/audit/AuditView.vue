@@ -24,7 +24,6 @@ const auditorId = computed<AuditorId | null>(() => {
   return n as AuditorId
 })
 
-const search = ref('')
 const activeAuditId = ref<string | null>(null)
 const verdict = ref<Verdict | null>(null)
 const toast = ref<{ show: boolean; message: string }>({ show: false, message: '' })
@@ -56,7 +55,10 @@ watch(
     }
     annotations.value = loadAuditMap(id)
     const items = assignedAuditItems(id, auditCases.value)
-    if (!activeAuditId.value && items.length > 0) activeAuditId.value = items[0]!.auditId
+    const currentValid = items.some((it) => it.auditId === activeAuditId.value)
+    if ((!activeAuditId.value || !currentValid) && items.length > 0) {
+      activeAuditId.value = items[0]!.auditId
+    }
   },
   { immediate: true },
 )
@@ -76,12 +78,15 @@ const activeItem = computed<AuditItem | null>(() => {
   return assignedItems.value.find((i) => i.auditId === activeAuditId.value) ?? null
 })
 
-const activeCaseId = computed(() => activeCase.value?.caseId ?? null)
-
 const activeCase = computed<AuditCase | null>(() => {
   if (!activeItem.value) return null
+  if (activeItem.value.seq != null) {
+    return auditCases.value.find((c) => c.seq === activeItem.value!.seq) ?? null
+  }
   return auditCases.value.find((c) => c.caseId === activeItem.value!.caseId) ?? null
 })
+
+const activeSeq = computed(() => activeCase.value?.seq ?? activeItem.value?.seq ?? null)
 
 const collaborationRaw = computed(() => {
   const log = activeCase.value?.collaborationLog as { raw?: string } | undefined
@@ -118,14 +123,15 @@ const doneCount = computed(() => Object.keys(annotations.value).length)
 const isAllDone = computed(() => assignedItems.value.length > 0 && doneCount.value >= assignedItems.value.length)
 const completionHintShown = ref(false)
 
-const doneCaseIds = computed(() => {
-  const ids = new Set<string>()
-  // Per-auditor: `annotations` is loaded from `loadAuditMap(auditorId)` and thus already scoped.
-  for (const a of Object.values(annotations.value)) ids.add(a.caseId)
-  return ids
-})
+/** Check if a case is fully done (all its items annotated). Uses seq as primary key. */
+const isCaseDone = (c: AuditCase): boolean =>
+  c.items.every((it) => Boolean(annotations.value[it.auditId]))
 
-const isAllCasesDone = computed(() => assignedCases.value.length > 0 && doneCaseIds.value.size >= assignedCases.value.length)
+const isAllCasesDone = computed(
+  () =>
+    assignedCases.value.length > 0 &&
+    assignedCases.value.every((c) => isCaseDone(c)),
+)
 
 const nextTodoAuditId = computed(() => {
   const list = assignedItems.value
@@ -144,6 +150,8 @@ const persistActive = () => {
   const annotation: AuditAnnotation = {
     auditId: activeItem.value.auditId,
     caseId: activeItem.value.caseId,
+    seq: activeItem.value.seq,
+    auditorId: auditorId.value,
     taxonomyKey: activeItem.value.taxonomyKey as TaxonomyKey,
     verdict: verdict.value,
     updatedAt: new Date().toISOString(),
@@ -194,9 +202,11 @@ loadCases()
 watch(
   auditCases,
   (list) => {
-    if (!activeAuditId.value && auditorId.value && list.length > 0) {
-      const items = assignedAuditItems(auditorId.value, list)
-      activeAuditId.value = items[0]?.auditId ?? null
+    if (!auditorId.value || list.length === 0) return
+    const items = assignedAuditItems(auditorId.value, list)
+    const currentValid = items.some((it) => it.auditId === activeAuditId.value)
+    if ((!activeAuditId.value || !currentValid) && items.length > 0) {
+      activeAuditId.value = items[0]!.auditId
     }
   },
   { deep: true },
@@ -315,12 +325,6 @@ const toggleInstructionPopover = () => {
                 <span v-if="isAllCasesDone" class="text-xs font-medium text-emerald-700">All done</span>
               </div>
             </div>
-
-            <input
-              v-model="search"
-              placeholder="Search auditId / caseId / taxonomy key ..."
-              class="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none ring-blue-500/20 placeholder:text-slate-400 focus:ring-2"
-            />
           </div>
         </div>
 
@@ -332,19 +336,19 @@ const toggleInstructionPopover = () => {
           <div v-else class="space-y-2">
             <button
               v-for="c in assignedCases"
-              :key="c.caseId"
+              :key="c.seq ?? c.caseId"
               type="button"
               class="w-full rounded-xl border p-3 text-left text-sm transition"
-              :class="c.caseId === activeCaseId ? 'border-blue-300 bg-blue-50' : 'border-slate-200 bg-white hover:bg-slate-50'"
-              @click="activeAuditId = assignedItems.find((it) => it.caseId === c.caseId)?.auditId ?? null"
+              :class="activeSeq === c.seq ? 'border-blue-300 bg-blue-50' : 'border-slate-200 bg-white hover:bg-slate-50'"
+              @click="activeAuditId = c.items[0]?.auditId ?? assignedItems.find((it) => it.seq === c.seq)?.auditId ?? null"
             >
               <div class="flex items-center justify-between gap-2">
                 <div class="truncate font-medium text-slate-900">Case {{ c.seq }}: {{ c.caseId }}</div>
                 <div
                   class="shrink-0 rounded-md px-2 py-0.5 text-xs"
-                  :class="doneCaseIds.has(c.caseId) ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-600'"
+                  :class="isCaseDone(c) ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-600'"
                 >
-                  {{ doneCaseIds.has(c.caseId) ? 'Done' : 'Todo' }}
+                  {{ isCaseDone(c) ? 'Done' : 'Todo' }}
                 </div>
               </div>
               <div class="mt-1 text-xs text-slate-600">{{ c.dataset }} · {{ c.framework }} · {{ c.modality }}</div>
@@ -472,7 +476,6 @@ const toggleInstructionPopover = () => {
         <div class="space-y-4">
           <div class="flex items-center justify-between">
             <div class="text-sm font-semibold text-slate-900">Verdict</div>
-            <div class="text-xs text-slate-500">Always visible</div>
           </div>
 
           <div class="space-y-2">
@@ -494,10 +497,6 @@ const toggleInstructionPopover = () => {
               <div class="font-semibold">No</div>
               <div class="mt-1 text-xs text-slate-600">The failure mode is not supported by this context.</div>
             </button>
-          </div>
-
-          <div class="rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
-            Auto-saved. Export from the left panel when finished.
           </div>
 
           <AppButton variant="secondary" class="w-full" @click="next">Next</AppButton>

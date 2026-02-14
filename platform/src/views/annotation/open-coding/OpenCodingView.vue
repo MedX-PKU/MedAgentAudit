@@ -5,7 +5,6 @@ import MarkdownIt from 'markdown-it'
 import type { TaxonomyKey } from '../../../domain/taxonomy'
 import AppButton from '../../../components/ui/AppButton.vue'
 import AppCard from '../../../components/ui/AppCard.vue'
-import AppInput from '../../../components/ui/AppInput.vue'
 import AppSelect from '../../../components/ui/AppSelect.vue'
 import AppTextarea from '../../../components/ui/AppTextarea.vue'
 import AppToast from '../../../components/ui/AppToast.vue'
@@ -17,7 +16,6 @@ import { loadOpenCodingCases } from '../../../data/open-coding/cases'
 import { loadOpenCodingMap, saveOpenCoding } from './openCodingStorage'
 
 const annotatorName = ref('Annotator_1')
-const search = ref('')
 const activeCaseId = ref<string | null>(null)
 const isDrawerOpen = ref(false)
 const isInstructionPopoverOpen = ref(false)
@@ -49,7 +47,11 @@ watch(
       return
     }
     annotations.value = loadOpenCodingMap(name.trim())
-    if (!activeCaseId.value && cases.value.length > 0) activeCaseId.value = cases.value[0]!.caseId
+    const list = cases.value
+    const currentValid = list.some((c) => c.caseId === activeCaseId.value)
+    if ((!activeCaseId.value || !currentValid) && list.length > 0) {
+      activeCaseId.value = list[0]!.caseId
+    }
   },
   { immediate: true },
 )
@@ -57,7 +59,9 @@ watch(
 watch(
   cases,
   (list) => {
-    if (!activeCaseId.value && annotatorName.value.trim() && list.length > 0) {
+    if (!annotatorName.value.trim() || list.length === 0) return
+    const currentValid = list.some((c) => c.caseId === activeCaseId.value)
+    if ((!activeCaseId.value || !currentValid) && list.length > 0) {
       activeCaseId.value = list[0]!.caseId
     }
   },
@@ -67,15 +71,6 @@ watch(
 watch(activeCaseId, () => {
   isDrawerOpen.value = false
   isInstructionPopoverOpen.value = false
-})
-
-const filteredCases = computed(() => {
-  const q = search.value.trim().toLowerCase()
-  if (!q) return cases.value
-  return cases.value.filter((c) => {
-    const hay = [c.caseId, c.dataset, c.framework, c.question].join(' ').toLowerCase()
-    return hay.includes(q)
-  })
 })
 
 const activeCase = computed<OpenCodingCase | null>(() => {
@@ -153,7 +148,7 @@ const isAllDone = computed(() => cases.value.length > 0 && doneCount.value >= ca
 const completionToastShown = ref(false)
 
 const nextTodoCaseId = computed(() => {
-  const list = filteredCases.value
+  const list = cases.value
   const idx = list.findIndex((c) => c.caseId === activeCaseId.value)
   const start = idx >= 0 ? idx : 0
   for (let offset = 0; offset < list.length; offset++) {
@@ -406,8 +401,6 @@ onBeforeUnmount(() => {
             </div>
           </div>
 
-          <AppInput v-model="search" placeholder="Search caseId / dataset / framework ..." />
-
           <ProgressBar :done="doneCount" :total="cases.length" />
 
           <div class="flex flex-wrap gap-2">
@@ -423,7 +416,7 @@ onBeforeUnmount(() => {
         <div class="mt-4 max-h-[60vh] overflow-auto pr-1">
           <div class="space-y-2">
             <button
-              v-for="c in filteredCases"
+              v-for="c in cases"
               :key="c.caseId"
               type="button"
               class="w-full rounded-xl border p-3 text-left text-sm transition"
