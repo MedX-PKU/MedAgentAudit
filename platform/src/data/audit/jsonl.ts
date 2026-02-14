@@ -284,7 +284,13 @@ const parseFailureCodeFromFileName = (fileName: string) => {
 export const parseAuditJsonl = (content: string, fileName: string): AuditCase[] => {
   const failureCodeFromName = parseFailureCodeFromFileName(fileName)
 
-  const casesById = new Map<string, AuditCase>()
+  // Temporarily group by auditId (caseId + taxonomyKey). Later in `loadAuditCases`,
+  // we will rewrite `auditId` to include a stable per-case seq.
+  //
+  // This guarantees stable item identity across frameworks/datasets as long as `caseId` is unique.
+  // Note: if upstream data reuses the same `caseId` across frameworks, prefer including `framework`
+  // in the source `caseId` or add it into the auditId format.
+  const casesByAuditId = new Map<string, AuditCase>()
 
   const lines = content.split(/\r?\n/).filter((line) => line.trim())
   for (const line of lines) {
@@ -317,13 +323,13 @@ export const parseAuditJsonl = (content: string, fileName: string): AuditCase[] 
       instructionText: String(payload.instruction_text ?? '').trim() || undefined,
     }
 
-    const existing = casesById.get(caseId)
+    const existing = casesByAuditId.get(auditId)
     if (existing) {
-      existing.items.push(item)
+      // Same (caseId + taxonomyKey) might appear multiple times; treat as one audit item.
       continue
     }
 
-    casesById.set(caseId, {
+    casesByAuditId.set(auditId, {
       caseId,
       dataset,
       framework,
@@ -339,5 +345,5 @@ export const parseAuditJsonl = (content: string, fileName: string): AuditCase[] 
     })
   }
 
-  return Array.from(casesById.values())
+  return Array.from(casesByAuditId.values())
 }
