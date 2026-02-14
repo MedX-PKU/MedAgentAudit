@@ -3,10 +3,9 @@ export type AuditorId = 1 | 2 | 3 | 4 | 5 | 6
 
 export const AUDITOR_IDS: AuditorId[] = [1, 2, 3, 4, 5, 6]
 
-export const isAssigned = (auditor: AuditorId, caseId: string): boolean => {
-  const m = caseId.match(/__seq_(\d+)\s*$/)
-  const n = m ? Number(m[1]) : Number.NaN
-  if (!Number.isFinite(n)) return false
+export const isAssigned = (auditor: AuditorId, seq?: number): boolean => {
+  if (!Number.isFinite(seq)) return false
+  const n = seq as number
 
   const mod = ((n % 6) + 6) % 6
   const a1 = (mod + 1) as AuditorId
@@ -19,12 +18,12 @@ export const isAssigned = (auditor: AuditorId, caseId: string): boolean => {
 export const assignedAuditItems = (auditor: AuditorId, cases: readonly AuditCase[]): AuditItem[] => {
   const items: AuditItem[] = []
   for (const c of cases) {
-    if (!isAssigned(auditor, c.caseId)) continue
+    if (!isAssigned(auditor, c.seq)) continue
     for (const item of c.items) items.push(item)
   }
   return items
 }
 
 export const assignedAuditCases = (auditor: AuditorId, cases: readonly AuditCase[]): AuditCase[] => {
-  return cases.filter((c) => isAssigned(auditor, c.caseId))
+  return cases.filter((c) => isAssigned(auditor, c.seq))
 }
