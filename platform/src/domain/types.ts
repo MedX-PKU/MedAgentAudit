@@ -48,6 +48,7 @@ export type AuditItem = {
   /** Stable 1-based sequence (1-400), used as primary key for assignment and aggregation */
   seq?: number
   taxonomyKey: TaxonomyKey
+  failureCode?: string
   context: string
   instructionText?: string
 }

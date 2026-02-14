@@ -310,14 +310,17 @@ export const parseAuditJsonl = (content: string, fileName: string): AuditCase[] 
     const modality = payload.image_path ? 'vqa' : 'text'
     const imagePath = resolveImagePath(payload.image_path)
 
-    const taxonomyKey = normalizeWhitespace(String(payload.failure_code ?? failureCodeFromName ?? '')) || '1.1.1'
+    const failureCode = normalizeWhitespace(String(payload.failure_code ?? failureCodeFromName ?? '')) || '1.1.1'
+    // Keep legacy field for assignment/back-compat; UI can switch to failureCode.
+    const taxonomyKey = failureCode
 
-    const uniqueKey = `${framework}__${caseId}__${taxonomyKey}__${llm}`
-    const auditId = `${caseId}__${taxonomyKey}`
+    const uniqueKey = `${framework}__${caseId}__${failureCode}__${llm}`
+    const auditId = `${caseId}__${failureCode}`
     const item: AuditItem = {
       auditId,
       caseId,
       taxonomyKey: taxonomyKey as any,
+      failureCode,
       context: String(payload.instruction_text ?? '').trim(),
       instructionText: String(payload.instruction_text ?? '').trim() || undefined,
     }
