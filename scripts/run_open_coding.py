@@ -1,5 +1,5 @@
 '''
-./medagentaudit/open_coding/open_coding_analyst.py
+./scripts/run_open_coding.py
 '''
 import os
 import json
@@ -13,18 +13,14 @@ from pathlib import Path
 # Ensure project root is in path
 current_file_path = Path(__file__).resolve()
 current_file_name = Path(__file__).stem
-utils_root = current_file_path.parents[1] / "utils"
-auditor_root = current_file_path.parents[1] / "auditor"
-common_root = current_file_path.parents[1] / "common"
-core_root = current_file_path.parents[1] / "core"
 project_root = current_file_path.parents[2]
-sys.path.extend([str(utils_root), str(project_root), str(auditor_root), str(common_root)])
-from logger import DualLogger
-from encode_image import encode_image
-from json_utils import load_jsonl, save_jsonl, preprocess_response_string
-from base_agent import BaseAgent
-from agent_type import AgentType
-from parse_structured_output import parse_structured_output
+sys.path.append(str(project_root))
+from medagentaudit.utils.logger import DualLogger
+from medagentaudit.utils.encode_image import encode_image
+from medagentaudit.utils.json_utils import load_jsonl, save_jsonl, preprocess_response_string
+from medagentaudit.core.base_agent import BaseAgent
+from medagentaudit.common.agent_type import AgentType
+from medagentaudit.utils.parse_structured_output import parse_structured_output
 # TODO  同样保存为jsonl，且要注意错误的日志单独输出不写入正确jsonl里。
 class OpenCoder(BaseAgent):
     """
