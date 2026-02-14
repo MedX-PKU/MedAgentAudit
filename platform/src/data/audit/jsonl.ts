@@ -7,6 +7,7 @@ type JsonlRecord = {
   image_path?: string | null
   dataset?: string
   mas?: string
+  llm?: string
   ground_truth?: string
   mas_predicted_answer?: string
   failure_code?: string
@@ -284,13 +285,9 @@ const parseFailureCodeFromFileName = (fileName: string) => {
 export const parseAuditJsonl = (content: string, fileName: string): AuditCase[] => {
   const failureCodeFromName = parseFailureCodeFromFileName(fileName)
 
-  // Temporarily group by auditId (caseId + taxonomyKey). Later in `loadAuditCases`,
-  // we will rewrite `auditId` to include a stable per-case seq.
-  //
-  // This guarantees stable item identity across frameworks/datasets as long as `caseId` is unique.
-  // Note: if upstream data reuses the same `caseId` across frameworks, prefer including `framework`
-  // in the source `caseId` or add it into the auditId format.
-  const casesByAuditId = new Map<string, AuditCase>()
+  // Group by (framework, caseId, taxonomyKey, llm). Same case with different LLM = different case.
+  // Later in `loadAuditCases`, seq 1–400 is assigned as primary key.
+  const casesByKey = new Map<string, AuditCase>()
 
   const lines = content.split(/\r?\n/).filter((line) => line.trim())
   for (const line of lines) {
@@ -300,6 +297,7 @@ export const parseAuditJsonl = (content: string, fileName: string): AuditCase[] 
     const caseId = payload.qid || payload.case_id || payload.caseId || `${slugify(payload.dataset ?? 'case')}-${Math.random().toString(36).slice(2, 8)}`
     const dataset = normalizeDataset(String(payload.dataset ?? 'Unknown'))
     const framework = normalizeFramework(String(payload.mas ?? 'Unknown'))
+    const llm = normalizeWhitespace(String(payload.llm ?? '')) || 'unknown'
 
     const question = String(payload.question ?? '').trim()
     const questionType = String(payload.question_type ?? '').trim() || undefined
@@ -314,6 +312,7 @@ export const parseAuditJsonl = (content: string, fileName: string): AuditCase[] 
 
     const taxonomyKey = normalizeWhitespace(String(payload.failure_code ?? failureCodeFromName ?? '')) || '1.1.1'
 
+    const uniqueKey = `${framework}__${caseId}__${taxonomyKey}__${llm}`
     const auditId = `${caseId}__${taxonomyKey}`
     const item: AuditItem = {
       auditId,
@@ -323,16 +322,16 @@ export const parseAuditJsonl = (content: string, fileName: string): AuditCase[] 
       instructionText: String(payload.instruction_text ?? '').trim() || undefined,
     }
 
-    const existing = casesByAuditId.get(auditId)
+    const existing = casesByKey.get(uniqueKey)
     if (existing) {
-      // Same (caseId + taxonomyKey) might appear multiple times; treat as one audit item.
       continue
     }
 
-    casesByAuditId.set(auditId, {
+    casesByKey.set(uniqueKey, {
       caseId,
       dataset,
       framework,
+      ...(llm !== 'unknown' ? { llm } : null),
       modality: modality as any,
       question,
       ...(questionType ? { questionType } : null),
@@ -345,5 +344,5 @@ export const parseAuditJsonl = (content: string, fileName: string): AuditCase[] 
     })
   }
 
-  return Array.from(casesByAuditId.values())
+  return Array.from(casesByKey.values())
 }

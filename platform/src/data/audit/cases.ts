@@ -24,15 +24,20 @@ export const loadAuditCases = async (): Promise<AuditCase[]> => {
     cases.push(...parseAuditJsonl(content, file))
   }
 
-  // Assign a stable sequential ID so auditor assignment doesn't depend on qid formatting.
-  cases.sort((a, b) => a.caseId.localeCompare(b.caseId))
+  // Assign stable seq 1–400 as primary key. Sort by (framework, caseId) for deterministic order.
+  cases.sort((a, b) => {
+    const fa = a.framework.localeCompare(b.framework)
+    if (fa !== 0) return fa
+    return a.caseId.localeCompare(b.caseId)
+  })
   cases.forEach((c, idx) => {
     const seq = idx + 1
     c.seq = seq
     c.items = c.items.map((it) => ({
       ...it,
       caseId: c.caseId,
-      auditId: `${c.caseId}__seq_${seq}__${it.taxonomyKey}`,
+      seq,
+      auditId: `${c.framework}__${c.caseId}__seq_${seq}__${it.taxonomyKey}`,
     }))
   })
 

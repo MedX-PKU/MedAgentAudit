@@ -5,12 +5,18 @@ import type { AuditorId } from './auditAssignment'
 const keyFor = (auditorId: AuditorId) => `medagentaudit:audit:auditor:${auditorId}`
 
 export const loadAuditMap = (auditorId: AuditorId): Record<string, AuditAnnotation> => {
-  return readJson<Record<string, AuditAnnotation>>(keyFor(auditorId), {})
+  const raw = readJson<Record<string, AuditAnnotation>>(keyFor(auditorId), {})
+  const result: Record<string, AuditAnnotation> = {}
+  for (const [k, v] of Object.entries(raw)) {
+    result[k] = { ...v, auditorId: v.auditorId ?? auditorId }
+  }
+  return result
 }
 
 export const saveAudit = (auditorId: AuditorId, annotation: AuditAnnotation) => {
   const map = loadAuditMap(auditorId)
-  map[annotation.auditId] = annotation
+  const stored = { ...annotation, auditorId }
+  map[annotation.auditId] = stored
   writeJson(keyFor(auditorId), map)
 }
 
