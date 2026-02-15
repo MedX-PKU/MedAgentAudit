@@ -13,16 +13,16 @@ from pathlib import Path
 # Ensure project root is in path
 current_file_path = Path(__file__).resolve()
 current_file_name = Path(__file__).stem
-project_root = current_file_path.parents[2]
+project_root = current_file_path.parents[1]
 sys.path.append(str(project_root))
 from medagentaudit.utils.logger import DualLogger
 from medagentaudit.utils.encode_image import encode_image
-from medagentaudit.utils.json_utils import load_jsonl, save_jsonl, preprocess_response_string
+from medagentaudit.utils.json_utils import load_jsonl, save_jsonl, preprocess_response_string, load_json
 from medagentaudit.core.base_agent import BaseAgent
 from medagentaudit.common.agent_type import AgentType
 from medagentaudit.utils.parse_structured_output import parse_structured_output
-# TODO  同样保存为jsonl，且要注意错误的日志单独输出不写入正确jsonl里。
-class OpenCoder(BaseAgent):
+
+class Opencoding(BaseAgent):
     """
     open-coding automated open-coder for constructing full version taxonomy!
     """
@@ -35,15 +35,17 @@ class OpenCoder(BaseAgent):
             config_path: Path to the configuration file.
         """
         super().__init__(agent_id="open_coder", agent_type=AgentType.OPENCODER, config_path=config_path, model_key=model_key)
+        self.max_retries = max_retries
+        self.retry_delay = retry_delay
         print(f"Initializing open-coder agent, ID: open_coder, Model: {model_key}")
 
-    def annotate(self, system_message: str, user_message: Union[str, List[Dict[str, Any]]], qid: str) -> Optional[Dict[str, Any]]:
+    def opencoding(self, system_message: str, user_message: Union[str, List[Dict[str, Any]]], qid: str) -> Optional[Dict[str, Any]]:
         """
         Annotate a single case log using the LLM.
         """
         user_message["content"] = [item for item in user_message["content"] if item.get("type") != "image_url"]
         retries = 0
-        annotation_log = {
+        opencoding_log = {
             "qid": qid,
             "model_name": self.model_name,
             "request": {
@@ -65,152 +67,134 @@ class OpenCoder(BaseAgent):
 
                 if result is None:
                     raise ValueError("Could not extract valid JSON from response")
-                annotation_log["parsed_output"] = result
-                annotation_log["reasoning_content"] = reasoning_content
-                return annotation_log
+                opencoding_log["parsed_output"] = result
+                opencoding_log["reasoning_content"] = reasoning_content
+                return opencoding_log
 
             except Exception as e:
                 retries += 1
                 error_message = f"LLM API call error for qid {qid} (attempt {retries}/{self.max_retries}): {e}"
                 print(error_message)
-                annotation_log["error"] = error_message
+                opencoding_log["error"] = error_message
                 if retries >= self.max_retries:
-                    annotation_log["error"] = str(e)
+                    opencoding_log["error"] = str(e)
                     print(f"LLM API call failed for qid {qid} after all retries.")
-                    return annotation_log
-                return annotation_log
+                    return opencoding_log
+                return opencoding_log
 
-def load_text_file(file_path: str) -> str:
-    """从文件加载纯文本内容"""
-    try:
-        with open(file_path, 'r', encoding='utf-8') as f:
-            return f.read()
-    except FileNotFoundError:
-        print(f"Critical Error: Required file not found at {file_path}")
-        exit()
+def gen_collaboration_text(case_history):
+    '''
+    This function is designed to generate the text description of the multi-agent collaboration process based on the case history.
+    The generated text will be used for human evaluation to understand the multi-agent collaboration process.
+    '''
+    collaboration_text = ""
+    if "rounds" in case_history and case_history["rounds"]:
+        for r in case_history["rounds"]:
+            round_num = r.get("round", "Unknown")
+            collaboration_text += f"# --- [Round {round_num}] --- \n\n"
+            if r.get("opinions"):
+                for opinion in r.get("opinions", []):
+                    domain_agent_id= opinion.get("agent_id","").lower()
+                    past_domain_agent_answer = opinion["log"]["parsed_output"].get("answer", None)
+                    past_domain_agent_explanation = opinion["log"]["parsed_output"].get("explanation", None)
+                    role = opinion.get("specialty", None)
+                    if role is not None:
+                        collaboration_text += (f"### Domain agent ({domain_agent_id}, role:{role}) opinion:\n\n")
+                    else:
+                        collaboration_text += (f"### Domain agent ({domain_agent_id}) opinion:\n\n")
+                    if past_domain_agent_answer is not None:
+                        collaboration_text += (f"**Answer:** {past_domain_agent_answer}\n\n")
+                    if past_domain_agent_explanation is not None:
+                        collaboration_text += (f"**Explanation:** {past_domain_agent_explanation}\n\n")
 
+            if r.get("synthesis"): # not any MAS has the synthesis stage
+                if isinstance(r["synthesis"], list):
+                    for synth_item in r["synthesis"]:
+                        synth_log = synth_item.get("log", {}).get("parsed_output", {})
+                        past_ans = synth_log.get("answer", None)
+                        past_expl = synth_log.get("explanation", None)
+                        agent_id = synth_item.get("agent_id", None)
+                        role = synth_item.get("specialty", None)
+                        collaboration_text += (f"### Meta agent's synthesis:\n\n")
+                        if agent_id is not None:
+                            agent_id = agent_id.lower()
+                            collaboration_text += (f"**Meta agent id: {agent_id}**\n\n")
+                        if role is not None:
+                            collaboration_text += (f"**Role**:{role}\n\n")
+                        if past_ans is not None:
+                            collaboration_text += (f"**Group lead ({agent_id}) answer:** {past_ans}\n\n")
+                        if past_expl is not None:
+                            collaboration_text += (f"**Group lead explanation:** {past_expl}\n\n")
+                elif isinstance(r["synthesis"], dict):
+                    collaboration_text += (f"### Meta agent synthesis:\n\n")
+                    agent_id = r["synthesis"].get("agent_id", None)
+                    if agent_id is not None:
+                        collaboration_text += (f"**Meta agent id: {agent_id}**\n\n")
+                    role = r["synthesis"].get("specialty", None)
+                    if role is not None:
+                        collaboration_text += (f"**Role**:{role}\n\n")
+                    past_synthesizer_answer = r["synthesis"]["parsed_output"].get("answer", None)
+                    past_synthesizer_explanation = r["synthesis"]["parsed_output"].get("explanation", None)
+                    if past_synthesizer_answer is not None:
+                        collaboration_text += (f"**Synthesizer answer:** {past_synthesizer_answer}\n\n")
+                    if past_synthesizer_explanation is not None:
+                        collaboration_text += (f"**Synthesizer explanation:** {past_synthesizer_explanation}\n\n")
 
-def parse_log(log_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-    """
-    parse log files generated by different multi-agent frameworks.
-    """
-    try:
-        qid = log_data['qid']
-        ground_truth = log_data.get('ground_truth')
-        predicted_answer = log_data.get('predicted_answer')
-        gt_str = str(ground_truth).strip() if ground_truth is not None else ""
-        pred_str = str(predicted_answer).strip() if predicted_answer is not None else ""
-        return {
-            "framework_name": "ColaCare",
-            "qid": qid,
-            "question": log_data['question'],
-            "options": log_data.get('options'),
-            "image_path": log_data.get('image_path'),
-            "ground_truth": ground_truth,
-            "predicted_answer": predicted_answer,
-            "is_correct": gt_str == pred_str,
-            "log_content": log_data
-        }
-    except KeyError as e:
-        print(f"Skipping log for ColaCare due to missing key: {e}")
-        return None
+            if r.get("reviews"): # not any MAS has the review stage
+                for review in r["reviews"]:
+                    past_domain_agent_review = review["log"]["parsed_output"].get("agree", None)
+                    past_domain_agent_review_reason = review["log"]["parsed_output"].get("reason", None)
+                    past_domain_agent_review_explanation = review["log"]["parsed_output"].get("explanation", None)
+                    past_domain_agent_review_answer = review["log"]["parsed_output"].get("answer", None)
+                    agent_id = review.get("agent_id", None)
+                    if agent_id: agent_id = agent_id.lower()
+                    collaboration_text += (f"### Domain agents ({agent_id}) review:\n\n")
+                    role = review.get("specialty", None)
+                    if agent_id is not None:
+                        collaboration_text += (f"**Agent id: {agent_id}**\n\n")
+                    if role is not None:
+                        collaboration_text += (f"**(role: {role})**\n\n")
+                    if past_domain_agent_review is not None:
+                        collaboration_text += (f"**Review result:** {past_domain_agent_review}\n\n")
+                    if past_domain_agent_review_reason is not None:
+                        collaboration_text += (f"**Review reason:** {past_domain_agent_review_reason}\n\n")
+                    if past_domain_agent_review_explanation is not None:
+                        collaboration_text += (f"**Review explanation:** {past_domain_agent_review_explanation}\n\n")
+                    if past_domain_agent_review_answer is not None:
+                        collaboration_text += (f"**Review answer:** {past_domain_agent_review_answer}\n\n")
 
-def parse_mdagents_log(log_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-    """解析由 MDAgents 框架生成的日志文件。"""
-    try:
-        qid = log_data['qid']
-        ground_truth = log_data.get('ground_truth')
-        predicted_answer = log_data.get('predicted_answer')
-        gt_str = str(ground_truth).strip() if ground_truth is not None else ""
-        pred_str = str(predicted_answer).strip() if predicted_answer is not None else ""
-        return {
-            "framework_name": "MDAgents",
-            "qid": qid,
-            "question": log_data['question'],
-            "options": log_data.get('options'),
-            "image_path": log_data.get('image_path'),
-            "ground_truth": ground_truth,
-            "predicted_answer": predicted_answer,
-            "is_correct": gt_str == pred_str,
-            "log_content": log_data.get('process_log', log_data) # 核心日志在 process_log 中
-        }
-    except KeyError as e:
-        print(f"Skipping log for MDAgents due to missing key: {e}")
-        return None
-
-def parse_medagent_log(log_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-    """解析由 MedAgent 框架生成的日志文件。"""
-    try:
-        qid = log_data['qid']
-        # 信息嵌套在 input_data 字段中
-        input_data = log_data.get('input_data', {})
-        ground_truth = input_data.get('ground_truth')
-        predicted_answer = log_data.get('predicted_answer')
-        gt_str = str(ground_truth).strip() if ground_truth is not None else ""
-        pred_str = str(predicted_answer).strip() if predicted_answer is not None else ""
-        return {
-            "framework_name": "MedAgent",
-            "qid": qid,
-            "question": input_data.get('question'),
-            "options": input_data.get('options'),
-            "image_path": input_data.get('image_path'),
-            "ground_truth": ground_truth,
-            "predicted_answer": predicted_answer,
-            "is_correct": gt_str == pred_str,
-            "log_content": log_data.get('full_consultation_log', log_data) # 核心日志在 full_consultation_log 中
-        }
-    except KeyError as e:
-        print(f"Skipping log for MedAgent due to missing key: {e}")
-        return None
-
-def parse_reconcile_log(log_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-    """解析由 ReConcile 框架生成的日志文件。"""
-    try:
-        qid = log_data['qid']
-        ground_truth = log_data.get('ground_truth')
-        predicted_answer = log_data.get('predicted_answer')
-        gt_str = str(ground_truth).strip() if ground_truth is not None else ""
-        pred_str = str(predicted_answer).strip() if predicted_answer is not None else ""
-        return {
-            "framework_name": "ReConcile",
-            "qid": qid,
-            "question": log_data['question'],
-            "options": log_data.get('options'),
-            "image_path": log_data.get('image_path'),
-            "ground_truth": ground_truth,
-            "predicted_answer": predicted_answer,
-            "is_correct": gt_str == pred_str,
-            "log_content": log_data.get('case_history', {}).get('discussion_history', log_data) # 核心日志在 case_history -> discussion_history
-        }
-    except KeyError as e:
-        print(f"Skipping log for ReConcile due to missing key: {e}")
-        return None
-
-def get_framework_parser(framework_name: str) -> Optional[Callable[[Dict[str, Any]], Optional[Dict[str, Any]]]]:
-    """根据框架名称返回相应的解析器函数。"""
-    parsers = {
-        "ColaCare": parse_colacare_log,
-        "MDAgents": parse_mdagents_log,
-        "MedAgent": parse_medagent_log,  
-        "ReConcile": parse_reconcile_log
-    }
-    return parsers.get(framework_name)
+            if r.get("decision"): 
+                collaboration_text += (f"### Meta agent makes decision:\n\n")
+                agent_id = r["decision"].get("agent_id", None)
+                if agent_id: 
+                    agent_id = agent_id.lower()
+                    collaboration_text += (f"**Agent id: {agent_id}**\n\n")
+                role = r["decision"].get("specialty", None)
+                if role is not None:
+                    collaboration_text += (f"**Role**:{role}\n\n")
+                past_decision_answer = r["decision"]["parsed_output"].get("answer", None)
+                past_decision_explanation = r["decision"]["parsed_output"].get("explanation", None)
+                if past_decision_answer is not None:
+                    collaboration_text += (f"**Decision answer:** {past_decision_answer}\n\n")
+                if past_decision_explanation is not None:
+                    collaboration_text += (f"**Decision explanation:** {past_decision_explanation}\n\n")
+    return collaboration_text
 
 
 def build_open_coding_prompts(item: Dict[str, Any], mas: str) -> Tuple[Dict[str, Any], Dict[str, Any]]:
     """
     construct the prompt basing on the characteristics of different multi-agent frameworks, return system message and user message respectively.
     """
-    system_message = (f"You are a distinguished expert in medical artificial intelligence, "
+    system_text = (f"You are a distinguished expert in medical artificial intelligence, "
                       f"possessing profound domain expertise in both clinical medicine and the architecture of medical multi-agent systems.")
-
+    system_message = {"role": "system", "content": system_text}
     if mas.lower() == 'colacare':
         mas_description = (f"ColaCare employs a static role assignment strategy initialized before collaboration begins. The workflow follows a sequential structure: "
                            f"Initial Analysis: Assigned Doctor Agents independently provide their initial medical opinions based on the case. "
                            f"Synthesis: A Meta Agent aggregates these disparate opinions to formulate a preliminary conclusion. "
                            f"Peer Review: Doctor Agents review this preliminary conclusion, indicating their position (Agree/Disagree) and providing the rationale for their judgment. "
                            f"Decision Making: The Decision-Maker analyzes the full context of the reviews to determine the final conclusion. "
-                           f"The system outputs a final answer only when a unanimous consensus is reached among all reviewers or when the maximum number of discussion rounds is exhausted.")
+                           f"The system outputs a final answer only when a unanimous consensus is reached among all reviewers or when the maximum number of discussion rounds is exhausted. ")
     elif mas.lower() == 'mac':
         mas_description = (f"The MAC system operates without specific role assignments (e.g., cardiologist, neurologist); instead, all participating agents are prompted to act as undifferentiated, general medical experts. "
                            f"The collaborative workflow follows an iterative consensus mechanism: "
@@ -218,7 +202,7 @@ def build_open_coding_prompts(item: Dict[str, Any], mas: str) -> Tuple[Dict[str,
                            f"2. Supervisor Evaluation: A Supervisor agent synthesizes these inputs to evaluate whether a consensus has been reached among the doctor agents. "
                            f"3. Decision or Iteration: "
                            f"- If the Supervisor determines that a consensus exists, it outputs the final answer and concludes the session. "
-                           f"- If no consensus is found, the Supervisor triggers a new round of discussion for further deliberation.")
+                           f"- If no consensus is found, the Supervisor triggers a new round of discussion for further deliberation. ")
     elif mas.lower() == 'healthcareagent':
         mas_description = (f"The HealthcareAgent framework operates through a structured \"Plan-Analyze-Review-Decide\" workflow designed to ensure safety and accuracy in clinical reasoning: "
                            f"-Planning & Inquiry: The system first evaluates the clarity of the medical problem. "
@@ -226,7 +210,7 @@ def build_open_coding_prompts(item: Dict[str, Any], mas: str) -> Tuple[Dict[str,
                            f"-Initial Analysis: A domain agent performs the preliminary medical analysis and diagnostic reasoning based on the (potentially enriched) context. "
                            f"-Safety & Ethics Review: The initial analysis undergoes a rigorous review by specialized Safety & Ethics Reviewers. "
                            f"This stage includes specific checks for Medical Ethics, Medical Risks, and Medical Errors. "
-                           f"-Decision Making: Finally, a Decision-maker aggregates the initial analysis along with the feedback from all safety reviewers to formulate the final clinical decision.")
+                           f"-Decision Making: Finally, a Decision-maker aggregates the initial analysis along with the feedback from all safety reviewers to formulate the final clinical decision. ")
     elif mas.lower() == 'mdagents':
         mas_description = (f"MDAgents utilizes an adaptive framework that first assesses the complexity of the medical query (Basic, Intermediate, or Advanced) to determine the collaboration structure. "
                            f"1. Intermediate Complexity: "
@@ -236,7 +220,7 @@ def build_open_coding_prompts(item: Dict[str, Any], mas: str) -> Tuple[Dict[str,
                             f"-Recruitment: The system recruits multiple specialized groups (default: 3 groups, including an Initial Assessment Team and a Final Review and Decision Team [FDT], totaling 9 experts. "
                             f"-Hierarchy: Each group operates under a Team Leader. "
                             f"-Process: The IDT reports first, followed by intermediate groups, and finally the FDT. "
-                            f"The workflow culminates in a report generated by the team leaders, which is then used by Decision-Maker to render the final diagnosis.")
+                            f"The workflow culminates in a report generated by the team leaders, which is then used by Decision-Maker to render the final diagnosis. ")
     elif mas.lower() == 'medagent':
         mas_description = (
             f"MedAgent operates on a consensus-driven, multi-stage collaboration framework: "
@@ -244,7 +228,7 @@ def build_open_coding_prompts(item: Dict[str, Any], mas: str) -> Tuple[Dict[str,
             f"Initial Analysis: Each recruited expert conducts a preliminary analysis of the case. "
             f"Synthesis: A dedicated Synthesizer agent aggregates the distinct viewpoints from the domain experts into a unified preliminary answer. "
             f"Review & Feedback: The domain experts review the Synthesizer's output. They must explicitly state whether they agree with the synthesis and provide their own revised answers/reasoning. "
-            f"Conditional Decision-Making: The Decision-maker finalizes the conclusion only when all domain agents reach a unanimous consensus (all agree) or when the maximum number of discussion rounds is reached. If consensus is not met, the system proceeds to the next round of collaboration."
+            f"Conditional Decision-Making: The Decision-maker finalizes the conclusion only when all domain agents reach a unanimous consensus (all agree) or when the maximum number of discussion rounds is reached. If consensus is not met, the system proceeds to the next round of collaboration. "
         )
     elif mas.lower() == 'reconcile':
         mas_description = (
@@ -252,134 +236,118 @@ def build_open_coding_prompts(item: Dict[str, Any], mas: str) -> Tuple[Dict[str,
             f"It then proceeds to a multi-round discussion phase, which consists exclusively of a review process. "
             f"In this stage, the agents (acting as reviewers) evaluate the generated answers, providing their reasoning and their own determination of the correct answer. "
             f"The loop terminates if a consensus is reached among reviewers or if the maximum number of discussion rounds is exceeded. "
-            f"The final answer is determined through a weighted voting mechanism based on the confidence levels of the agents' outputs."
+            f"The final answer is determined through a weighted voting mechanism based on the confidence levels of the agents' outputs. "
         )
-    system_message = f"""
-    You are a meticulous AI Collaboration Analyst specialized in auditing medical multi-agent systems. 
-    
-    The multi-agent framework being analyzed is **{case_details['framework_name']}**.
-    Framework Intent: {mas_description}
-    
-    Your expertise includes analyzing collaboration patterns, identifying decision-making flaws, and classifying system behaviors according to established taxonomies.
-    """
+    # add the instruction
+    user_text_prompt = (
+        f"Your current task is to perform open coding on the multi-agent collaboration failure modes observed in this case, "
+        f"based on the overview of the medical multi-agent system and its collaboration logs for answering medical questions. "
+    )
+    # add the case information to the prompt
+    options = item['options']
+    options_text = "\nOptions:\n"
+    for key, value in options.items():
+        options_text += f"{key}: {value}\n"
+    user_text_prompt += (
+        f"The case's question is: '{item['question']}'. "
+        f"The question's answer options are: {options_text} "
+        f"The ground truth answer is: '{item['ground_truth']}'. "
+        f"The multi-agent system's predicted answer is: '{item['predicted_answer']}'. "
+    )
+    # if there is an image, add the information to the prompt
+    if item.get('image_path'):
+        user_text_prompt += f"Image provided: Yes\n"
 
-    # 2. 构建用户消息 (User Message) - 具体的案例数据
-    user_text_prompt = f"""
-    ### TASK ###
-    Audit the collaboration log of this medical multi-agent system case. Analyze the entire decision-making process, identify key success or failure patterns, and provide a structured JSON classification.
+    # add the MAS description to the prompt
+    user_text_prompt += f"The multi-agent system used in this case is {mas}. Here is a description of its workflow and collaboration process: {mas_description} "
 
-    ### TAXONOMY (Classification System) ###
-    You MUST classify the case into one or more categories from the following taxonomy. Distinguish between **Failure Modes** and **Success Patterns**.
+    # add the collaboration log info
+    case_history = item["case_history"]
+    collaboration_text = gen_collaboration_text(case_history)
+    user_text_prompt += f"The detailed multi-agent collaboration process is as follows: {collaboration_text} "
 
-    --- TAXONOMY START ---
-    {taxonomy_text}
-    --- TAXONOMY END ---
-
-    ### ANALYSIS STEPS ###
-    Perform a step-by-step analysis:
-
-    1. **Initial Assessment:** Compare initial opinions and reasoning from the first round of interactions. Are they unanimous, complementary, or contradictory?
-    2. **Interaction Dynamics Analysis:** Analyze how opinions evolve, the quality of any synthesis or debate, and how disagreements are handled. Does the process lead to convergence, or do agents talk past each other?
-    3. **Final Decision Analysis:** Examine how the final decision was reached. Was it based on consensus, majority vote, a weighted mechanism, or a final arbiter? Was any critical information lost?
-    4. **Classification:** Select the most prominent failure or success pattern as the `primary_classification`. List any other significant patterns in `secondary_classifications`. Provide specific evidence from the log.
-
-    ### CASE INFORMATION ###
-    - **QID**: {case_details['qid']}
-    - **Question**: "{case_details['question']}"
-    - **Options**: {json.dumps(case_details.get('options'), indent=2)}
-    - **Ground Truth Answer**: "{case_details['ground_truth']}"
-    - **Final Predicted Answer**: "{case_details['predicted_answer']}"
-    - **Is Final Answer Correct?**: {case_details['is_correct']}
-    """
-    if case_details.get('image_path'):
-        user_text_prompt += f"- **Image Provided**: Yes (see below)\n"
-
-    user_text_prompt += f"""
-    
-    ### INPUT LOG ###
-    Here is the complete collaboration log in JSON format. Analyze the interactions:
-
-    ```json
-    {json.dumps(case_details['log_content'], indent=2, ensure_ascii=False)}
-    ```
-
-    ### OUTPUT FORMAT ###
-    First, think through the analysis steps I provided internally.
-    After you have completed your analysis, your final output MUST BE a single, valid JSON object. Do not include any text, explanations, or markdown formatting before or after the JSON object. The JSON should strictly adhere to the following structure:
-
-    ```json
-    {{
-    "qid": "{case_details['qid']}",
-    "is_correct": {str(case_details['is_correct']).lower()},
-    "primary_classification": {{
-        "code": "string",
-        "name": "string",
-        "phase": "string"
-    }},
-    "secondary_classifications": [
-        {{
-        "code": "string",
-        "name": "string",
-        "phase": "string"
-        }}
-    ],
-    "evidence": "string",
-    "key_moment": "string"
-    }}
-    ```
-    """
+    # add the output format instruction
+    user_text_prompt += (
+        f"Return a JSON object containing a list. If no failure is found, the list should be empty. "
+        f"Each item in the list must include: "
+        f"1. 'failure_mode': A concise phrase defining the specific error. "
+        f"2. 'explanation': The rationale for this classification. "
+        f"3. 'evidence': Direct quote or summary of the specific log content that proves this failure. "
+        f"Example Output:"
+    )
+    user_text_prompt += """
+```json
+[
+  {
+    "failure_mode": "Inconsistent Reasoning among Agents",
+    "explanation": "...",
+    "evidence": "..."
+  },
+  {
+    "failure_mode": "Hallucinated Medical Guidelines",
+    "explanation": "...",
+    "evidence": "..."
+  }
+]
+```
+"""
+    user_content = [
+        {"type": "text", "text": user_text_prompt}
+    ]
     # 检查是否有图片需要处理
-    image_path = case_details.get("image_path")
+    image_path = item.get("image_path")
     if image_path and os.path.exists(image_path):
         base64_image = encode_image(image_path)
-        print(f"Encoded image for qid {case_details['qid']}: {image_path}")
-        user_content = [
-            {"type": "text", "text": user_text_prompt.strip()},
-            {
-                "type": "image_url",
-                "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"},
-            },
-        ]
+        print(f"Encoded image for qid {item['qid']}: {image_path}")
+        user_content.append({
+            "type": "image_url",
+            "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}
+        })
+        user_message = {
+            "role": "user",
+            "content": user_content
+        }
     else:
         if image_path:
-             print(f"Warning: Image path does not exist for qid {case_details['qid']}: {image_path}")
-        user_content = user_text_prompt.strip()
+             print(f"Warning: Image path does not exist for qid {item['qid']}: {image_path}")
+        user_message = {"role": "user", "content": [{"type": "text", "text": user_text_prompt}]}
         
-    return system_message.strip(), user_content
+    return system_message, user_message
 
 
-# --- 5. MAIN EXECUTION LOGIC ---
 
 def open_coding(item: Dict[str, Any], model_key: str, config_path: str, mas: str) -> Optional[Dict[str, Any]]:
     # prepare the system message and user message for open-coding
     system_message, user_message = build_open_coding_prompts(item=item, mas = mas)
-def main():
-    parser = argparse.ArgumentParser(
-        description="Automate the annotation of multi-agent collaboration logs using a taxonomy.",
-        formatter_class=argparse.RawTextHelpFormatter
-    )
-    parser.add_argument("--model", required=True,type=str, help="The LLM model to use for open-coding,the available models are: gpt-5.2, gemini-3-flash-preview")
-    parser.add_argument("--mas", required=True,type=str, help="The multiagent system to process.")
-    parser.add_argument("--mas_collab_llm", required=True,type=str, help="The main llm used in the multi-agent collaboration process")
-    parser.add_argument("--dataset", required=True,type=str, help="The dataset to process.")
-    parser.add_argument("--config_path", type=str, required=True,help="Path to the config.toml file,default = utils/config.toml")
-    args = parser.parse_args()
+    # initialize the open-coding agent
+    opencoder_agent = Opencoding(model_key=model_key, config_path=config_path)
+    # call the open-coding function to get the annotation result
+    opencoding_log = opencoder_agent.opencoding(system_message=system_message, user_message=user_message, qid=item["qid"])
+    return opencoding_log
 
+def main():
+    parser = argparse.ArgumentParser(description="Run open-coding on multi-agent collaboration logs for medical question answering tasks.")
+    parser.add_argument("--dataset", type=str, required=True, help="Specify dataset name,like PathVQA,VQA-RAD")
+    parser.add_argument("--config_path", type=Path, default=project_root / "config.toml",help="Path to the config.toml file")
+    parser.add_argument("--mas", type=str, required=True, help="Specify the multi-agent system name, like ColaCare, MAC, HealthcareAgent, MDAgents, MedAgent, Reconcile")
+    parser.add_argument("--llm", type=str, required=True, help="Specify the LLM used in the multi-agent system, like gpt-4.1, gpt-5.2")
+    args = parser.parse_args()
     mas = args.mas
     dataset = args.dataset
-    mas_collab_llm = args.mas_collab_llm
-    current_file_path = Path(__file__).resolve()
-    project_root = current_file_path.parents[2]
-    
+    llm = args.llm
+    config_path = args.config_path
+    jsonl_file_path = project_root / "logs" / "extracted_logs_for_open_coding" / f"{mas}_{dataset}_{llm}_open_coding.jsonl"
+    print(f"Loading data from {jsonl_file_path} for open-coding...")
+
     # adding logs
-    terminal_log_file = project_root / "logs" / f"open_coding_results" / f"{mas}_{dataset}_{mas_collab_llm}_terminal.log"
+    terminal_log_file = project_root / "logs" / f"open_coding_results" / f"{mas}_{dataset}_{llm}_terminal.log"
     terminal_log_file.parent.mkdir(parents=True, exist_ok=True)
     print(f"!!! Terminal output is being captured to: {terminal_log_file} !!!")
     sys.stdout = DualLogger(terminal_log_file, sys.stdout)
     sys.stderr = DualLogger(terminal_log_file, sys.stderr)
 
-    output_file = project_root / "logs" / f"open_coding_results" / f"{mas}_{dataset}_{mas_collab_llm}.jsonl"
-    error_output_file = project_root / "logs" / f"open_coding_results" / f"{mas}_{dataset}_{mas_collab_llm}_errors.jsonl"
+    output_file = project_root / "logs" / f"open_coding_results" / f"{mas}_{dataset}_{llm}.jsonl"
+    error_output_file = project_root / "logs" / f"open_coding_results" / f"{mas}_{dataset}_{llm}_errors.jsonl"
     output_file.parent.mkdir(parents=True, exist_ok=True)
     error_output_file.parent.mkdir(parents=True, exist_ok=True)
 
@@ -398,22 +366,16 @@ def main():
                     print("Warning: Found a corrupted line in jsonl file, skipping.")
         print(f"Found {len(existing_qids)} already processed cases. They will be skipped.")
 
-    # in this file, every mas running case is one line, and each file. has 20 cases, namely 20 lines per file.
-    collaboration_file_for_opencoding = project_root / "logs" / "extracted_logs_for_open_coding" / f"{mas}_{dataset}_{mas_collab_llm}_open_coding.jsonl"
-    data = load_jsonl(collaboration_file_for_opencoding)
-    print(f"Total cases to process: {len(data)}")
-
-    # --- Processing Loop ---
-    print(f"\n{'='*20} Processing MAS: {mas} , dataset: {dataset}, mas_collab_llm : {mas_collab_llm} {'='*20}")
-    
-    for item in tqdm(data, desc=f"Running open-coding on {dataset}-{mas}-{mas_collab_llm}"): 
+    jsonl_file = load_jsonl(jsonl_file_path)
+    for item in tqdm(jsonl_file, desc=f"Running open-coding on {dataset}-{mas}-{llm}"): 
         qid = item["qid"]
         if qid in existing_qids:
             print(f"Skipping {qid} - already processed")
             continue
-
-        try: 
-            open_coding_result = open_coding(item = item, model_key=args.model, config_path=args.config_path, mas = mas)
+        try:
+            open_coding_result = open_coding(item = item, model_key="gpt-5.2", config_path=config_path, mas = mas)
+            failure_lst = open_coding_result["parsed_output"]
+            reasoning_content = open_coding_result["reasoning_content"]
 
             item_result = {
                 "qid": qid,
@@ -421,9 +383,10 @@ def main():
                 "question": item["question"],
                 "options": item.get("options"),
                 "image_path": item.get("image_path"),
-                "ground_truth": item.get("answer"),
-                "predicted_answer": predicted_answer,
-                "case_history": full_case_history, # This now contains the full, detailed log
+                "ground_truth": item.get("ground_truth"),
+                "predicted_answer": item.get("predicted_answer"),
+                "failure_modes": failure_lst,
+                "reasoning_content": reasoning_content
             }
 
             save_jsonl(item_result, str(output_file))
