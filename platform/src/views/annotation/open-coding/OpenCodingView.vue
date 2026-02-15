@@ -286,11 +286,29 @@ watch(isAllDone, (done) => {
 const exportJson = () => {
   const name = annotatorName.value.trim()
   if (!name) return
+
+  const casesById = new Map(cases.value.map((c) => [c.caseId, c]))
+  const rawAnnotations = loadOpenCodingMap(name)
+  const enrichedAnnotations = Object.fromEntries(
+    Object.entries(rawAnnotations).map(([caseId, ann]) => {
+      const c = casesById.get(caseId)
+      return [
+        caseId,
+        {
+          ...ann,
+          dataset: c?.dataset,
+          mas: c?.framework,
+          llm: c?.llm,
+        },
+      ]
+    }),
+  )
+
   const payload = {
     schema: 'medagentaudit.open_coding.v1',
     annotator: { name },
     exportedAt: new Date().toISOString(),
-    annotations: loadOpenCodingMap(name),
+    annotations: enrichedAnnotations,
   }
   downloadJson(`${name}_opencoding.json`, payload)
 }

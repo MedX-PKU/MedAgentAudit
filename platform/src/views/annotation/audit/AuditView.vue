@@ -164,17 +164,20 @@ const nextTodoAuditId = computed(() => {
 const persistActive = () => {
   if (!auditorId.value || !activeItem.value) return
   if (!verdict.value) return
-    const annotation: AuditAnnotation = {
-      auditId: activeItem.value.auditId,
-      caseId: activeItem.value.caseId,
-      seq: activeItem.value.seq,
-      auditorId: auditorId.value,
-      taxonomyKey: activeItem.value.taxonomyKey as any,
-      verdict: verdict.value,
-      updatedAt: new Date().toISOString(),
-    }
-    saveAudit(auditorId.value, annotation)
-    annotations.value = loadAuditMap(auditorId.value)
+  const annotation: AuditAnnotation = {
+    auditId: activeItem.value.auditId,
+    caseId: activeItem.value.caseId,
+    seq: activeItem.value.seq,
+    auditorId: auditorId.value,
+    dataset: activeCase.value?.dataset,
+    mas: activeCase.value?.framework,
+    llm: activeCase.value?.llm,
+    taxonomyKey: activeItem.value.taxonomyKey as any,
+    verdict: verdict.value,
+    updatedAt: new Date().toISOString(),
+  }
+  saveAudit(auditorId.value, annotation)
+  annotations.value = loadAuditMap(auditorId.value)
 }
 
 watch(verdict, persistActive)
@@ -240,11 +243,29 @@ onBeforeUnmount(() => {
 const exportJson = () => {
   if (!auditorId.value) return
   const name = `Auditor_${auditorId.value}`
+
+  const casesById = new Map(auditCases.value.map((c) => [c.caseId, c]))
+  const rawAnnotations = loadAuditMap(auditorId.value)
+  const enrichedAnnotations = Object.fromEntries(
+    Object.entries(rawAnnotations).map(([auditId, ann]) => {
+      const c = casesById.get(ann.caseId)
+      return [
+        auditId,
+        {
+          ...ann,
+          dataset: ann.dataset ?? c?.dataset,
+          mas: ann.mas ?? c?.framework,
+          llm: ann.llm ?? c?.llm,
+        },
+      ]
+    }),
+  )
+
   const payload = {
     schema: 'medagentaudit.audit.v1',
     auditor: { id: auditorId.value, name },
     exportedAt: new Date().toISOString(),
-    annotations: loadAuditMap(auditorId.value),
+    annotations: enrichedAnnotations,
   }
   downloadJson(`${name}_audit.json`, payload)
 }

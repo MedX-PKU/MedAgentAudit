@@ -37,6 +37,12 @@ export type OpenCodingCase = QuestionBase &
 
 export type OpenCodingAnnotation = {
   caseId: string
+  /** Source dataset name for this case (copied from case metadata at export time). */
+  dataset?: DatasetName
+  /** MAS/framework name for this case (copied from case metadata at export time). */
+  mas?: FrameworkName
+  /** LLM identifier for this case (copied from case metadata at export time). */
+  llm?: string
   taxonomy: TaxonomyKey[]
   novelFailureMode?: string
   updatedAt: string
@@ -62,6 +68,12 @@ export type AuditAnnotation = {
   seq?: number
   /** Auditor who made this annotation (1-6); enables multi-auditor per case */
   auditorId?: number
+  /** Source dataset name for this case (copied from case metadata at export time). */
+  dataset?: DatasetName
+  /** MAS/framework name for this case (copied from case metadata at export time). */
+  mas?: FrameworkName
+  /** LLM identifier for this case (copied from case metadata at export time). */
+  llm?: string
   taxonomyKey: TaxonomyKey
   verdict: 'yes' | 'no'
   updatedAt: string

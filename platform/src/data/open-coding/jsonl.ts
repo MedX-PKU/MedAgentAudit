@@ -5,6 +5,9 @@ type JsonlRecord = {
   case_id?: string
   caseId?: string
   image_path?: string | null
+  dataset?: string
+  mas?: string
+  llm?: string
   question_description?: string
   question_type?: string
   options?: Record<string, string> | string[] | null
@@ -328,10 +331,15 @@ export const parseOpenCodingJsonl = (content: string, fileName: string): OpenCod
       const caseId = payload.qid || payload.case_id || payload.caseId || `${slugify(dataset)}-${idx + 1}`
       const imagePath = resolveImagePath(payload.image_path)
 
+      const detectedDataset = normalizeDataset(String(payload.dataset ?? dataset))
+      const detectedFramework = normalizeFramework(String(payload.mas ?? framework))
+      const llm = normalizeWhitespace(String(payload.llm ?? '')) || undefined
+
       return {
         caseId,
-        dataset,
-        framework,
+        dataset: detectedDataset,
+        framework: detectedFramework,
+        ...(llm ? { llm } : null),
         modality,
         question,
         ...(questionType ? { questionType } : null),
