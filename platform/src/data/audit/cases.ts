@@ -37,7 +37,7 @@ export const loadAuditCases = async (): Promise<AuditCase[]> => {
       ...it,
       caseId: c.caseId,
       seq,
-      auditId: `${c.framework}__${c.caseId}__seq_${seq}__${it.taxonomyKey}`,
+      auditId: `case_${seq}_${c.caseId}`,
     }))
   })
 

@@ -95,7 +95,8 @@ const activeCase = computed<OpenCodingCase | null>(() => {
 
 const activeAnnotation = computed<OpenCodingAnnotation | null>(() => {
   if (!activeCase.value) return null
-  return annotations.value[activeCase.value.caseId] ?? null
+  const key = `case_${activeCase.value.seq ?? 'unknown'}_${activeCase.value.caseId}`
+  return annotations.value[key] ?? null
 })
 
 type ParsedOutput = { answer?: string; explanation?: string }
@@ -168,7 +169,8 @@ const nextTodoCaseId = computed(() => {
   const start = idx >= 0 ? idx : 0
   for (let offset = 0; offset < list.length; offset++) {
     const c = list[(start + offset) % list.length]!
-    if (!annotations.value[c.caseId]) return c.caseId
+    const key = `case_${c.seq ?? 'unknown'}_${c.caseId}`
+    if (!annotations.value[key]) return c.caseId
   }
   return list[0]?.caseId ?? null
 })
@@ -192,6 +194,7 @@ const persistActive = () => {
   if (!annotatorName.value.trim() || !activeCase.value) return
   const annotation: OpenCodingAnnotation = {
     caseId: activeCase.value.caseId,
+    seq: activeCase.value.seq,
     taxonomy: taxonomy.value,
     novelFailureMode: novelFailureMode.value.trim() || undefined,
     updatedAt: new Date().toISOString(),
@@ -287,18 +290,18 @@ const exportJson = () => {
   const name = annotatorName.value.trim()
   if (!name) return
 
-  const casesById = new Map(cases.value.map((c) => [c.caseId, c]))
   const rawAnnotations = loadOpenCodingMap(name)
   const enrichedAnnotations = Object.fromEntries(
-    Object.entries(rawAnnotations).map(([caseId, ann]) => {
-      const c = casesById.get(caseId)
+    Object.entries(rawAnnotations).map(([key, ann]) => {
+      const c = cases.value.find((x) => x.caseId === ann.caseId && (ann.seq ? x.seq === ann.seq : true))
       return [
-        caseId,
+        key,
         {
           ...ann,
-          dataset: c?.dataset,
-          mas: c?.framework,
-          llm: c?.llm,
+          seq: ann.seq ?? c?.seq,
+          dataset: ann.dataset ?? c?.dataset,
+          mas: ann.mas ?? c?.framework,
+          llm: ann.llm ?? c?.llm,
         },
       ]
     }),
@@ -425,9 +428,9 @@ onBeforeUnmount(() => {
                 <div class="truncate font-medium text-slate-900">Case {{ c.seq }}: {{ c.caseId }}</div>
                 <div
                   class="shrink-0 rounded-md px-2 py-0.5 text-xs"
-                  :class="annotations[c.caseId] ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-600'"
+                  :class="annotations[`case_${c.seq ?? 'unknown'}_${c.caseId}`] ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-600'"
                 >
-                  {{ annotations[c.caseId] ? 'Done' : 'TODO' }}
+                  {{ annotations[`case_${c.seq ?? 'unknown'}_${c.caseId}`] ? 'Done' : 'TODO' }}
                 </div>
               </div>
               <div class="mt-1 text-xs text-slate-600">{{ c.dataset }} · {{ c.framework }} · {{ c.modality }}</div>

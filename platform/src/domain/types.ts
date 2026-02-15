@@ -37,6 +37,8 @@ export type OpenCodingCase = QuestionBase &
 
 export type OpenCodingAnnotation = {
   caseId: string
+  /** Stable 1-based sequence number for this case. */
+  seq?: number
   /** Source dataset name for this case (copied from case metadata at export time). */
   dataset?: DatasetName
   /** MAS/framework name for this case (copied from case metadata at export time). */

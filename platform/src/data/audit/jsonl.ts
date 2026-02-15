@@ -315,6 +315,7 @@ export const parseAuditJsonl = (content: string, fileName: string): AuditCase[] 
     const taxonomyKey = failureCode
 
     const uniqueKey = `${framework}__${caseId}__${failureCode}__${llm}`
+    // Temporary; will be overwritten in `loadAuditCases` to unified `case_{seq}_{caseId}`.
     const auditId = `${caseId}__${failureCode}`
     const item: AuditItem = {
       auditId,
