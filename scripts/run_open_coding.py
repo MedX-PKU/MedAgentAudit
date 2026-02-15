@@ -185,9 +185,9 @@ def build_open_coding_prompts(item: Dict[str, Any], mas: str) -> Tuple[Dict[str,
     """
     construct the prompt basing on the characteristics of different multi-agent frameworks, return system message and user message respectively.
     """
-    system_message = (f"You are a distinguished expert in medical artificial intelligence, "
+    system_text = (f"You are a distinguished expert in medical artificial intelligence, "
                       f"possessing profound domain expertise in both clinical medicine and the architecture of medical multi-agent systems.")
-
+    system_message = {"role": "system", "content": system_text}
     if mas.lower() == 'colacare':
         mas_description = (f"ColaCare employs a static role assignment strategy initialized before collaboration begins. The workflow follows a sequential structure: "
                            f"Initial Analysis: Assigned Doctor Agents independently provide their initial medical opinions based on the case. "
@@ -251,7 +251,7 @@ def build_open_coding_prompts(item: Dict[str, Any], mas: str) -> Tuple[Dict[str,
     user_text_prompt += (
         f"The case's question is: '{item['question']}'. "
         f"The question's answer options are: {options_text} "
-        f"The ground truth answer is: '{item['answer']}'. "
+        f"The ground truth answer is: '{item['ground_truth']}'. "
         f"The multi-agent system's predicted answer is: '{item['predicted_answer']}'. "
     )
     # if there is an image, add the information to the prompt
@@ -291,28 +291,30 @@ def build_open_coding_prompts(item: Dict[str, Any], mas: str) -> Tuple[Dict[str,
 ]
 ```
 """
-
+    user_content = [
+        {"type": "text", "text": user_text_prompt}
+    ]
     # 检查是否有图片需要处理
     image_path = item.get("image_path")
     if image_path and os.path.exists(image_path):
         base64_image = encode_image(image_path)
         print(f"Encoded image for qid {item['qid']}: {image_path}")
-        user_message = [
-            {"type": "text", "text": user_text_prompt},
-            {
-                "type": "image_url",
-                "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"},
-            },
-        ]
+        user_content.append({
+            "type": "image_url",
+            "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}
+        })
+        user_message = {
+            "role": "user",
+            "content": user_content
+        }
     else:
         if image_path:
              print(f"Warning: Image path does not exist for qid {item['qid']}: {image_path}")
-        user_message = [{"type": "text", "text": user_text_prompt}]
+        user_message = {"role": "user", "content": [{"type": "text", "text": user_text_prompt}]}
         
     return system_message, user_message
 
 
-# --- 5. MAIN EXECUTION LOGIC ---
 
 def open_coding(item: Dict[str, Any], model_key: str, config_path: str, mas: str) -> Optional[Dict[str, Any]]:
     # prepare the system message and user message for open-coding
@@ -322,6 +324,7 @@ def open_coding(item: Dict[str, Any], model_key: str, config_path: str, mas: str
     # call the open-coding function to get the annotation result
     opencoding_log = opencoder_agent.opencoding(system_message=system_message, user_message=user_message, qid=item["qid"])
     return opencoding_log
+
 def main():
     parser = argparse.ArgumentParser(description="Run open-coding on multi-agent collaboration logs for medical question answering tasks.")
     parser.add_argument("--dataset", type=str, required=True, help="Specify dataset name,like PathVQA,VQA-RAD")
@@ -371,11 +374,8 @@ def main():
             continue
         try:
             open_coding_result = open_coding(item = item, model_key="gpt-5.2", config_path=config_path, mas = mas)
-            parsed_output = open_coding_result["parsed_output"]
+            failure_lst = open_coding_result["parsed_output"]
             reasoning_content = open_coding_result["reasoning_content"]
-            failure_mode = parsed_output["failure_mode"]
-            explanation = parsed_output["explanation"]
-            evidence = parsed_output["evidence"]
 
             item_result = {
                 "qid": qid,
@@ -383,10 +383,9 @@ def main():
                 "question": item["question"],
                 "options": item.get("options"),
                 "image_path": item.get("image_path"),
-                "ground_truth": item.get("answer"),
-                "failure_mode": failure_mode,
-                "explanation": explanation,
-                "evidence": evidence,
+                "ground_truth": item.get("ground_truth"),
+                "predicted_answer": item.get("predicted_answer"),
+                "failure_modes": failure_lst,
                 "reasoning_content": reasoning_content
             }
 
