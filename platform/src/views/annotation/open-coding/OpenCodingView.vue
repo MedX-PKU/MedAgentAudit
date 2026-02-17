@@ -18,7 +18,7 @@ import { loadOpenCodingCases } from '../../../data/open-coding/cases'
 import { loadOpenCodingMap, saveOpenCoding } from './openCodingStorage'
 
 const annotatorName = ref('Annotator_1')
-const activeCaseId = ref<string | null>(null)
+const activeCaseKey = ref<string | null>(null)
 const isDrawerOpen = ref(false)
 const isInstructionPopoverOpen = ref(false)
 
@@ -47,14 +47,14 @@ watch(
   (name) => {
     if (!name.trim()) {
       annotations.value = {}
-      activeCaseId.value = null
+      activeCaseKey.value = null
       return
     }
     annotations.value = loadOpenCodingMap(name.trim())
     const list = cases.value
-    const currentValid = list.some((c) => c.caseId === activeCaseId.value)
-    if ((!activeCaseId.value || !currentValid) && list.length > 0) {
-      activeCaseId.value = list[0]!.caseId
+    const currentValid = list.some((c) => String(c.seq ?? 'unknown') === activeCaseKey.value)
+    if ((!activeCaseKey.value || !currentValid) && list.length > 0) {
+      activeCaseKey.value = String(list[0]!.seq ?? 'unknown')
     }
   },
   { immediate: true },
@@ -74,23 +74,23 @@ watch(
   cases,
   (list) => {
     if (!annotatorName.value.trim() || list.length === 0) return
-    const currentValid = list.some((c) => c.caseId === activeCaseId.value)
-    if ((!activeCaseId.value || !currentValid) && list.length > 0) {
-      activeCaseId.value = list[0]!.caseId
+    const currentValid = list.some((c) => String(c.seq ?? 'unknown') === activeCaseKey.value)
+    if ((!activeCaseKey.value || !currentValid) && list.length > 0) {
+      activeCaseKey.value = String(list[0]!.seq ?? 'unknown')
     }
   },
   { deep: true },
 )
 
-watch(activeCaseId, () => {
+watch(activeCaseKey, () => {
   // Keep drawer state when switching cases; close only popovers.
   isInstructionPopoverOpen.value = false
 })
 
 
 const activeCase = computed<OpenCodingCase | null>(() => {
-  if (!activeCaseId.value) return null
-  return cases.value.find((c) => c.caseId === activeCaseId.value) ?? null
+  if (!activeCaseKey.value) return null
+  return cases.value.find((c) => String(c.seq ?? 'unknown') === activeCaseKey.value) ?? null
 })
 
 const activeAnnotation = computed<OpenCodingAnnotation | null>(() => {
@@ -165,14 +165,14 @@ const completionToastShown = ref(false)
 
 const nextTodoCaseId = computed(() => {
   const list = cases.value
-  const idx = list.findIndex((c) => c.caseId === activeCaseId.value)
+  const idx = list.findIndex((c) => String(c.seq ?? 'unknown') === activeCaseKey.value)
   const start = idx >= 0 ? idx : 0
   for (let offset = 0; offset < list.length; offset++) {
     const c = list[(start + offset) % list.length]!
     const key = `case_${c.seq ?? 'unknown'}_${c.caseId}`
-    if (!annotations.value[key]) return c.caseId
+    if (!annotations.value[key]) return String(c.seq ?? 'unknown')
   }
-  return list[0]?.caseId ?? null
+  return list[0]?.seq != null ? String(list[0]!.seq) : null
 })
 
 const goNext = () => {
@@ -185,7 +185,7 @@ const goNext = () => {
     }, 1500)
     return
   }
-  activeCaseId.value = nextTodoCaseId.value
+  activeCaseKey.value = nextTodoCaseId.value
 }
 
 loadCases()
@@ -405,7 +405,7 @@ onBeforeUnmount(() => {
           <ProgressBar :done="doneCount" :total="cases.length" />
 
           <div class="flex flex-wrap gap-2">
-            <AppButton variant="secondary" :disabled="!annotatorName.trim()" @click="activeCaseId = nextTodoCaseId">
+            <AppButton variant="secondary" :disabled="!annotatorName.trim()" @click="activeCaseKey = nextTodoCaseId">
               Next TODO
             </AppButton>
             <AppButton variant="secondary" :disabled="!annotatorName.trim()" @click="exportJson">
@@ -421,8 +421,8 @@ onBeforeUnmount(() => {
               :key="c.caseId"
               type="button"
               class="w-full rounded-xl border p-3 text-left text-sm transition"
-              :class="c.caseId === activeCaseId ? 'border-blue-300 bg-blue-50' : 'border-slate-200 bg-white hover:bg-slate-50'"
-              @click="activeCaseId = c.caseId"
+              :class="String(c.seq ?? 'unknown') === activeCaseKey ? 'border-blue-300 bg-blue-50' : 'border-slate-200 bg-white hover:bg-slate-50'"
+              @click="activeCaseKey = String(c.seq ?? 'unknown')"
             >
               <div class="flex items-center justify-between gap-2">
                 <div class="truncate font-medium text-slate-900">Case {{ c.seq }}: {{ c.caseId }}</div>
