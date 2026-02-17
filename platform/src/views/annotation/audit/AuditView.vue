@@ -244,11 +244,12 @@ const exportJson = () => {
   if (!auditorId.value) return
   const name = `Auditor_${auditorId.value}`
 
+  const casesBySeq = new Map(auditCases.value.map((c) => [c.seq, c] as const).filter(([seq]) => seq != null))
   const casesById = new Map(auditCases.value.map((c) => [c.caseId, c]))
   const rawAnnotations = loadAuditMap(auditorId.value)
   const enrichedAnnotations = Object.fromEntries(
     Object.entries(rawAnnotations).map(([auditId, ann]) => {
-      const c = casesById.get(ann.caseId)
+      const c = (ann.seq != null ? casesBySeq.get(ann.seq) : null) ?? casesById.get(ann.caseId)
       return [
         auditId,
         {
