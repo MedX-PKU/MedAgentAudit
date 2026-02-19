@@ -320,6 +320,21 @@ const copyQuestion = async () => {
   }, 1200)
 }
 
+const copyFailureMode = async () => {
+  const code = activeFailureCode.value
+  const mode = activeFailureMode.value
+  if (!code && !mode) return
+  const title = `${code ?? ''}${code && mode?.name ? ': ' : ''}${mode?.name ?? ''}`.trim()
+  const definition = mode?.definition ?? ''
+  const payload = `${title}\n\n${definition}`.trim()
+  if (!payload) return
+  await copyToClipboard(payload)
+  toast.value = { show: true, message: 'Copied Failure Mode.' }
+  window.setTimeout(() => {
+    toast.value = { show: false, message: '' }
+  }, 1200)
+}
+
 const toggleInstructionPopover = () => {
   isInstructionPopoverOpen.value = !isInstructionPopoverOpen.value
 }
@@ -498,7 +513,10 @@ const toggleInstructionPopover = () => {
           <AppCard class="max-h-[86vh] overflow-auto p-5">
         <div class="space-y-4">
           <div>
-            <div class="text-sm font-semibold text-slate-900">Failure mode</div>
+            <div class="flex items-center justify-between gap-3">
+              <div class="text-sm font-semibold text-slate-900">Failure mode</div>
+              <AppButton variant="secondary" @click="copyFailureMode">Copy Failure Mode</AppButton>
+            </div>
             <div class="mt-2 rounded-xl border border-slate-200 bg-white p-3 text-sm text-slate-800">
               <div class="flex flex-wrap items-center gap-2">
                 <span class="font-medium text-slate-900">{{ activeFailureCode }}: {{ activeFailureMode?.name ?? '' }}</span>
