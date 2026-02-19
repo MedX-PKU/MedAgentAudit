@@ -18,6 +18,18 @@ import { loadOpenCodingCases } from '../../../data/open-coding/cases'
 import { loadOpenCodingMap, saveOpenCoding } from './openCodingStorage'
 
 const annotatorName = ref('Annotator_1')
+
+const ANNOTATOR_LABELS: Record<string, string> = {
+  Annotator_1: '顾磊',
+  Annotator_2: '桑浩然',
+}
+
+const annotatorOptions = computed(() =>
+  Object.entries(ANNOTATOR_LABELS).map(([value, label]) => ({
+    value,
+    label,
+  })),
+)
 const activeCaseKey = ref<string | null>(null)
 const isDrawerOpen = ref(false)
 const isInstructionPopoverOpen = ref(false)
@@ -391,10 +403,7 @@ onBeforeUnmount(() => {
             <div class="mt-2">
               <AppSelect
                 v-model="annotatorName"
-                :options="[
-                  { value: 'Annotator_1', label: 'Annotator #1' },
-                  { value: 'Annotator_2', label: 'Annotator #2' },
-                ]"
+                :options="annotatorOptions"
               />
             </div>
             <div class="mt-1 text-xs text-slate-600">

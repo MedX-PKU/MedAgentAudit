@@ -20,6 +20,22 @@ import { ANNOTATION_DRAWER_KEY, type AnnotationDrawerContext } from '../../../co
 type Verdict = 'yes' | 'no'
 
 const auditorIdText = ref('1')
+const AUDITOR_LABELS: Record<string, string> = {
+  '1': '顾磊',
+  '2': '桑浩然',
+  '3': '王子翔',
+  '4': '睢德昊',
+  '5': '薛在宥',
+  '6': 'Luna',
+}
+
+const auditorOptions = computed(() =>
+  Object.entries(AUDITOR_LABELS).map(([value, label]) => ({
+    value,
+    label,
+  })),
+)
+
 const auditorId = computed<AuditorId | null>(() => {
   const n = Number(auditorIdText.value)
   if (![1, 2, 3, 4, 5, 6].includes(n)) return null
@@ -325,14 +341,7 @@ const toggleInstructionPopover = () => {
             <div class="mt-2">
               <AppSelect
                 v-model="auditorIdText"
-                :options="[
-                  { value: '1', label: 'Auditor #1' },
-                  { value: '2', label: 'Auditor #2' },
-                  { value: '3', label: 'Auditor #3' },
-                  { value: '4', label: 'Auditor #4' },
-                  { value: '5', label: 'Auditor #5' },
-                  { value: '6', label: 'Auditor #6' },
-                ]"
+                :options="auditorOptions"
               />
             </div>
             <div class="mt-1 text-xs text-slate-600">
