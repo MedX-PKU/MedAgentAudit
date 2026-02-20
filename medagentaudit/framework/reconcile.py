@@ -1,37 +1,29 @@
 """
 ./medagentaudit/framework/reconcile.py
 """ 
-from openai import OpenAI
 import os
 import json
 import time
 from enum import Enum
-from typing import Dict, List, Any, Optional, Union, Tuple
+from typing import Dict, List, Any, Optional, Tuple
 import argparse
 from tqdm import tqdm
 from pathlib import Path
 import sys
 import traceback
-
+from medagentaudit.utils.json_utils import load_json, save_jsonl, preprocess_response_string
+from medagentaudit.utils.encode_image import encode_image
+from medagentaudit.utils.logger import DualLogger
+from medagentaudit.auditor.auditor_agent import AuditorAgent
+from medagentaudit.core.base_agent import BaseAgent
+from medagentaudit.common.agent_type import AgentType
+from medagentaudit.common.medical_specialty import MedicalSpecialty
 # Ensure project root is in path
 current_file_path = Path(__file__).resolve()
 current_file_name = Path(__file__).stem
-utils_root = current_file_path.parents[1] / "utils"
-auditor_root = current_file_path.parents[1] / "auditor"
-common_root = current_file_path.parents[1] / "common"
-core_root = current_file_path.parents[1] / "core"
 project_root = current_file_path.parents[2]
-sys.path.extend([str(utils_root), str(project_root), str(auditor_root), str(common_root), str(core_root)])
+sys.path.append(str(project_root))
 
-from json_utils import load_json, save_jsonl, preprocess_response_string
-from encode_image import encode_image
-from config_loader import get_config
-from logger import DualLogger
-from auditor_agent import AuditorAgent
-from base_agent import BaseAgent
-from agent_type import AgentType
-from medical_specialty import MedicalSpecialty
-from parse_structured_output import parse_structured_output
 
 class DiscussionPhase(Enum):
     """Enumeration of discussion phases in the Reconcile framework."""
@@ -122,8 +114,6 @@ class ReconcileAgent(BaseAgent):
         Generate a discussion response, now with viewpoint attribution and KEU/CCP integration.
         """
         print(f"Agent {self.agent_id} generating discussion response for round {current_round}")
-
-        own_previous_analysis = self.memory[-1]['response'] if self.memory else {}
 
         system_message = {
             "role": "system",
@@ -267,9 +257,11 @@ class ReconcileCoordinator:
         groups = {}
         for ans in answers:
             answer_value = ans.get("answer", "")
-            if not isinstance(answer_value, str): answer_value = str(answer_value)
+            if not isinstance(answer_value, str): 
+                answer_value = str(answer_value)
             answer_text = answer_value.strip().lower()
-            if not answer_text: continue
+            if not answer_text: 
+                continue
             
             confidence = ans.get("confidence", 0.0)
             if answer_text not in groups:
@@ -293,20 +285,27 @@ class ReconcileCoordinator:
 
     def _recalibrate(self, confidence: float) -> float:
         # (This method remains unchanged)
-        if confidence == 1.0: return 1.0
-        elif confidence >= 0.9: return 0.8
-        elif confidence >= 0.8: return 0.5
-        elif confidence > 0.6: return 0.3
-        else: return 0.1
+        if confidence == 1.0: 
+            return 1.0
+        elif confidence >= 0.9: 
+            return 0.8
+        elif confidence >= 0.8: 
+            return 0.5
+        elif confidence > 0.6: 
+            return 0.3
+        else: 
+            return 0.1
 
     def _weighted_vote(self, answers: List[Dict[str, Any]]) -> Tuple[str, Dict[str, Any]]:
         # (This method remains unchanged, but benefits from better logging)
         vote_weights = {}
         for ans in answers:
             answer_value = ans.get("answer", "")
-            if not isinstance(answer_value, str): answer_value = str(answer_value)
+            if not isinstance(answer_value, str): 
+                answer_value = str(answer_value)
             answer = answer_value.strip()
-            if not answer: continue
+            if not answer: 
+                continue
             
             confidence = ans.get("confidence", 0.0)
             weight = self._recalibrate(confidence)
@@ -329,9 +328,11 @@ class ReconcileCoordinator:
         valid_answers = []
         for ans in answers:
             answer_value = ans.get("answer", "")
-            if not isinstance(answer_value, str): answer_value = str(answer_value)
+            if not isinstance(answer_value, str): 
+                answer_value = str(answer_value)
             answer_text = answer_value.strip()
-            if answer_text: valid_answers.append(answer_text.lower())
+            if answer_text: 
+                valid_answers.append(answer_text.lower())
         return len(valid_answers) > 0 and len(set(valid_answers)) == 1
 
     def run_discussion(self,
@@ -630,7 +631,8 @@ def main():
             with open(output_file, 'r', encoding='utf-8') as f:
                 for line in f:
                     line = line.strip()
-                    if not line: continue
+                    if not line: 
+                        continue
                     try:
                         record = json.loads(line)
                         if "qid" in record:
