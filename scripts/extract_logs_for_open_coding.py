@@ -6,11 +6,12 @@ and we need to change the figure's path for online human evaluation.
 import random
 from pathlib import Path
 import sys
+from medagentaudit.utils.json_utils import save_jsonl, load_jsonl
+from medagentaudit.utils.logger import DualLogger
 current_file_path = Path(__file__).resolve()
 project_root = current_file_path.parents[1]
 sys.path.append(str(project_root))
-from medagentaudit.utils.json_utils import save_jsonl, load_jsonl
-from medagentaudit.utils.logger import DualLogger
+
 
 # Define paths
 MAS_COLLABORATION_FOR_OPENCODING_DIR = project_root / "logs" / "mas_collaboration_results" / "20260213"
@@ -25,7 +26,7 @@ def main():
     all_json_files = list(input_dir.glob("*.jsonl"))
     print(f"Found {len(all_json_files)} JSONL files in {input_dir}")
 
-    terminal_log_file = EXTRACTED_FOR_OPENCODING_LOG_DIR / f"extract_log_files_for_opencoding_terminal.log"
+    terminal_log_file = EXTRACTED_FOR_OPENCODING_LOG_DIR / "extract_log_files_for_opencoding_terminal.log"
     terminal_log_file.parent.mkdir(parents=True, exist_ok=True)
     print(f"!!! Terminal output is being captured to: {terminal_log_file} !!!")
     sys.stdout = DualLogger(terminal_log_file, sys.stdout)
@@ -37,12 +38,13 @@ def main():
         print(f"  - Total records: {len(data)}")
         # for MDAgents MAS, we need to extract the logs whose 'complextiy_level' is not 'basic'.
         data = [record for record in data if record.get("complexity_level") != "basic"]
-        open_coding_size = 20 ; open_coding_for_human_evaluation_size = 10
+        open_coding_size = 20
+        open_coding_for_human_evaluation_size = 10
         # randomly shuffle the data and select 20 json records for open coding and 10 other records for open coding human evaluation
         total_needed = open_coding_size + open_coding_for_human_evaluation_size
         if len(data) < total_needed:
             print(f"  [!] Warning: File {jsonl_file} only has {len(data)} valid records (less than {total_needed} required).")
-            print(f"      Taking all available records.")
+            print("Taking all available records.")
         random.seed(42)
         shuffled_data = data.copy()
         random.shuffle(shuffled_data)

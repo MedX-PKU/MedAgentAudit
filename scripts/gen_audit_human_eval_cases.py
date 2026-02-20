@@ -4,11 +4,12 @@ This script is designed to transform the extracted cases to structured human eva
 '''
 from pathlib import Path
 import sys
+from medagentaudit.utils.json_utils import save_jsonl, load_jsonl
+from medagentaudit.utils.logger import DualLogger
 current_file_path = Path(__file__).resolve()
 project_root = current_file_path.parents[1]
 sys.path.append(str(project_root))
-from medagentaudit.utils.json_utils import save_jsonl, load_jsonl
-from medagentaudit.utils.logger import DualLogger
+
 
 # Define paths
 EXTRACTED_LOGS_FOR_AUDIT_HUMAN_EVAL_DIR = project_root / "logs" / "extracted_logs_for_audit_human_evaluation"
@@ -49,7 +50,7 @@ def gen_collaboration_text(case_history):
     This function is designed to generate the text description of the multi-agent collaboration process based on the case history.
     The generated text will be used for human evaluation to understand the multi-agent collaboration process.
     '''
-    collaboration_text_start_text = (f"Here is the multi-agent collaboration process for this case:")
+    collaboration_text_start_text = ("Here is the multi-agent collaboration process for this case:")
     collaboration_text = ""
     if "rounds" in case_history and case_history["rounds"]:
         for r in case_history["rounds"]:
@@ -57,8 +58,8 @@ def gen_collaboration_text(case_history):
             collaboration_text += f"# --- [Round {round_num}] --- \n\n"
             if r.get("opinions"):
                 collaboration_text += (                
-                    f"## Task understanding phase:\n\n"
-                    f"each domain agent independently assesses the case and provides its own judgment along with the supporting rationale:\n\n"
+                    "## Task understanding phase:\n\n"
+                    "each domain agent independently assesses the case and provides its own judgment along with the supporting rationale:\n\n"
                 )
                 for opinion in r.get("opinions", []):
                     domain_agent_id= opinion.get("agent_id","").lower()
@@ -76,11 +77,11 @@ def gen_collaboration_text(case_history):
 
             if r.get("synthesis"): # not any MAS has the synthesis stage
                 collaboration_text += (                
-                f"## Multi-Agent collaborative discussion phase: (meta agent's synthesis)\n\n"
-                f"the meta agent synthesizes the opinions of the domain agents to form a preliminary conclusion.\n\n"
+                "## Multi-Agent collaborative discussion phase: (meta agent's synthesis)\n\n"
+                "the meta agent synthesizes the opinions of the domain agents to form a preliminary conclusion.\n\n"
                 )
                 collaboration_text += (                
-                    f"This stage encompasses the generation of a preliminary conclusion by the meta-agent:\n\n"
+                    "This stage encompasses the generation of a preliminary conclusion by the meta-agent:\n\n"
                 )
 
                 if isinstance(r["synthesis"], list):
@@ -90,7 +91,7 @@ def gen_collaboration_text(case_history):
                         past_expl = synth_log.get("explanation", None)
                         agent_id = synth_item.get("agent_id", None)
                         role = synth_item.get("specialty", None)
-                        collaboration_text += (f"### Meta agent's synthesis:\n\n")
+                        collaboration_text += ("### Meta agent's synthesis:\n\n")
                         if agent_id is not None:
                             agent_id = agent_id.lower()
                             collaboration_text += (f"**Meta agent id: {agent_id}**\n\n")
@@ -101,7 +102,7 @@ def gen_collaboration_text(case_history):
                         if past_expl is not None:
                             collaboration_text += (f"**Group lead explanation:** {past_expl}\n\n")
                 elif isinstance(r["synthesis"], dict):
-                    collaboration_text += (f"### Meta agent synthesis:\n\n")
+                    collaboration_text += ("### Meta agent synthesis:\n\n")
                     agent_id = r["synthesis"].get("agent_id", None)
                     if agent_id is not None:
                         collaboration_text += (f"**Meta agent id: {agent_id}**\n\n")
@@ -117,9 +118,9 @@ def gen_collaboration_text(case_history):
 
             if r.get("reviews"): # not any MAS has the review stage
                 collaboration_text += (
-                    f"## Multi-Agent collaborative discussion phase (domain agents review):\n\n"
-                    f"this stage encompasses a review from domain agents providing their perspectives and rationales. "
-                    f"It includes cross-evaluation among domain agents, where they exchange viewpoints to refine the collective outcome.\n\n"
+                    "## Multi-Agent collaborative discussion phase (domain agents review):\n\n"
+                    "this stage encompasses a review from domain agents providing their perspectives and rationales. "
+                    "It includes cross-evaluation among domain agents, where they exchange viewpoints to refine the collective outcome.\n\n"
                 )
                 for review in r["reviews"]:
                     past_domain_agent_review = review["log"]["parsed_output"].get("agree", None)
@@ -127,7 +128,8 @@ def gen_collaboration_text(case_history):
                     past_domain_agent_review_explanation = review["log"]["parsed_output"].get("explanation", None)
                     past_domain_agent_review_answer = review["log"]["parsed_output"].get("answer", None)
                     agent_id = review.get("agent_id", None)
-                    if agent_id: agent_id = agent_id.lower()
+                    if agent_id: 
+                        agent_id = agent_id.lower()
                     collaboration_text += (f"### Domain agents ({agent_id}) review:\n\n")
                     role = review.get("specialty", None)
                     if agent_id is not None:
@@ -145,10 +147,10 @@ def gen_collaboration_text(case_history):
 
             if r.get("decision"): 
                 collaboration_text += (                
-                    f"## Final decision-making phase: \n\n"
-                    f"this stage encompasses the final decision-making process, where the meta-agent consolidates the insights from previous stages to arrive at a conclusive answer:\n\n"
+                    "## Final decision-making phase: \n\n"
+                    "this stage encompasses the final decision-making process, where the meta-agent consolidates the insights from previous stages to arrive at a conclusive answer:\n\n"
                 )
-                collaboration_text += (f"### Meta agent makes decision:\n\n")
+                collaboration_text += ("### Meta agent makes decision:\n\n")
                 agent_id = r["decision"].get("agent_id", None)
                 if agent_id: 
                     agent_id = agent_id.lower()
@@ -168,7 +170,7 @@ def main():
     all_json_files = list(input_dir.glob("*.jsonl"))
     print(f"Found {len(all_json_files)} JSONL files in {input_dir}")
 
-    terminal_log_file = STRUCTURED_LOGS_FOR_AUDIT_HUMAN_EVAL_DIR / f"structured_logs_for_audit_human_eval_terminal.log"
+    terminal_log_file = STRUCTURED_LOGS_FOR_AUDIT_HUMAN_EVAL_DIR / "structured_logs_for_audit_human_eval_terminal.log"
     terminal_log_file.parent.mkdir(parents=True, exist_ok=True)
     print(f"!!! Terminal output is being captured to: {terminal_log_file} !!!")
     sys.stdout = DualLogger(terminal_log_file, sys.stdout)

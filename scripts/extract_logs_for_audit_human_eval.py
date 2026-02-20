@@ -3,15 +3,17 @@
 This script is designed to extract and preprocess logs from the MAS collaboration results (audit part) for audit human evaluation.
 and we need to change the figure's path for online human evaluation.
 '''
-import random
-random.seed(42)
+
 from pathlib import Path
 import sys
+from medagentaudit.utils.json_utils import save_jsonl, load_jsonl
+from medagentaudit.utils.logger import DualLogger
+import random
+random.seed(42)
 current_file_path = Path(__file__).resolve()
 project_root = current_file_path.parents[1]
 sys.path.append(str(project_root))
-from medagentaudit.utils.json_utils import save_jsonl, load_jsonl
-from medagentaudit.utils.logger import DualLogger
+
 
 # Define paths
 MAS_COLLABORATION_AUDIT_DIR = project_root / "logs" / "audit_results" / "20260213"
@@ -23,7 +25,7 @@ def main():
     all_jsonl_files = list(input_dir.glob("*.jsonl"))
     print(f"Found {len(all_jsonl_files)} JSONL files in {input_dir}")
 
-    terminal_log_file = EXTRACTED_FOR_AUDIT_HUMAN_eval_LOG_DIR / f"extract_log_files_for_audit_human_eval_terminal.log"
+    terminal_log_file = EXTRACTED_FOR_AUDIT_HUMAN_eval_LOG_DIR / "extract_log_files_for_audit_human_eval_terminal.log"
     terminal_log_file.parent.mkdir(parents=True, exist_ok=True)
     print(f"!!! Terminal output is being captured to: {terminal_log_file} !!!")
     sys.stdout = DualLogger(terminal_log_file, sys.stdout)
