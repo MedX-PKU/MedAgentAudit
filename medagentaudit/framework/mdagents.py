@@ -4,7 +4,6 @@
 
 import os
 import argparse
-from openai import OpenAI
 from enum import Enum
 from typing import Dict, Any, Optional, List, Union, Tuple
 from tqdm import tqdm
@@ -12,22 +11,17 @@ from pathlib import Path
 import json
 import time
 import sys
+from medagentaudit.utils.logger import DualLogger
+from medagentaudit.utils.encode_image import encode_image
+from medagentaudit.utils.json_utils import load_json, save_jsonl, preprocess_response_string
+from medagentaudit.auditor.auditor_agent import AuditorAgent
+from medagentaudit.core.base_agent import BaseAgent
+from medagentaudit.common.agent_type import AgentType
+from medagentaudit.common.medical_specialty import MedicalSpecialty
 current_file_path = Path(__file__).resolve()
 current_file_name = current_file_path.stem
-utils_root = current_file_path.parents[1] / "utils"
-auditor_root = current_file_path.parents[1] / "auditor"
-common_root = current_file_path.parents[1] / "common"
-core_root = current_file_path.parents[1] / "core"
 project_root = current_file_path.parents[2]
-sys.path.extend([str(utils_root), str(project_root), str(auditor_root), str(common_root), str(core_root)])
-from config_loader import get_config
-from logger import DualLogger
-from encode_image import encode_image
-from json_utils import load_json, save_jsonl, preprocess_response_string
-from auditor_agent import AuditorAgent
-from base_agent import BaseAgent
-from agent_type import AgentType
-from medical_specialty import MedicalSpecialty
+sys.path.append(str(project_root))
 
 # --- Constants and Enums ---
 
@@ -133,7 +127,7 @@ class Group:
             delivery_prompt += f"Options:\n{options_str}\n"
 
         if self.question_context.get('image_path'):
-            delivery_prompt += f"An associated image is provided.\n"
+            delivery_prompt += "An associated image is provided.\n"
 
         delivery_prompt += "--- End Query ---\n\nProvide a concise summary of required investigations or your direct analysis if no assistants."
 
@@ -180,7 +174,7 @@ class Group:
                 investigation_prompt += f"Options:\n{options_str}\n"
 
             if self.question_context.get('image_path'):
-                investigation_prompt += f"(Image provided)\n"
+                investigation_prompt += "(Image provided)\n"
 
             investigation_prompt += "\nKeep your response focused and relevant to the group's goal."
 
@@ -279,7 +273,7 @@ class Group:
             synthesis_prompt += "Respond in JSON format with 'answer' and 'explanation' fields.\n"
 
         if self.question_context.get('image_path'):
-            synthesis_prompt += f"(Image provided)\n"
+            synthesis_prompt += "(Image provided)\n"
         
         
         final_report_str, reasoning_content, system_message, user_message = self.lead_agent.chat(
@@ -1150,7 +1144,8 @@ class MDAgentsFramework:
                 with open(self.log_file, 'r', encoding='utf-8') as f:
                     for line in f:
                         line = line.strip()
-                        if not line: continue
+                        if not line: 
+                            continue
                         try:
                             record = json.loads(line)
                             if "qid" in record:
