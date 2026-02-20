@@ -1,11 +1,9 @@
-import sys
 import os
 import time
 class DualLogger:
     def __init__(self, filepath, stream, max_logs = 2):
         self.terminal = stream
         self.filepath = os.path.abspath(filepath)
-        log_dir = os.path.dirname(self.filepath)
         self.log = open(self.filepath, "a", encoding="utf-8")
 
         # every start we write a separator line with timestamp
