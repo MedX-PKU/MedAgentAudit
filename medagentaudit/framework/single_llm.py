@@ -1,31 +1,24 @@
 """
 ./medagentaudit/framework/single_llm.py
 """
-from openai import OpenAI
 import json
-from enum import Enum
-from typing import Dict, Any, Optional, List, Tuple
+from typing import Dict, Any, Optional, List
 import time
 import argparse
 from tqdm import tqdm
 import sys
 from pathlib import Path
+from medagentaudit.utils.logger import DualLogger
+from medagentaudit.utils.encode_image import encode_image
+from medagentaudit.utils.json_utils import load_json, save_jsonl
+from medagentaudit.core.base_agent import BaseAgent
+from medagentaudit.common.agent_type import AgentType
 
 # Ensure project root is in path
 current_file_path = Path(__file__).resolve()
 current_file_name = Path(__file__).stem
-utils_root = current_file_path.parents[1] / "utils"
-auditor_root = current_file_path.parents[1] / "auditor"
-common_root = current_file_path.parents[1] / "common"
-core_root = current_file_path.parents[1] / "core"
 project_root = current_file_path.parents[2]
-sys.path.extend([str(utils_root), str(project_root), str(auditor_root), str(common_root), str(core_root)])
-
-from logger import DualLogger
-from encode_image import encode_image
-from json_utils import load_json, save_jsonl
-from base_agent import BaseAgent
-from agent_type import AgentType
+sys.path.append(str(project_root))
 
 class SingleModelInference(BaseAgent):
     """
@@ -207,16 +200,16 @@ def main():
 
     main_llm = args.model_key
 
-    terminal_log_file = project_root / "logs" / f"single_llm" / timestamp/ f"{dataset_name}_{main_llm}_terminal.log"
+    terminal_log_file = project_root / "logs" / "single_llm" / timestamp/ f"{dataset_name}_{main_llm}_terminal.log"
     terminal_log_file.parent.mkdir(parents=True, exist_ok=True)
     print(f"!!! Terminal output is being captured to: {terminal_log_file} !!!")
     sys.stdout = DualLogger(terminal_log_file, sys.stdout)
     sys.stderr = DualLogger(terminal_log_file, sys.stderr) # 捕获报错和tqdm进度条
 
     # Set up data path
-    data_path = project_root / "datasets" / "processed" / dataset_name / f"audit" / f"medqa_{dataset_name.lower()}_audit.json"
+    data_path = project_root / "datasets" / "processed" / dataset_name / "audit" / f"medqa_{dataset_name.lower()}_audit.json"
 
-    output_file = project_root / "logs" / f"single_llm" / timestamp / f"{dataset_name}_{main_llm}.jsonl"
+    output_file = project_root / "logs" / "single_llm" / timestamp / f"{dataset_name}_{main_llm}.jsonl"
     output_file.parent.mkdir(parents=True, exist_ok=True)
 
     print(f"Data path: {data_path}")
@@ -240,7 +233,8 @@ def main():
         with open(output_file, 'r', encoding='utf-8') as f:
             for line in f:
                 line = line.strip()
-                if not line: continue
+                if not line: 
+                    continue
                 try:
                     record = json.loads(line)
                     if "qid" in record:
