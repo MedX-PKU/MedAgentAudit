@@ -1,34 +1,27 @@
 """
 medagentaudit/medqa/multi_agent_colacare_audit.py
 """
-
-from openai import OpenAI
 import json
-from enum import Enum
-from typing import Dict, Any, Optional, List, Tuple
+from typing import Dict, Any, Optional, List
 import time
 import argparse
 from tqdm import tqdm
 import sys
 from pathlib import Path
-
+from medagentaudit.utils.logger import DualLogger
+from medagentaudit.utils.encode_image import encode_image
+from medagentaudit.utils.json_utils import load_json, save_jsonl, preprocess_response_string
+from medagentaudit.auditor.auditor_agent import AuditorAgent
+from medagentaudit.core.base_agent import BaseAgent
+from medagentaudit.common.agent_type import AgentType
+from medagentaudit.common.medical_specialty import MedicalSpecialty
+from medagentaudit.utils.parse_structured_output import parse_structured_output
 # Ensure project root is in path
 current_file_path = Path(__file__).resolve()
 current_file_name = Path(__file__).stem
-utils_root = current_file_path.parents[1] / "utils"
-auditor_root = current_file_path.parents[1] / "auditor"
-common_root = current_file_path.parents[1] / "common"
-core_root = current_file_path.parents[1] / "core"
 project_root = current_file_path.parents[2]
-sys.path.extend([str(utils_root), str(project_root), str(auditor_root), str(common_root)])
-from logger import DualLogger
-from encode_image import encode_image
-from json_utils import load_json, save_jsonl, preprocess_response_string
-from auditor_agent import AuditorAgent
-from base_agent import BaseAgent
-from agent_type import AgentType
-from medical_specialty import MedicalSpecialty
-from parse_structured_output import parse_structured_output
+sys.path.append(str(project_root))
+
 class DoctorAgent(BaseAgent):
     """Doctor agent with a medical specialty."""
 
@@ -63,9 +56,10 @@ class DoctorAgent(BaseAgent):
 
         if options:
             system_message["content"] += (
-                f"For multiple choice questions, ensure your 'answer' field contains the option letter (A, B, C, etc.) "
-                f"that best matches your conclusion. Be specific about which option you are selecting."
-            )
+'''
+For multiple choice questions, ensure your 'answer' field contains the option letter (A, B, C, etc.)
+that best matches your conclusion. Be specific about which option you are selecting."
+''')
 
         user_content = []
 
@@ -587,7 +581,6 @@ class MDTConsultation:
                 print(f"Doctor {i+1} ({doctor.specialty.value}) analyzing case")
                 opinion_log = doctor.analyze_case(question = question, options = options, image_path=image_path)
                 parsed_output = opinion_log["parsed_output"]
-                reasoning_content = opinion_log["reasoning_content"]
                 explanation = parsed_output.get("explanation", "")
                 answer = parsed_output.get("answer", "")
                 if task == "audit":
@@ -922,7 +915,8 @@ def main():
         with open(output_file, 'r', encoding='utf-8') as f:
             for line in f:
                 line = line.strip()
-                if not line: continue
+                if not line:
+                    continue
                 try:
                     record = json.loads(line)
                     if "qid" in record:
