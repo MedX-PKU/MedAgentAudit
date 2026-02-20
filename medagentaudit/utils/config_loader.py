@@ -1,4 +1,4 @@
-'''./MedagentAudit/utils/config_loader.py'''
+'''./medagentaudit/utils/config_loader.py'''
 import sys
 from pydantic import BaseModel, Field
 from pathlib import Path
