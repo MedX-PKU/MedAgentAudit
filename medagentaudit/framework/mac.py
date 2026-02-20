@@ -5,32 +5,24 @@
 import time
 import argparse
 import json
-from openai import OpenAI
-from enum import Enum
-from typing import Dict, Any, Optional, List, Union, Tuple
+from typing import Dict, Any, List, Union
 from tqdm import tqdm
 import sys
 from pathlib import Path
-
+from medagentaudit.utils.encode_image import encode_image
+from medagentaudit.utils.json_utils import load_json, save_jsonl, preprocess_response_string
+from medagentaudit.utils.logger import DualLogger
+from medagentaudit.auditor.auditor_agent import AuditorAgent
+from medagentaudit.core.base_agent import BaseAgent
+from medagentaudit.common.agent_type import AgentType
+from medagentaudit.common.medical_specialty import MedicalSpecialty
 # Ensure project root is in path
 current_file_path = Path(__file__).resolve()
 current_file_name = Path(__file__).stem
-utils_root = current_file_path.parents[1] / "utils"
-auditor_root = current_file_path.parents[1] / "auditor"
-common_root = current_file_path.parents[1] / "common"
-core_root = current_file_path.parents[1] / "core"
 project_root = current_file_path.parents[2]
-sys.path.extend([str(utils_root), str(project_root), str(auditor_root), str(common_root), str(core_root)])
+sys.path.append(str(project_root))
 # Ensure project root is in path
-from encode_image import encode_image
-from json_utils import load_json, save_jsonl, preprocess_response_string
-from config_loader import get_config
-from logger import DualLogger
-from auditor_agent import AuditorAgent
-from base_agent import BaseAgent
-from agent_type import AgentType
-from medical_specialty import MedicalSpecialty
-from parse_structured_output import parse_structured_output
+
 
 # Default settings from the paper and for the framework
 DEFAULT_DOCTOR_MODEL = "qwen-vl-max"
@@ -376,7 +368,8 @@ class MACFramework:
                 with open(self.log_file, 'r', encoding='utf-8') as f:
                     for line in f:
                         line = line.strip()
-                        if not line: continue
+                        if not line: 
+                            continue
                         try:
                             record = json.loads(line)
                             if "qid" in record:
