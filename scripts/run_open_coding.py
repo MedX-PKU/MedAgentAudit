@@ -5,22 +5,22 @@ import os
 import json
 import argparse
 import time
-from typing import Dict, Any, Callable, Optional, List, Union
+from typing import Dict, Any, Optional, List, Union
 from tqdm import tqdm
 import sys
 from typing import Tuple
 from pathlib import Path
+from medagentaudit.utils.logger import DualLogger
+from medagentaudit.utils.encode_image import encode_image
+from medagentaudit.utils.json_utils import load_jsonl, save_jsonl, preprocess_response_string
+from medagentaudit.core.base_agent import BaseAgent
+from medagentaudit.common.agent_type import AgentType
 # Ensure project root is in path
 current_file_path = Path(__file__).resolve()
 current_file_name = Path(__file__).stem
 project_root = current_file_path.parents[1]
 sys.path.append(str(project_root))
-from medagentaudit.utils.logger import DualLogger
-from medagentaudit.utils.encode_image import encode_image
-from medagentaudit.utils.json_utils import load_jsonl, save_jsonl, preprocess_response_string, load_json
-from medagentaudit.core.base_agent import BaseAgent
-from medagentaudit.common.agent_type import AgentType
-from medagentaudit.utils.parse_structured_output import parse_structured_output
+
 
 class Opencoding(BaseAgent):
     """
@@ -115,7 +115,7 @@ def gen_collaboration_text(case_history):
                         past_expl = synth_log.get("explanation", None)
                         agent_id = synth_item.get("agent_id", None)
                         role = synth_item.get("specialty", None)
-                        collaboration_text += (f"### Meta agent's synthesis:\n\n")
+                        collaboration_text += ("### Meta agent's synthesis:\n\n")
                         if agent_id is not None:
                             agent_id = agent_id.lower()
                             collaboration_text += (f"**Meta agent id: {agent_id}**\n\n")
@@ -126,7 +126,7 @@ def gen_collaboration_text(case_history):
                         if past_expl is not None:
                             collaboration_text += (f"**Group lead explanation:** {past_expl}\n\n")
                 elif isinstance(r["synthesis"], dict):
-                    collaboration_text += (f"### Meta agent synthesis:\n\n")
+                    collaboration_text += ("### Meta agent synthesis:\n\n")
                     agent_id = r["synthesis"].get("agent_id", None)
                     if agent_id is not None:
                         collaboration_text += (f"**Meta agent id: {agent_id}**\n\n")
@@ -147,7 +147,8 @@ def gen_collaboration_text(case_history):
                     past_domain_agent_review_explanation = review["log"]["parsed_output"].get("explanation", None)
                     past_domain_agent_review_answer = review["log"]["parsed_output"].get("answer", None)
                     agent_id = review.get("agent_id", None)
-                    if agent_id: agent_id = agent_id.lower()
+                    if agent_id: 
+                        agent_id = agent_id.lower()
                     collaboration_text += (f"### Domain agents ({agent_id}) review:\n\n")
                     role = review.get("specialty", None)
                     if agent_id is not None:
@@ -164,7 +165,7 @@ def gen_collaboration_text(case_history):
                         collaboration_text += (f"**Review answer:** {past_domain_agent_review_answer}\n\n")
 
             if r.get("decision"): 
-                collaboration_text += (f"### Meta agent makes decision:\n\n")
+                collaboration_text += ("### Meta agent makes decision:\n\n")
                 agent_id = r["decision"].get("agent_id", None)
                 if agent_id: 
                     agent_id = agent_id.lower()
@@ -185,63 +186,64 @@ def build_open_coding_prompts(item: Dict[str, Any], mas: str) -> Tuple[Dict[str,
     """
     construct the prompt basing on the characteristics of different multi-agent frameworks, return system message and user message respectively.
     """
-    system_text = (f"You are a distinguished expert in medical artificial intelligence, "
-                      f"possessing profound domain expertise in both clinical medicine and the architecture of medical multi-agent systems.")
+    system_text = (
+        "You are a distinguished expert in medical artificial intelligence, "
+        "possessing profound domain expertise in both clinical medicine and the architecture of medical multi-agent systems.")
     system_message = {"role": "system", "content": system_text}
     if mas.lower() == 'colacare':
-        mas_description = (f"ColaCare employs a static role assignment strategy initialized before collaboration begins. The workflow follows a sequential structure: "
-                           f"Initial Analysis: Assigned Doctor Agents independently provide their initial medical opinions based on the case. "
-                           f"Synthesis: A Meta Agent aggregates these disparate opinions to formulate a preliminary conclusion. "
-                           f"Peer Review: Doctor Agents review this preliminary conclusion, indicating their position (Agree/Disagree) and providing the rationale for their judgment. "
-                           f"Decision Making: The Decision-Maker analyzes the full context of the reviews to determine the final conclusion. "
-                           f"The system outputs a final answer only when a unanimous consensus is reached among all reviewers or when the maximum number of discussion rounds is exhausted. ")
+        mas_description = ("ColaCare employs a static role assignment strategy initialized before collaboration begins. The workflow follows a sequential structure: "
+                           "Initial Analysis: Assigned Doctor Agents independently provide their initial medical opinions based on the case. "
+                           "Synthesis: A Meta Agent aggregates these disparate opinions to formulate a preliminary conclusion. "
+                           "Peer Review: Doctor Agents review this preliminary conclusion, indicating their position (Agree/Disagree) and providing the rationale for their judgment. "
+                           "Decision Making: The Decision-Maker analyzes the full context of the reviews to determine the final conclusion. "
+                           "The system outputs a final answer only when a unanimous consensus is reached among all reviewers or when the maximum number of discussion rounds is exhausted. ")
     elif mas.lower() == 'mac':
-        mas_description = (f"The MAC system operates without specific role assignments (e.g., cardiologist, neurologist); instead, all participating agents are prompted to act as undifferentiated, general medical experts. "
-                           f"The collaborative workflow follows an iterative consensus mechanism: "
-                           f"1. Initial Analysis: In each round, multiple doctor agents first independently provide their initial analysis and reasoning regarding the case. "
-                           f"2. Supervisor Evaluation: A Supervisor agent synthesizes these inputs to evaluate whether a consensus has been reached among the doctor agents. "
-                           f"3. Decision or Iteration: "
-                           f"- If the Supervisor determines that a consensus exists, it outputs the final answer and concludes the session. "
-                           f"- If no consensus is found, the Supervisor triggers a new round of discussion for further deliberation. ")
+        mas_description = ("The MAC system operates without specific role assignments (e.g., cardiologist, neurologist); instead, all participating agents are prompted to act as undifferentiated, general medical experts. "
+                           "The collaborative workflow follows an iterative consensus mechanism: "
+                           "1. Initial Analysis: In each round, multiple doctor agents first independently provide their initial analysis and reasoning regarding the case. "
+                           "2. Supervisor Evaluation: A Supervisor agent synthesizes these inputs to evaluate whether a consensus has been reached among the doctor agents. "
+                           "3. Decision or Iteration: "
+                           "- If the Supervisor determines that a consensus exists, it outputs the final answer and concludes the session. "
+                           "- If no consensus is found, the Supervisor triggers a new round of discussion for further deliberation. ")
     elif mas.lower() == 'healthcareagent':
-        mas_description = (f"The HealthcareAgent framework operates through a structured \"Plan-Analyze-Review-Decide\" workflow designed to ensure safety and accuracy in clinical reasoning: "
-                           f"-Planning & Inquiry: The system first evaluates the clarity of the medical problem. "
-                           f"If the query is deemed ambiguous, it initiates an inquiry process, generating three relevant follow-up questions to enrich the context before proceeding. "
-                           f"-Initial Analysis: A domain agent performs the preliminary medical analysis and diagnostic reasoning based on the (potentially enriched) context. "
-                           f"-Safety & Ethics Review: The initial analysis undergoes a rigorous review by specialized Safety & Ethics Reviewers. "
-                           f"This stage includes specific checks for Medical Ethics, Medical Risks, and Medical Errors. "
-                           f"-Decision Making: Finally, a Decision-maker aggregates the initial analysis along with the feedback from all safety reviewers to formulate the final clinical decision. ")
+        mas_description = ("The HealthcareAgent framework operates through a structured \"Plan-Analyze-Review-Decide\" workflow designed to ensure safety and accuracy in clinical reasoning: "
+                           "-Planning & Inquiry: The system first evaluates the clarity of the medical problem. "
+                           "If the query is deemed ambiguous, it initiates an inquiry process, generating three relevant follow-up questions to enrich the context before proceeding. "
+                           "-Initial Analysis: A domain agent performs the preliminary medical analysis and diagnostic reasoning based on the (potentially enriched) context. "
+                           "-Safety & Ethics Review: The initial analysis undergoes a rigorous review by specialized Safety & Ethics Reviewers. "
+                           "This stage includes specific checks for Medical Ethics, Medical Risks, and Medical Errors. "
+                           "-Decision Making: Finally, a Decision-maker aggregates the initial analysis along with the feedback from all safety reviewers to formulate the final clinical decision. ")
     elif mas.lower() == 'mdagents':
-        mas_description = (f"MDAgents utilizes an adaptive framework that first assesses the complexity of the medical query (Basic, Intermediate, or Advanced) to determine the collaboration structure. "
-                           f"1. Intermediate Complexity: "
-                            f"-Recruitment:** The system dynamically recruits a panel of experts (default: 5) tailored to the specific medical query. "
-                            f"-Process: These experts conduct an independent Initial Analysis. Their findings are then aggregated and finalized by a Decision-Maker agent. "
-                            f"2. Advanced Complexity: "
-                            f"-Recruitment: The system recruits multiple specialized groups (default: 3 groups, including an Initial Assessment Team and a Final Review and Decision Team [FDT], totaling 9 experts. "
-                            f"-Hierarchy: Each group operates under a Team Leader. "
-                            f"-Process: The IDT reports first, followed by intermediate groups, and finally the FDT. "
-                            f"The workflow culminates in a report generated by the team leaders, which is then used by Decision-Maker to render the final diagnosis. ")
+        mas_description = ("MDAgents utilizes an adaptive framework that first assesses the complexity of the medical query (Basic, Intermediate, or Advanced) to determine the collaboration structure. "
+                           "1. Intermediate Complexity: "
+                            "-Recruitment:** The system dynamically recruits a panel of experts (default: 5) tailored to the specific medical query. "
+                            "-Process: These experts conduct an independent Initial Analysis. Their findings are then aggregated and finalized by a Decision-Maker agent. "
+                            "2. Advanced Complexity: "
+                            "-Recruitment: The system recruits multiple specialized groups (default: 3 groups, including an Initial Assessment Team and a Final Review and Decision Team [FDT], totaling 9 experts. "
+                            "-Hierarchy: Each group operates under a Team Leader. "
+                            "-Process: The IDT reports first, followed by intermediate groups, and finally the FDT. "
+                            "The workflow culminates in a report generated by the team leaders, which is then used by Decision-Maker to render the final diagnosis. ")
     elif mas.lower() == 'medagent':
         mas_description = (
-            f"MedAgent operates on a consensus-driven, multi-stage collaboration framework: "
-            f"Dynamic Recruitment: Based on the input medical problem, the system dynamically recruits relevant domain expert agents. "
-            f"Initial Analysis: Each recruited expert conducts a preliminary analysis of the case. "
-            f"Synthesis: A dedicated Synthesizer agent aggregates the distinct viewpoints from the domain experts into a unified preliminary answer. "
-            f"Review & Feedback: The domain experts review the Synthesizer's output. They must explicitly state whether they agree with the synthesis and provide their own revised answers/reasoning. "
-            f"Conditional Decision-Making: The Decision-maker finalizes the conclusion only when all domain agents reach a unanimous consensus (all agree) or when the maximum number of discussion rounds is reached. If consensus is not met, the system proceeds to the next round of collaboration. "
+            "MedAgent operates on a consensus-driven, multi-stage collaboration framework: "
+            "Dynamic Recruitment: Based on the input medical problem, the system dynamically recruits relevant domain expert agents. "
+            "Initial Analysis: Each recruited expert conducts a preliminary analysis of the case. "
+            "Synthesis: A dedicated Synthesizer agent aggregates the distinct viewpoints from the domain experts into a unified preliminary answer. "
+            "Review & Feedback: The domain experts review the Synthesizer's output. They must explicitly state whether they agree with the synthesis and provide their own revised answers/reasoning. "
+            "Conditional Decision-Making: The Decision-maker finalizes the conclusion only when all domain agents reach a unanimous consensus (all agree) or when the maximum number of discussion rounds is reached. If consensus is not met, the system proceeds to the next round of collaboration. "
         )
     elif mas.lower() == 'reconcile':
         mas_description = (
-            f"The system begins with an initial analysis by initializing multiple general medical experts (agents are not hard-coded with specific specialties). "
-            f"It then proceeds to a multi-round discussion phase, which consists exclusively of a review process. "
-            f"In this stage, the agents (acting as reviewers) evaluate the generated answers, providing their reasoning and their own determination of the correct answer. "
-            f"The loop terminates if a consensus is reached among reviewers or if the maximum number of discussion rounds is exceeded. "
-            f"The final answer is determined through a weighted voting mechanism based on the confidence levels of the agents' outputs. "
+            "The system begins with an initial analysis by initializing multiple general medical experts (agents are not hard-coded with specific specialties). "
+            "It then proceeds to a multi-round discussion phase, which consists exclusively of a review process. "
+            "In this stage, the agents (acting as reviewers) evaluate the generated answers, providing their reasoning and their own determination of the correct answer. "
+            "The loop terminates if a consensus is reached among reviewers or if the maximum number of discussion rounds is exceeded. "
+            "The final answer is determined through a weighted voting mechanism based on the confidence levels of the agents' outputs. "
         )
     # add the instruction
     user_text_prompt = (
-        f"Your current task is to perform open coding on the multi-agent collaboration failure modes observed in this case, "
-        f"based on the overview of the medical multi-agent system and its collaboration logs for answering medical questions. "
+        "Your current task is to perform open coding on the multi-agent collaboration failure modes observed in this case, "
+        "based on the overview of the medical multi-agent system and its collaboration logs for answering medical questions. "
     )
     # add the case information to the prompt
     options = item['options']
@@ -256,7 +258,7 @@ def build_open_coding_prompts(item: Dict[str, Any], mas: str) -> Tuple[Dict[str,
     )
     # if there is an image, add the information to the prompt
     if item.get('image_path'):
-        user_text_prompt += f"Image provided: Yes\n"
+        user_text_prompt += "Image provided: Yes\n"
 
     # add the MAS description to the prompt
     user_text_prompt += f"The multi-agent system used in this case is {mas}. Here is a description of its workflow and collaboration process: {mas_description} "
@@ -268,12 +270,12 @@ def build_open_coding_prompts(item: Dict[str, Any], mas: str) -> Tuple[Dict[str,
 
     # add the output format instruction
     user_text_prompt += (
-        f"Return a JSON object containing a list. If no failure is found, the list should be empty. "
-        f"Each item in the list must include: "
-        f"1. 'failure_mode': A concise phrase defining the specific error. "
-        f"2. 'explanation': The rationale for this classification. "
-        f"3. 'evidence': Direct quote or summary of the specific log content that proves this failure. "
-        f"Example Output:"
+        "Return a JSON object containing a list. If no failure is found, the list should be empty. "
+        "Each item in the list must include: "
+        "1. 'failure_mode': A concise phrase defining the specific error. "
+        "2. 'explanation': The rationale for this classification. "
+        "3. 'evidence': Direct quote or summary of the specific log content that proves this failure. "
+        "Example Output:"
     )
     user_text_prompt += """
 ```json
@@ -340,14 +342,14 @@ def main():
     print(f"Loading data from {jsonl_file_path} for open-coding...")
 
     # adding logs
-    terminal_log_file = project_root / "logs" / f"open_coding_results" / f"{mas}_{dataset}_{llm}_terminal.log"
+    terminal_log_file = project_root / "logs" / "open_coding_results" / f"{mas}_{dataset}_{llm}_terminal.log"
     terminal_log_file.parent.mkdir(parents=True, exist_ok=True)
     print(f"!!! Terminal output is being captured to: {terminal_log_file} !!!")
     sys.stdout = DualLogger(terminal_log_file, sys.stdout)
     sys.stderr = DualLogger(terminal_log_file, sys.stderr)
 
-    output_file = project_root / "logs" / f"open_coding_results" / f"{mas}_{dataset}_{llm}.jsonl"
-    error_output_file = project_root / "logs" / f"open_coding_results" / f"{mas}_{dataset}_{llm}_errors.jsonl"
+    output_file = project_root / "logs" / "open_coding_results" / f"{mas}_{dataset}_{llm}.jsonl"
+    error_output_file = project_root / "logs" / "open_coding_results" / f"{mas}_{dataset}_{llm}_errors.jsonl"
     output_file.parent.mkdir(parents=True, exist_ok=True)
     error_output_file.parent.mkdir(parents=True, exist_ok=True)
 
@@ -357,7 +359,8 @@ def main():
         with open(output_file, 'r', encoding='utf-8') as f:
             for line in f:
                 line = line.strip()
-                if not line: continue
+                if not line: 
+                    continue
                 try:
                     record = json.loads(line)
                     if "qid" in record:

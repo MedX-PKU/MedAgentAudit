@@ -7,11 +7,11 @@ from pathlib import Path
 import sys
 import re
 import json
+from medagentaudit.utils.json_utils import save_json, load_json, load_jsonl
+
 current_file_path = Path(__file__).resolve()
 project_root = current_file_path.parents[2]
-utils_root = project_root / "medagentaudit" / "utils"
-sys.path.append(str(utils_root))
-from json_utils import save_json, load_json, load_jsonl
+sys.path.append(str(project_root))
 
 # Define paths
 RAW_DATA_DIR = project_root / "datasets" / "raw"
