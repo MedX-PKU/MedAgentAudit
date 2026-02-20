@@ -4,13 +4,9 @@
 from typing import Dict, Any, Tuple
 import time
 from openai import OpenAI
-import sys
-from pathlib import Path
 import json
-current_file_path = Path(__file__).resolve()
-utils_root = current_file_path.parents[1] / "utils"
-sys.path.append(str(utils_root))
-from config_loader import get_config
+from medagentaudit.utils.config_loader import get_config
+
 class BaseAgent:
     """Base class for all agents."""
 

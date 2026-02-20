@@ -1,23 +1,17 @@
 '''
 ./medagentaudit/auditor/auditor_agent.py
 '''
-from openai import OpenAI
 import json
-from typing import Dict, Any, List, Tuple
-import time
-import sys
+from typing import Dict, Any
 from pathlib import Path
-
+from medagentaudit.utils.encode_image import encode_image
+from medagentaudit.utils.json_utils import preprocess_response_string
+from medagentaudit.core.base_agent import BaseAgent
 # Ensure project root is in path
 current_file_path = Path(__file__).resolve()
 project_root = current_file_path.parents[2]
-utils_root = current_file_path.parents[1] / 'utils'
-core_root = current_file_path.parents[1] / 'core'
-sys.path.extend([str(project_root),str(utils_root), str(core_root)])
-from config_loader import get_config
-from encode_image import encode_image
-from json_utils import load_json, save_json, preprocess_response_string
-from base_agent import BaseAgent
+utils_root = project_root / "utils"
+
 SYSTEM_PROMPT = "You are a medical consultant auditing a multidisciplinary medical AI team."
 AUDITOR_PROMPTS = {
 # 1.1.1
@@ -404,7 +398,7 @@ class AuditorAgent(BaseAgent):
         audit failure mode 2.1.1
         after domain agent give their initial response, we need to audit whether their role match with the problem's field (2.1.1) and whether they activate the domain specific knowledge (2.1.2)
         """
-        print(f"Auditor Agent: Auditing role assignment...")
+        print("Auditor Agent: Auditing role assignment...")
         system_message = {
             "role": "system",
             "content": SYSTEM_PROMPT
@@ -855,7 +849,7 @@ class AuditorAgent(BaseAgent):
         audit timing: when synthesizer synthesize viewpoints or make decisions.
         this function aims to audit whether decision-maker will be affected by the agent's speciality or superficial form when making synthesis and decisions.
         """
-        print(f"Auditor Agent: auditing failure mode: \"3.1.2: Reasoning Distorted by Authority Bias during Decision-making\" for synthesizer and decision-maker!")
+        print("Auditor Agent: auditing failure mode: \"3.1.2: Reasoning Distorted by Authority Bias during Decision-making\" for synthesizer and decision-maker!")
 
         system_message = {
             "role": "system",
