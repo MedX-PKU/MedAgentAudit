@@ -75,12 +75,14 @@ for jsonl_file in all_jsonl_files_mas:
     print(f"Accuracy: {acc:.4f} ({correct_num}/{case_num})")
     stats_mas[(dataset, llm, mas, case_num, correct_num)] = acc
 print("all MAS files processed. Now writing results to CSV...")
+sorted_output_single_llm_file = sorted(stats_single_llm.items(), key=lambda x: (x[0][0], x[0][1]))
+sorted_output_mas_file = sorted(stats_mas.items(), key=lambda x: (x[0][0], x[0][1], x[0][2]))
 
 # output csv for single llm
 with open(output_single_llm_file, 'w', newline='', encoding='utf-8-sig') as f:
     writer = csv.writer(f)
     writer.writerow(["Dataset", "LLM", "Case_Num", "Correct_Num", "Accuracy"])
-    for (dataset, llm, case_num, correct_num), acc in stats_single_llm.items():
+    for (dataset, llm, case_num, correct_num), acc in sorted_output_single_llm_file:
         writer.writerow([dataset, llm, case_num, correct_num, f"{acc:.4f}"])
 print(f"Single LLM accuracy stats written to {output_single_llm_file}")
 
@@ -88,6 +90,6 @@ print(f"Single LLM accuracy stats written to {output_single_llm_file}")
 with open(output_mas_file, 'w', newline='', encoding='utf-8-sig') as f:
     writer = csv.writer(f)
     writer.writerow(["Dataset", "LLM", "MAS", "Case_Num", "Correct_Num", "Accuracy"])
-    for (dataset, llm, mas, case_num, correct_num), acc in stats_mas.items():
+    for (dataset, llm, mas, case_num, correct_num), acc in sorted_output_mas_file:
         writer.writerow([dataset, llm, mas, case_num, correct_num, f"{acc:.4f}"])
 print(f"MAS accuracy stats written to {output_mas_file}")
