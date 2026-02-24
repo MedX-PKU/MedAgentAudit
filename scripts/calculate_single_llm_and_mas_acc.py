@@ -32,7 +32,7 @@ terminal_log_file = output_dir / "accuracy_calculation.log"
 terminal_log_file.parent.mkdir(parents=True, exist_ok=True)
 print(f"!!! Terminal output is being captured to: {terminal_log_file} !!!")
 sys.stdout = DualLogger(terminal_log_file, sys.stdout)
-sys.stderr = DualLogger(terminal_log_file, sys.stderr) # 捕获报错和tqdm进度条
+sys.stderr = DualLogger(terminal_log_file, sys.stderr)
 
 object_1 = "single_llm"
 object_2 = "mas"
