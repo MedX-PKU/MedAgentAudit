@@ -16,40 +16,16 @@ output_single_llm_file = output_dir / "single_llm_accuracy_stats.csv"
 output_mas_file = output_dir / "mas_accuracy_stats.csv" 
 def get_metadata(file_path_str, object = str):
     """retrieve MAS, Dataset, LLM from the file path string"""
-    datasets_list = ['MedQA', 'MedXpertQA-text', 'PubMedQA', 'PathVQA', 'SLAKE', 'VQA-RAD']
-    # avoid MedQA matching MedXpertQA-text by sorting in descending order of length
-    datasets_sorted = sorted(datasets_list, key=len, reverse=True)
-    
-    llm_keywords = ["gpt", "deepseek", "glm", "gemini", "qwen"]
-    mas_list = ['colacare', 'healthcareagent', 'mac', 'mdagents', 'medagent', 'reconcile']
 
     path_lower = file_path_str.lower()
-            
-    # 2. identify Dataset
-    found_dataset = "Unknown"
-    for d in datasets_sorted:
-        if d.lower() in path_lower:
-            found_dataset = d
-            break
-            
-    # 3. identify LLM
-    found_llm = "Unknown"
-    parts = Path(file_path_str).parts
-    for part in parts:
-        part_l = part.lower()
-        if any(k in part_l for k in llm_keywords):
-            found_llm = part
-            break
-    if object == "mas":
-        # 1. identify MAS
-        found_mas = "Unknown"
-        for m in mas_list:
-            if m in path_lower:
-                found_mas = m
-                break
-    
+    if object == "mas":      
+        found_dataset = path_lower.split('_')[1]
+        found_llm = path_lower.split('_')[2]
+        found_mas = path_lower.split('_')[0]
         return found_dataset, found_llm, found_mas
     else:
+        found_dataset = path_lower.split('_')[0]
+        found_llm = path_lower.split('_')[1]
         return found_dataset, found_llm
     
 terminal_log_file = output_dir / "accuracy_calculation.log"
@@ -67,7 +43,8 @@ stats_single_llm = defaultdict(int)
 stats_mas = defaultdict(int)
 for jsonl_file in all_jsonl_files_single_llm:
     print(f"Processing file: {jsonl_file}")
-    dataset, llm = get_metadata(str(jsonl_file), object_1)
+    jsonl_file_name = jsonl_file.stem
+    dataset, llm = get_metadata(jsonl_file_name, object_1)
     print(f"Dataset: {dataset}, LLM: {llm}")
     # calculate acc
     case_num = 0
@@ -83,7 +60,8 @@ for jsonl_file in all_jsonl_files_single_llm:
 print("all single llm files processed. Now processing MAS files...")
 for jsonl_file in all_jsonl_files_mas:
     print(f"Processing file: {jsonl_file}")
-    dataset, llm, mas = get_metadata(str(jsonl_file), object_2)
+    jsonl_file_name = jsonl_file.stem
+    dataset, llm, mas = get_metadata(jsonl_file_name, object_2)
     print(f"Dataset: {dataset}, LLM: {llm}, MAS: {mas}")
     # calculate acc
     case_num = 0
