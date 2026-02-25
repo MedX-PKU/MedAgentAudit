@@ -189,7 +189,7 @@ def stas_of_audit_results(audit_results_path: Path, metrics_folder_path: Path):
 
 if __name__ == "__main__":
     # Define paths
-    audit_result_path = project_root / "logs" / "audit_results" / "20260202"
+    audit_result_path = project_root / "logs" / "audit_results" / "20260225"
     metrics_folder_path = project_root / "logs" / "metrics"
     
     # Setup Logging
