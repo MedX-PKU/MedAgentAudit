@@ -569,7 +569,7 @@ class MDTConsultation:
             specialties = []
             for doctor in self.doctor_agents:
                 specialties.append(doctor.specialty.value)
-            if task == "audit":
+            if task == "audit" and current_round == 1:
                 # audit 2.1.1 role assignment
                 audit_results_of_role_assignment = self.auditor_agent.audit_role_assignment(question=question, image_path=image_path, specialties=specialties)
                 audit_round_data["2_1_1_role_assignment"].append({
