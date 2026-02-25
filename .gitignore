@@ -7,9 +7,6 @@ config.toml
 *__pycache__*
 temp*
 
-datasets/**/*
-!datasets/raw/
-datasets/raw/*
-!datasets/raw/preprocess_datasets.py
+datasets
 
 .DS_Store

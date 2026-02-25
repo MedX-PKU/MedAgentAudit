@@ -193,13 +193,14 @@ def plot_failure_mode(code, mode_stats, output_dir):
     draw a bar chart for the given failure mode, showing the failure rates across rounds and stages.
     X axis: R1-Analysis, R1-Synthesis ... R3-Decision
     Y axis: failure rate in percentage
-    TODO: for failure mode 2.1.1, we only have round 1 data, so we need to adjust the width of the bar.
+    for failure mode 2.1.1, we only have round 1 data, so we need to adjust the width of the bar.
     """
     config = AUDIT_CONFIG[code]
     valid_rounds = sorted(config["valid_rounds"])
     
     x_labels = []
     y_values = []
+    frac_labels = []
     bar_colors = []
     
     # define color：R1=Blueish, R2=Orangish, R3=Greenish (use Seaborn muted palette for better print visibility)
@@ -220,28 +221,37 @@ def plot_failure_mode(code, mode_stats, output_dir):
             if data_point and data_point['total'] > 0:
                 has_data = True
                 rate = (data_point['failed'] / data_point['total']) * 100
+                frac_labels.append(f"{data_point['failed']}/{data_point['total']}")
                 
                 label = f"R{r}-{STAGE_DISPLAY.get(stage, stage)}"
                 x_labels.append(label)
                 y_values.append(rate)
-                bar_colors.append(color_map.get(r, (0.5, 0.5, 0.5))) # 默认灰
+                bar_colors.append(color_map.get(r, (0.5, 0.5, 0.5))) # grey
 
     if not has_data:
         print(f"Skipping plot for {code} ({config['name']}): No data found.")
         return
 
     # create bar plot
-    fig, ax = plt.subplots(figsize=(max(10, len(x_labels) * 1.2), 7))
-    
-    bars = ax.bar(x_labels, y_values, color=bar_colors, edgecolor='black', alpha=0.85, width=0.6)
+    # For failure mode 2.1.1 we only have one round, which often results in a visually "thin"
+    # figure with too much horizontal whitespace if we reuse the general sizing rule.
+    if code == "2.1.1":
+        fig, ax = plt.subplots(figsize=(5, 7))
+        bar_width = 0.3
+        ax.set_xlim(-0.3, 0.3)
+    else:
+        fig, ax = plt.subplots(figsize=(max(10, len(x_labels) * 1.2), 7))
+        bar_width = 0.6
+
+    bars = ax.bar(x_labels, y_values, color=bar_colors, edgecolor='black', alpha=0.85, width=bar_width)
 
     # label value on top of bars
-    for bar, val in zip(bars, y_values):
+    for bar, val, frac in zip(bars, y_values, frac_labels):
         height = bar.get_height()
         ax.text(
             bar.get_x() + bar.get_width() / 2, 
             height + 1, 
-            f"{val:.1f}%", 
+            f"{val:.1f}%\n({frac})",
             ha='center', va='bottom', 
             fontsize=PLOT_STYLE["font_bar_text"],
             fontweight='bold'
