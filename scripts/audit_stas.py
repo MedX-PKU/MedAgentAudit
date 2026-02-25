@@ -2,7 +2,6 @@
 ./scripts/audit_stas.py
 this script is to compute the statistics for audited results from multi-agent systems,the granularity of statistics is at the level of each failure mode and every round.
 '''
-# TODO : aggregate the audit reports at the granularity of rounds: for example the round1 failure rate, round2 failure rate, etc so as to we can visualize it!
 import json
 from typing import Tuple
 from tqdm import tqdm
