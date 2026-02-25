@@ -11,7 +11,5 @@ datasets/**/*
 !datasets/raw/
 datasets/raw/*
 !datasets/raw/preprocess_datasets.py
-scripts/audit*
-scripts/generate_taxonomy_statistics.py
 
 .DS_Store
