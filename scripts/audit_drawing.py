@@ -1,4 +1,5 @@
 '''
+./scripts/audit_drawing.py
 this script is to visualize the failure rates for each failure mode across different rounds and stages, based on the audit results from multi-agent systems. 
 The granularity of visualization is at the level of each failure mode and every round, showing how the failure rates evolve as the discussion progresses through different stages (e.g., role assignment, analysis, synthesis, review, decision-making). The output will be a set of bar charts that illustrate the failure rates for each mode across rounds and stages, 
 allowing us to identify patterns and trends in the failures.
