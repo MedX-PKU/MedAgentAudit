@@ -112,6 +112,18 @@ def apply_axis_style(ax, xlabel="Collaboration (round - stage)", ylabel="Failure
     ax.set_ylim(0, PLOT_STYLE["y_limit_max"])
     sns.despine()
 
+def apply_legend_reserve_top_space(ax, reserve=0.16):
+    """
+    Reserve extra top whitespace for an out-of-axes legend.
+
+    This is useful when bars are very tall (y almost hits the upper limit),
+    which makes an in-axes legend overlap the plot area.
+    """
+    fig = ax.figure
+    top = 1.0 - reserve
+    top = max(0.7, min(0.98, top))
+    fig.subplots_adjust(top=top)
+
 
 def process_audit_data(audit_results_path: Path):
     """
@@ -238,10 +250,6 @@ def plot_failure_mode(code, mode_stats, output_dir):
         fig, ax = plt.subplots(figsize=(6, 7))
         bar_width = 0.3
         ax.set_xlim(-0.35, 0.35)
-    elif code == "2.2.1":
-        # TODO
-        fig, ax = plt.subplots(figsize=(max(10, len(x_labels) * 1.2), 7))
-        bar_width = 0.6
     else:
         fig, ax = plt.subplots(figsize=(max(10, len(x_labels) * 1.2), 7))
         bar_width = 0.6
@@ -268,7 +276,22 @@ def plot_failure_mode(code, mode_stats, output_dir):
         Patch(facecolor=color_map[r], edgecolor='black', label=f'Round {r}')
         for r in valid_rounds
     ]
-    ax.legend(handles=legend_elements, title="Collaboration round", fontsize=14, title_fontsize=16)
+    if code == "2.2.1":
+        # Place legend above axes and reserve space so it doesn't get pushed
+        # into the plot area when bars are tall.
+        apply_legend_reserve_top_space(ax, reserve=0.18)
+        ax.legend(
+            handles=legend_elements,
+            title="Collaboration round",
+            fontsize=14,
+            title_fontsize=16,
+            loc="lower right",
+            bbox_to_anchor=(1, 1.02),
+            ncol=min(3, len(legend_elements)),
+            frameon=True,
+        )
+    else:
+        ax.legend(handles=legend_elements, title="Collaboration round", fontsize=14, title_fontsize=16)
 
     plt.tight_layout()
     
