@@ -103,8 +103,7 @@ PLOT_STYLE = {
     "y_limit_max": 105
 }
 
-def apply_axis_style(ax, title, xlabel="Discussion Progression (Round - Stage)", ylabel="Failure Rate (%)"):
-    ax.set_title(title, fontsize=PLOT_STYLE["font_title"], pad=20)
+def apply_axis_style(ax, xlabel="Collaboration (round - stage)", ylabel="Failure rate (%)"):
     ax.set_xlabel(xlabel, fontsize=PLOT_STYLE["font_label"])
     ax.set_ylabel(ylabel, fontsize=PLOT_STYLE["font_label"])
     ax.tick_params(axis='x', labelrotation=45, labelsize=PLOT_STYLE["font_tick"])
@@ -236,9 +235,13 @@ def plot_failure_mode(code, mode_stats, output_dir):
     # For failure mode 2.1.1 we only have one round, which often results in a visually "thin"
     # figure with too much horizontal whitespace if we reuse the general sizing rule.
     if code == "2.1.1":
-        fig, ax = plt.subplots(figsize=(5, 7))
+        fig, ax = plt.subplots(figsize=(6, 7))
         bar_width = 0.3
-        ax.set_xlim(-0.3, 0.3)
+        ax.set_xlim(-0.35, 0.35)
+    elif code == "2.2.1":
+        # TODO
+        fig, ax = plt.subplots(figsize=(max(10, len(x_labels) * 1.2), 7))
+        bar_width = 0.6
     else:
         fig, ax = plt.subplots(figsize=(max(10, len(x_labels) * 1.2), 7))
         bar_width = 0.6
@@ -258,16 +261,14 @@ def plot_failure_mode(code, mode_stats, output_dir):
         )
 
     # use the style function to apply consistent styling
-    title = f"Failure Mode {code}: {config['name']}\n(Global Failure Rate across Rounds)"
-    apply_axis_style(ax, title)
-
+    apply_axis_style(ax)
     # add legend for rounds
     from matplotlib.patches import Patch
     legend_elements = [
         Patch(facecolor=color_map[r], edgecolor='black', label=f'Round {r}')
         for r in valid_rounds
     ]
-    ax.legend(handles=legend_elements, title="Collaboration Round", fontsize=14, title_fontsize=16)
+    ax.legend(handles=legend_elements, title="Collaboration round", fontsize=14, title_fontsize=16)
 
     plt.tight_layout()
     
