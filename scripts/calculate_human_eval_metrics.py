@@ -113,7 +113,7 @@ def calculate_audit_metrics():
 
     # 1. Process Human Annotations (Majority Vote)
     human_files = list(audit_results_dir.glob("*.json"))
-    human_votes = defaultdict(list)
+    human_votes = defaultdict(list) # TODO: this place has collected 3 human's decision, now need to calculate the irr (Fleiss' Kappa)
 
     for f in human_files:
         data = load_json(f).get('annotations', {})
@@ -225,8 +225,8 @@ def main():
         print(audit_metrics_df.to_string())
         
         if open_coding_df is not None:
-            open_coding_df.to_csv(human_eval_results_path / "OpenCoding_Agreement.csv")
-        audit_metrics_df.to_csv(human_eval_results_path / "NM_Table_S2_Audit_Metrics.csv")
+            open_coding_df.to_csv(human_eval_results_path / "opencoding_agreement.csv")
+        audit_metrics_df.to_csv(human_eval_results_path / "audit_metrics.csv")
         print(f"Saved publication tables to {human_eval_results_path}")
 
 if __name__ == "__main__":
