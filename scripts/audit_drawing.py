@@ -298,7 +298,7 @@ def plot_failure_mode(code, mode_stats, output_dir):
     
     filename = f"Failure_Mode_{code}.pdf"
     save_path = output_dir / filename
-    plt.savefig(save_path, dpi=300, format='pdf', bbox_inches='tight')
+    plt.savefig(save_path, dpi=500, format='pdf', bbox_inches='tight')
     plt.close()
     print(f"Saved figure: {save_path}")
 
