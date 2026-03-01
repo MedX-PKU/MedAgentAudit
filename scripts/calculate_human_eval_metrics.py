@@ -61,24 +61,24 @@ def compute_fleiss_kappa(votes_list, n_categories=2):
     if N == 0:
         return np.nan
         
-    n_ij = np.zeros((N, n_categories))
-    n_i = np.zeros(N)
+    n_ij = np.zeros((N, n_categories)) # shape (N, 2) for binary classification, every classification category has a count of votes for each case
+    n_i = np.zeros(N) # (N,) here N = 40 
     
     # 1. Count assignments
     for i, votes in enumerate(valid_votes):
-        n_i[i] = len(votes)
+        n_i[i] = len(votes) # len(votes)=3
         for v in votes:
             n_ij[i, int(v)] += 1
             
     # 2. Calculate p_j (Proportion of all assignments to category j)
-    total_assignments = np.sum(n_i)
-    p_j = np.sum(n_ij, axis=0) / total_assignments
+    total_assignments = np.sum(n_i) # total votes across all cases
+    p_j = np.sum(n_ij, axis=0) / total_assignments # np.sum(n_ij, axis=0) means summing across rows for each category, here total_assignment is 120, shape (2,)
     P_e = np.sum(p_j**2) # Expected agreement chance
     
     # 3. Calculate P_i (Extent of agreement for the i-th subject)
     P_i = np.zeros(N)
     for i in range(N):
-        P_i[i] = (np.sum(n_ij[i]**2) - n_i[i]) / (n_i[i] * (n_i[i] - 1))
+        P_i[i] = (np.sum(n_ij[i]**2) - n_i[i]) / (n_i[i] * (n_i[i] - 1)) # n_i[i] = 3, so n_i[i]*(n_i[i]-1) = 6, 
         
     P_bar = np.mean(P_i) # Observed overall agreement
     
