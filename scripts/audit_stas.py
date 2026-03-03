@@ -170,10 +170,13 @@ def process_audit_files_case_granularity(audit_results_path: Path) -> defaultdic
                 rounds = audit_data.get("rounds", [])
                 if not rounds:
                     continue
-
+                
+                failure_detected_in_case = False
+                failure_audited_in_case = False
                 # 3. Count Failures per Round
-                for audit_round_data in rounds:
-                    for code, config in AUDIT_CONFIG.items():
+
+                for code, config in AUDIT_CONFIG.items():
+                    for audit_round_data in rounds:
                         log_key = config["log_key"]
                         status_key = config["status_key"]
                         
@@ -184,13 +187,17 @@ def process_audit_files_case_granularity(audit_results_path: Path) -> defaultdic
                             entries = [entries]
                         
                         if entries and isinstance(entries, list):
+                            failure_audited_in_case = True
                             for entry in entries:
-                                aggregated_stats[(code,mas,dataset,llm)]['total'] += 1
                                 result_obj = entry.get("audit_result", {})
                                 # Check failure status ("1" is failure)
                                 if str(result_obj.get(status_key)) == "1":
-                                    aggregated_stats[(code,mas,dataset,llm)]['failed'] += 1
-
+                                    failure_detected_in_case = True
+                                    break
+                    if failure_audited_in_case:
+                        aggregated_stats[(code,mas,dataset,llm)]['total'] += 1
+                    if failure_detected_in_case:
+                        aggregated_stats[(code,mas,dataset,llm)]['failed'] += 1
     return aggregated_stats
 
 
@@ -253,9 +260,14 @@ def stas_of_audit_results(audit_results_path: Path, metrics_folder_path: Path, c
 
 if __name__ == "__main__":
     # Define paths
-    audit_result_path = project_root / "logs" / "audit_results" / "20260225"
-    metrics_folder_path = project_root / "logs" / "metrics" / "granularity_mas_dataset_llm"
-    
+    audit_result_path = project_root / "logs" / "audit_results" / "20260302"
+
+    case_granularity_or_rounds_aggregated = "rounds_aggregated" # or "rounds_aggregated"
+    if case_granularity_or_rounds_aggregated == "case_granularity":
+        metrics_folder_path = project_root / "logs" / "metrics" / "granularity_mas_dataset_llm" / "case_granularity"
+    else:
+        metrics_folder_path = project_root / "logs" / "metrics" / "granularity_mas_dataset_llm" / "rounds_aggregated"
+
     # Setup Logging
     terminal_log_dir = metrics_folder_path / "terminal_log"
     terminal_log_dir.mkdir(parents=True, exist_ok=True)
@@ -264,7 +276,7 @@ if __name__ == "__main__":
     # Redirect stdout/stderr
     sys.stdout = DualLogger(terminal_log_file, sys.stdout)
     sys.stderr = DualLogger(terminal_log_file, sys.stderr)
-    case_granularity_or_rounds_aggregated = "case_granularity" # or "rounds_aggregated"
+
     try:
         stas_of_audit_results(audit_result_path, metrics_folder_path, case_granularity_or_rounds_aggregated)
         print("Statistics calculation completed successfully.")
