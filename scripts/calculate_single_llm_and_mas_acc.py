@@ -9,7 +9,7 @@ import sys
 import csv
 current_file_path = Path(__file__).resolve()
 project_root = current_file_path.parents[1]
-single_llm_dir = project_root / "logs" / "single_llm" / "20260202"
+single_llm_dir = project_root / "logs" / "single_llm" / "20260302"
 mas_dir = project_root / "logs" / "mas_collaboration_results_audit"
 output_dir = project_root / "logs" / "accuracy_stats"
 output_single_llm_file = output_dir / "single_llm_accuracy_stats.csv"
@@ -68,6 +68,7 @@ for jsonl_file in all_jsonl_files_mas:
     correct_num = 0
     data = load_jsonl(jsonl_file)
     for json_record in data:
+        print(f'qid is {json_record["qid"]}')
         case_num += 1
         if json_record["ground_truth"].lower() == json_record["predicted_answer"].lower():
             correct_num += 1
