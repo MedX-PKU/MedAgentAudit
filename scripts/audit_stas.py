@@ -170,12 +170,11 @@ def process_audit_files_case_granularity(audit_results_path: Path) -> defaultdic
                 rounds = audit_data.get("rounds", [])
                 if not rounds:
                     continue
-                
-                failure_detected_in_case = False
-                failure_audited_in_case = False
-                # 3. Count Failures per Round
 
                 for code, config in AUDIT_CONFIG.items():
+                    failure_detected_in_case = False
+                    failure_audited_in_case = False
+                # 3. Count Failures per Round
                     for audit_round_data in rounds:
                         log_key = config["log_key"]
                         status_key = config["status_key"]
@@ -194,6 +193,8 @@ def process_audit_files_case_granularity(audit_results_path: Path) -> defaultdic
                                 if str(result_obj.get(status_key)) == "1":
                                     failure_detected_in_case = True
                                     break
+                        if failure_detected_in_case:
+                            break
                     if failure_audited_in_case:
                         aggregated_stats[(code,mas,dataset,llm)]['total'] += 1
                     if failure_detected_in_case:
