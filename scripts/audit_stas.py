@@ -1,7 +1,11 @@
 '''
 ./scripts/audit_stas.py
-this script is to compute the statistics for audited results from multi-agent systems,the granularity of statistics is at the level of each failure mode and every round.
+this script is to compute the statistics for audited results from multi-agent systems,the granularity of statistics is at the level of mas-dataset-llm.
+Notably, now we have 2 kinds of statistical mode: 1. we take round into acount, namely our denominator is the total audit numbers, and the numerator is the total failure numbers across all rounds;
+2. we just take the case as the denominator, namely as long as one round of the case fails, then we count it as a failure, and we make case numbers as the denominator.
+We fullfill all of this two kinds of statistics.
 '''
+
 import json
 from typing import Tuple
 from tqdm import tqdm
@@ -83,9 +87,10 @@ def extract_metadata_from_path(file_path: str) -> Tuple[str, str, str]:
             
     return current_mas, current_dataset, current_llm
 
-def process_audit_files(audit_results_path: Path) -> defaultdict:
+def process_audit_files_rounds_aggregated(audit_results_path: Path) -> defaultdict:
     """
     Walks through JSONL files and aggregates statistics.
+    in this function, we take round into acount, namely our denominator is the total audit numbers, and the numerator is the total failure numbers across all rounds.
     """
     if not audit_results_path.exists():
         raise FileNotFoundError(f"The path {audit_results_path} does not exist.")
@@ -127,13 +132,68 @@ def process_audit_files(audit_results_path: Path) -> defaultdict:
                         
                         if entries and isinstance(entries, list):
                             for entry in entries:
-                                aggregated_stats[(code,mas,dataset)]['total'] += 1
+                                aggregated_stats[(code,mas,dataset,llm)]['total'] += 1
                                 result_obj = entry.get("audit_result", {})
                                 # Check failure status ("1" is failure)
                                 if str(result_obj.get(status_key)) == "1":
-                                    aggregated_stats[(code,mas,dataset)]['failed'] += 1
+                                    aggregated_stats[(code,mas,dataset,llm)]['failed'] += 1
 
     return aggregated_stats
+
+def process_audit_files_case_granularity(audit_results_path: Path) -> defaultdict:
+    """
+    Walks through JSONL files and aggregates statistics.
+    in this function, we just take the case as the denominator, namely as long as one round of the case fails, then we count it as a failure, and we make case numbers as the denominator.
+    """
+    if not audit_results_path.exists():
+        raise FileNotFoundError(f"The path {audit_results_path} does not exist.")
+    
+    jsonl_files = list(audit_results_path.rglob("*.jsonl"))
+    print(f"Found {len(jsonl_files)} audit result files (jsonl) in {audit_results_path}.")
+
+    aggregated_stats = defaultdict(lambda: {'total': 0, 'failed': 0})
+
+    for jsonl_file in tqdm(jsonl_files, desc="Processing audit files"):
+        file_name = jsonl_file.stem
+        
+        # 1. Identify Metadata
+        mas, dataset, llm = extract_metadata_from_path(file_name)
+        with open(jsonl_file, 'r', encoding='utf-8') as f:
+            for line in f:
+                json_data = json.loads(line)
+                case_history = json_data["case_history"]
+                audit_data = case_history.get("audit")
+                
+                if not audit_data:
+                    continue
+                
+                rounds = audit_data.get("rounds", [])
+                if not rounds:
+                    continue
+
+                # 3. Count Failures per Round
+                for audit_round_data in rounds:
+                    for code, config in AUDIT_CONFIG.items():
+                        log_key = config["log_key"]
+                        status_key = config["status_key"]
+                        
+                        entries = audit_round_data.get(log_key, [])
+                        
+                        # Some logs store single dict, some store list of dicts. Handle both.
+                        if isinstance(entries, dict):
+                            entries = [entries]
+                        
+                        if entries and isinstance(entries, list):
+                            for entry in entries:
+                                aggregated_stats[(code,mas,dataset,llm)]['total'] += 1
+                                result_obj = entry.get("audit_result", {})
+                                # Check failure status ("1" is failure)
+                                if str(result_obj.get(status_key)) == "1":
+                                    aggregated_stats[(code,mas,dataset,llm)]['failed'] += 1
+
+    return aggregated_stats
+
+
 
 def export_statistics(aggregated_stats: list, metrics_folder_path: Path):
     """
@@ -144,7 +204,7 @@ def export_statistics(aggregated_stats: list, metrics_folder_path: Path):
 
     print("\n=== Exporting Statistics to CSV ===")
     csv_rows = []
-    for (code, mas, dataset), stats in aggregated_stats:
+    for (code, mas, dataset, llm), stats in aggregated_stats:
         # Prepare Rows for CSV
         total = stats['total']
         failed = stats['failed']
@@ -153,6 +213,7 @@ def export_statistics(aggregated_stats: list, metrics_folder_path: Path):
             "Failure_Mode_ID": code,
             "Framework": mas,
             "Dataset": dataset,
+            "LLM": llm,
             "Failure_Mode_Name": AUDIT_CONFIG[code]["name"],
             "Total_Audited_Count": total,
             "Failure_Count": failed,
@@ -174,13 +235,17 @@ def export_statistics(aggregated_stats: list, metrics_folder_path: Path):
     print(f"Exported [{mas}] statistics to: {output_file}")
 
 
-def stas_of_audit_results(audit_results_path: Path, metrics_folder_path: Path):
+def stas_of_audit_results(audit_results_path: Path, metrics_folder_path: Path, case_granularity_or_rounds_aggregated: str):
     """
     Main function to drive the statistical analysis.
     """
     # 1. Process all files and aggregate data in memory
-    stats = process_audit_files(audit_results_path)
-    sorted_stats = sorted(stats.items(), key=lambda x: (x[0][0], x[0][1], x[0][2]))
+    if case_granularity_or_rounds_aggregated == "case_granularity":
+        stats = process_audit_files_case_granularity(audit_results_path)
+    else:
+        stats = process_audit_files_rounds_aggregated(audit_results_path)
+
+    sorted_stats = sorted(stats.items(), key=lambda x: (x[0][0], x[0][1], x[0][2], x[0][3]))
 
     # 2. Export separated CSVs per MAS
     export_statistics(sorted_stats, metrics_folder_path)
@@ -189,7 +254,7 @@ def stas_of_audit_results(audit_results_path: Path, metrics_folder_path: Path):
 if __name__ == "__main__":
     # Define paths
     audit_result_path = project_root / "logs" / "audit_results" / "20260225"
-    metrics_folder_path = project_root / "logs" / "metrics"
+    metrics_folder_path = project_root / "logs" / "metrics" / "granularity_mas_dataset_llm"
     
     # Setup Logging
     terminal_log_dir = metrics_folder_path / "terminal_log"
@@ -199,9 +264,9 @@ if __name__ == "__main__":
     # Redirect stdout/stderr
     sys.stdout = DualLogger(terminal_log_file, sys.stdout)
     sys.stderr = DualLogger(terminal_log_file, sys.stderr)
-
+    case_granularity_or_rounds_aggregated = "case_granularity" # or "rounds_aggregated"
     try:
-        stas_of_audit_results(audit_result_path, metrics_folder_path)
+        stas_of_audit_results(audit_result_path, metrics_folder_path, case_granularity_or_rounds_aggregated)
         print("Statistics calculation completed successfully.")
     except Exception as e:
         print(f"CRITICAL ERROR: {e}")
