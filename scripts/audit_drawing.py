@@ -133,7 +133,7 @@ def process_audit_data(audit_results_path: Path):
     # structure: stats[code][round_num][stage_name] = {'total': 0, 'failed': 0}
     stats = defaultdict(lambda: defaultdict(lambda: defaultdict(lambda: {'total': 0, 'failed': 0})))
     
-    jsonl_files = list(audit_results_path.rglob("*.jsonl"))
+    jsonl_files = list(audit_results_path.rglob("*.jsonl")) # jsonl_file.name example: colacare_MedQA_deepseek-reasoner.jsonl
     print(f"Found {len(jsonl_files)} files. Processing...")
 
     for jsonl_file in tqdm(jsonl_files, desc="Scanning Logs"):
@@ -304,7 +304,7 @@ def plot_failure_mode(code, mode_stats, output_dir):
 
 
 def main():
-    input_base_dir = project_root / "logs" / "audit_results" / "20260213"
+    input_base_dir = project_root / "logs" / "audit_results" / "20260302"
     output_dir = project_root / "logs" / "audit_results" / "figures"
     output_dir.mkdir(parents=True, exist_ok=True)
     print(f"Figures will be saved to: {output_dir}")
