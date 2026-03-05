@@ -247,18 +247,19 @@ def plot_failure_mode_comprehensive(code, df_mode, output_dir):
         "MedQA": "#08306B", "PubMedQA": "#2171B5", "MedXpertQA": "#6BAED6",
         "PathVQA": "#8C2D04", "VQA-RAD": "#D94801", "SLAKE": "#FD8D3C"
     }
-    hue_order_b = [d for d in dataset_palette.keys() if d in df_b_agg['dataset'].unique()]
+    hue_order_b =[d for d in dataset_palette.keys() if d in df_b_agg['dataset'].unique()]
     
     if len(x_order) > 1:
         sns.lineplot(data=df_b_agg, x='round_stage', y='failure_rate', hue='dataset', 
                      palette=dataset_palette, marker='o', markersize=8, errorbar=('ci', 95), 
                      err_style='band', ax=ax_b, hue_order=hue_order_b, linewidth=2.5)
     else:
-        # Fallback for single-stage mode (like Role Assignment Mismatch)
+        # Fallback for single-stage mode
         sns.stripplot(data=df_b_agg, x='round_stage', y='failure_rate', hue='dataset', 
                       palette=dataset_palette, dodge=True, ax=ax_b, hue_order=hue_order_b, jitter=True, alpha=0.7)
         sns.pointplot(data=df_b_agg, x='round_stage', y='failure_rate', hue='dataset', 
-                      palette=dataset_palette, dodge=True, ax=ax_b, hue_order=hue_order_b, errorbar=('ci', 95), join=False, markers='D', capsize=0.1)
+                      palette=dataset_palette, dodge=True, ax=ax_b, hue_order=hue_order_b, 
+                      errorbar=('ci', 95), linestyle='none', markers='D', capsize=0.1)
         handles, labels = ax_b.get_legend_handles_labels()
         ax_b.legend(handles[:len(hue_order_b)], labels[:len(hue_order_b)], title="Dataset", fontsize=12, title_fontsize=14, loc='upper left', bbox_to_anchor=(1.02, 1))
         
@@ -294,7 +295,8 @@ def plot_failure_mode_comprehensive(code, df_mode, output_dir):
             sns.stripplot(data=df_c_agg, x='round_stage', y='failure_rate', hue='llm', 
                           palette=qa_llm_palette, dodge=True, ax=ax_c, jitter=True, alpha=0.7)
             sns.pointplot(data=df_c_agg, x='round_stage', y='failure_rate', hue='llm', 
-                          palette=qa_llm_palette, dodge=True, ax=ax_c, errorbar=('ci', 95), join=False, markers='s', capsize=0.1)
+                          palette=qa_llm_palette, dodge=True, ax=ax_c, errorbar=('ci', 95), 
+                          linestyle='none', markers='s', capsize=0.1)
             handles, labels = ax_c.get_legend_handles_labels()
             n_hues = len(df_c_agg['llm'].unique())
             ax_c.legend(handles[:n_hues], labels[:n_hues], title="QA Models", fontsize=12, title_fontsize=14, loc='upper left', bbox_to_anchor=(1.02, 1))
@@ -332,7 +334,8 @@ def plot_failure_mode_comprehensive(code, df_mode, output_dir):
             sns.stripplot(data=df_d_agg, x='round_stage', y='failure_rate', hue='llm', 
                           palette=vqa_llm_palette, dodge=True, ax=ax_d, jitter=True, alpha=0.7)
             sns.pointplot(data=df_d_agg, x='round_stage', y='failure_rate', hue='llm', 
-                          palette=vqa_llm_palette, dodge=True, ax=ax_d, errorbar=('ci', 95), join=False, markers='^', capsize=0.1)
+                          palette=vqa_llm_palette, dodge=True, ax=ax_d, errorbar=('ci', 95), 
+                          linestyle='none', markers='^', capsize=0.1)
             handles, labels = ax_d.get_legend_handles_labels()
             n_hues = len(df_d_agg['llm'].unique())
             ax_d.legend(handles[:n_hues], labels[:n_hues], title="VQA Models", fontsize=12, title_fontsize=14, loc='upper left', bbox_to_anchor=(1.02, 1))
@@ -359,7 +362,7 @@ def plot_failure_mode_comprehensive(code, df_mode, output_dir):
 
 def main():
     input_base_dir = project_root / "logs" / "audit_results" / "20260302"
-    output_dir = project_root / "logs" / "audit_results" / "figures_4panels"
+    output_dir = project_root / "logs" / "audit_results" / "figures"
     output_dir.mkdir(parents=True, exist_ok=True)
     print(f"Figures will be saved to: {output_dir}")
 
