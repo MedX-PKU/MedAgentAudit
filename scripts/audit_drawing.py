@@ -657,10 +657,11 @@ def plot_failure_mode_comprehensive_v3(code, df_mode, output_dir):
     
     gs = GridSpec(2, 2, figure=fig, wspace=0.25, hspace=0.35)
 
+# =========================================================
+    # Panel A: Clinical Pathway / Pipeline Track Plot
     # =========================================================
-    # Panel A: Radial Heatmap (Circos-style Cognitive Cycle)
-    # =========================================================
-    ax_a = fig.add_subplot(gs[0, 0], polar=True)
+    # Instead of polar heatmap, we use a sophisticated temporal track plot (Pipeline style)
+    ax_a = fig.add_subplot(gs[0, 0])
     
     df_a = df_mode.groupby(['mas', 'round_stage'], observed=False)['failed'].mean().reset_index()
     df_a['failure_rate'] = df_a['failed'] * 100
@@ -670,60 +671,86 @@ def plot_failure_mode_comprehensive_v3(code, df_mode, output_dir):
     mas_order = [m for m in mas_order if m in df_mode['mas'].unique()]
     pivot_a = pivot_a.reindex(index=mas_order, columns=x_order)
     
-    # Polar coordinates setup
     num_stages = len(x_order)
     num_mas = len(mas_order)
-    theta = np.linspace(0.0, 2 * np.pi, num_stages + 1)
-    r = np.arange(1, num_mas + 2) # Start from 1 to leave a hole in the middle (Donut style)
     
-    Theta, R = np.meshgrid(theta, r)
+    # Custom color mapping: Mako (Teal to Dark Blue/Purple) or Flare (Orange to Crimson)
+    # Nature Med often uses sequential palettes highlighting risk
+    cmap = sns.color_palette("flare", as_cmap=True) 
+    norm = mcolors.Normalize(vmin=0, vmax=100)
     
-    # Custom Colormap (Nature Medicine loves deep Teal to Crimson for risk)
-    cmap = sns.color_palette("mako_r", as_cmap=True)
-    cmap.set_bad(color='#f0f0f0') # NaN color
+    # Y positions for each MAS track
+    y_positions = np.arange(num_mas)[::-1] # Reverse so first MAS is at the top
+    y_map = dict(zip(mas_order, y_positions))
     
-    # Plotting the pcolormesh
-    values = pivot_a.values
-    mesh = ax_a.pcolormesh(Theta, R, values, cmap=cmap, vmin=0, vmax=100, edgecolor='white', linewidth=1.5)
+    # X positions for each stage
+    x_positions = np.arange(num_stages)
     
-    # Add hatching for NaNs (Structurally N/A)
-    for i in range(num_mas):
-        for j in range(num_stages):
-            if np.isnan(values[i, j]):
-                # Create a patch for missing data
-                theta_slice = np.linspace(theta[j], theta[j+1], 50)
-                ax_a.fill_between(theta_slice, r[i], r[i+1], facecolor='#f0f0f0', hatch='////', edgecolor='white', lw=1)
+    # Draw Pipeline Backbones (Track lines)
+    for y in y_positions:
+        ax_a.hlines(y, xmin=0, xmax=num_stages - 1, color='#D3D3D3', linewidth=3, zorder=1)
+        
+    # Draw Nodes (Capsules/Pills)
+    box_width = 0.85
+    box_height = 0.6
+    
+    for i, mas in enumerate(mas_order):
+        y = y_map[mas]
+        for j, stage in enumerate(x_order):
+            x = x_positions[j]
+            val = pivot_a.loc[mas, stage]
+            
+            if np.isnan(val):
+                # Structurally N/A Node (Bypassed)
+                box = mpatches.FancyBboxPatch(
+                    (x - box_width/2, y - box_height/2), box_width, box_height,
+                    boxstyle=f"round,pad=0,rounding_size=0.3",
+                    facecolor='#F8F9FA', edgecolor='#A0A0A0', linewidth=1.5,
+                    linestyle='--', hatch='//////', zorder=2
+                )
+                ax_a.add_patch(box)
+                ax_a.text(x, y, "N/A", ha='center', va='center', color='#A0A0A0', 
+                          fontsize=10, fontweight='bold', zorder=3)
+            else:
+                # Valid Node
+                bg_color = cmap(norm(val))
+                box = mpatches.FancyBboxPatch(
+                    (x - box_width/2, y - box_height/2), box_width, box_height,
+                    boxstyle=f"round,pad=0,rounding_size=0.3",
+                    facecolor=bg_color, edgecolor='white', linewidth=1.5, zorder=2
+                )
+                ax_a.add_patch(box)
+                
+                # Dynamic text color for contrast
+                luminance = 0.299 * bg_color[0] + 0.587 * bg_color[1] + 0.114 * bg_color[2]
+                text_color = 'white' if luminance < 0.65 else 'black'
+                
+                ax_a.text(x, y, f"{val:.1f}", ha='center', va='center', color=text_color, 
+                          fontsize=11, fontweight='bold', zorder=3)
 
-    # Styling the Polar plot
-    ax_a.set_theta_offset(np.pi / 2)
-    ax_a.set_theta_direction(-1) # Clockwise
+    # Axis styling
+    ax_a.set_yticks(y_positions)
+    ax_a.set_yticklabels(mas_order, fontweight='bold', fontsize=12)
+    ax_a.set_xticks(x_positions)
+    ax_a.set_xticklabels(x_order, rotation=30, ha='right', fontweight='bold', fontsize=11)
     
-    # X-ticks (Stages)
-    ax_a.set_xticks(theta[:-1] + np.pi/num_stages)
-    ax_a.set_xticklabels(x_order, fontweight='bold', fontsize=11)
+    # Remove borders for clean Nature look
+    for spine in ['top', 'right', 'left', 'bottom']:
+        ax_a.spines[spine].set_visible(False)
+    ax_a.tick_params(axis='both', length=0) # Hide tick marks
     
-    # Y-ticks (MAS labels)
-    ax_a.set_yticks(r[:-1] + 0.5)
-    ax_a.set_yticklabels(mas_order, fontweight='bold', fontsize=11)
-    ax_a.set_rlabel_position(0)
-    
-    # Remove borders
-    ax_a.spines['polar'].set_visible(False)
-    ax_a.grid(color='white', lw=1.5)
-    
-    # Center text
-    ax_a.text(0, 0, "Cognitive\nCycle", ha='center', va='center', fontweight='bold', fontsize=12, color='gray')
-    
-    # Colorbar
-    cbar = plt.colorbar(mesh, ax=ax_a, pad=0.1, shrink=0.7, aspect=15)
+    # Add Colorbar mapped to the pipeline nodes
+    sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
+    sm.set_array([])
+    cbar = plt.colorbar(sm, ax=ax_a, pad=0.02, shrink=0.7, aspect=15)
     cbar.set_label('Failure Rate (%)', rotation=270, labelpad=20, fontweight='bold')
+    cbar.outline.set_visible(False)
     
-    # Legend for N/A
-    na_patch = mpatches.Patch(facecolor='#f0f0f0', hatch='////', edgecolor='white', label='Structurally N/A')
-    ax_a.legend(handles=[na_patch], loc='lower right', bbox_to_anchor=(1.3, -0.1), frameon=False)
-    
-    ax_a.set_title("A. Framework Architecture (Radial Cycle)", fontweight='bold', loc='left', pad=25, x=-0.1)
+    # Add a custom legend for the N/A logic
+    na_patch = mpatches.Patch(facecolor='#F8F9FA', edgecolor='#A0A0A0', linestyle='--', hatch='//////', label='Structurally N/A')
+    ax_a.legend(handles=[na_patch], loc='lower right', bbox_to_anchor=(1.05, -0.15), frameon=False, fontsize=11)
 
+    ax_a.set_title("A. MAS Cognitive Pipeline Breakdown", fontweight='bold', loc='left', pad=20, fontsize=16)
 
 # =========================================================
     # Panel B: Dataset Evolution (Smoothed Bump Chart)
