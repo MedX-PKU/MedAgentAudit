@@ -17,9 +17,10 @@ from matplotlib.gridspec import GridSpec
 import seaborn as sns
 from pathlib import Path
 from tqdm import tqdm
-import matplotlib.patheffects as pe
 import scipy.interpolate as interp
 import matplotlib.colors as mcolors
+from matplotlib.patches import RegularPolygon
+import matplotlib.ticker as ticker
 
 current_file_path = Path(__file__).resolve()
 project_root = current_file_path.parents[1]
@@ -494,7 +495,8 @@ def plot_failure_mode_comprehensive_v2(code, df_mode, output_dir):
     x_numeric = np.arange(len(x_order))
     
     for idx, ds in enumerate(all_datasets):
-        if ds not in df_mode['dataset'].unique(): continue
+        if ds not in df_mode['dataset'].unique(): 
+            continue
         
         row, col = divmod(idx, 3)
         ax_small = fig.add_subplot(gs_b[row, col])
@@ -704,7 +706,7 @@ def plot_failure_mode_comprehensive_v3(code, df_mode, output_dir):
                 # Structurally N/A Node (Bypassed)
                 box = mpatches.FancyBboxPatch(
                     (x - box_width/2, y - box_height/2), box_width, box_height,
-                    boxstyle=f"round,pad=0,rounding_size=0.3",
+                    boxstyle="round,pad=0,rounding_size=0.3",
                     facecolor='#F8F9FA', edgecolor='#A0A0A0', linewidth=1.5,
                     linestyle='--', hatch='//////', zorder=2
                 )
@@ -716,7 +718,7 @@ def plot_failure_mode_comprehensive_v3(code, df_mode, output_dir):
                 bg_color = cmap(norm(val))
                 box = mpatches.FancyBboxPatch(
                     (x - box_width/2, y - box_height/2), box_width, box_height,
-                    boxstyle=f"round,pad=0,rounding_size=0.3",
+                    boxstyle="round,pad=0,rounding_size=0.3",
                     facecolor=bg_color, edgecolor='white', linewidth=1.5, zorder=2
                 )
                 ax_a.add_patch(box)
@@ -892,9 +894,265 @@ def plot_failure_mode_comprehensive_v3(code, df_mode, output_dir):
     plt.close()
     print(f"Saved V3 Nature-quality comprehensive figure: {save_path}")
 
+
+
+# =========================================================
+# V4: The Dynamics & Divergence Visualization Strategy
+# Nature Medicine Standard - Plot Comprehensive V4
+# =========================================================
+
+def plot_failure_mode_comprehensive_v4(code, df_mode, output_dir):
+    # Retrieve configuration (assuming AUDIT_CONFIG, STAGE_ORDER are in global scope as per your code)
+    config = AUDIT_CONFIG[code]
+    mode_name = config["name"]
+    
+    if df_mode.empty:
+        print(f"Skipping plot for {code} ({mode_name}): No data found.")
+        return
+
+    # Dynamically determine valid X axis order
+    unique_round_stages = df_mode[['round_num', 'step', 'round_stage']].drop_duplicates()
+    unique_round_stages['step_idx'] = unique_round_stages['step'].map({s: i for i, s in enumerate(STAGE_ORDER)})
+    unique_round_stages = unique_round_stages.sort_values(['round_num', 'step_idx'])
+    x_order = unique_round_stages['round_stage'].tolist()
+    
+    if not x_order:
+        return
+
+    df_mode = df_mode.copy()
+    df_mode['round_stage'] = pd.Categorical(df_mode['round_stage'], categories=x_order, ordered=True)
+
+    # Nature style minimalist aesthetics
+    plt.rcParams.update({
+        'font.family': 'sans-serif',
+        'font.sans-serif': ['Arial', 'Helvetica'],
+        'axes.linewidth': 1.2,
+        'axes.labelsize': 13,
+        'axes.titlesize': 16,
+        'xtick.labelsize': 11,
+        'ytick.labelsize': 11,
+        'legend.fontsize': 11,
+        'axes.spines.top': False,
+        'axes.spines.right': False
+    })
+
+    fig = plt.figure(figsize=(22, 16))
+    fig.patch.set_facecolor('white')
+    plt.suptitle(f"Failure Mode {code}: {mode_name}\nSystemic Dynamics and Divergence of Cognitive Collapse", 
+                 fontsize=26, fontweight='bold', y=0.98, ha='center')
+    
+    gs = GridSpec(2, 2, figure=fig, wspace=0.25, hspace=0.4)
+
+    # =========================================================
+    # Panel A: MAS Evolution - Microarray Hex-Bin Flow (Honeycomb)
+    # =========================================================
+    ax_a = fig.add_subplot(gs[0, 0])
+    
+    df_a = df_mode.groupby(['mas', 'round_stage'], observed=False)['failed'].mean().reset_index()
+    df_a['failure_rate'] = df_a['failed'] * 100
+    pivot_a = df_a.pivot(index='mas', columns='round_stage', values='failure_rate')
+    
+    mas_order = ["ColaCare", "HealthcareAgent", "MAC", "MDAgents", "MedAgent", "ReConcile"]
+    mas_order = [m for m in mas_order if m in df_mode['mas'].unique()]
+    pivot_a = pivot_a.reindex(index=mas_order, columns=x_order)
+    
+    # Hexagon setup
+    num_stages = len(x_order)
+    num_mas = len(mas_order)
+    
+    cmap = sns.color_palette("mako_r", as_cmap=True) # Mako reversed is excellent for biomedical heat
+    norm = mcolors.Normalize(vmin=0, vmax=100)
+    
+    radius = 0.45  # Size of hexagons
+    for y_idx, mas in enumerate(reversed(mas_order)): # Reverse to start top-down
+        for x_idx, stage in enumerate(x_order):
+            val = pivot_a.loc[mas, stage]
+            
+            if np.isnan(val):
+                # N/A Hexagon
+                hex_patch = RegularPolygon((x_idx, y_idx), numVertices=6, radius=radius, 
+                                           orientation=np.pi/2, fill=True, facecolor='#F5F5F5', 
+                                           edgecolor='#B0B0B0', linestyle='--', linewidth=1.5, hatch='///')
+                ax_a.add_patch(hex_patch)
+                ax_a.text(x_idx, y_idx, "N/A", ha='center', va='center', color='#A0A0A0', fontsize=9, fontweight='bold')
+            else:
+                # Value Hexagon
+                color = cmap(norm(val))
+                hex_patch = RegularPolygon((x_idx, y_idx), numVertices=6, radius=radius, 
+                                           orientation=np.pi/2, fill=True, facecolor=color, 
+                                           edgecolor='white', linewidth=2)
+                ax_a.add_patch(hex_patch)
+                
+                lum = 0.299*color[0] + 0.587*color[1] + 0.114*color[2]
+                text_col = 'white' if lum < 0.65 else 'black'
+                ax_a.text(x_idx, y_idx, f"{val:.1f}", ha='center', va='center', color=text_col, fontsize=10, fontweight='bold')
+
+    ax_a.set_xlim(-0.6, num_stages - 0.4)
+    ax_a.set_ylim(-0.6, num_mas - 0.4)
+    ax_a.set_xticks(range(num_stages))
+    ax_a.set_xticklabels(x_order, rotation=30, ha='right', fontweight='bold')
+    ax_a.set_yticks(range(num_mas))
+    ax_a.set_yticklabels(reversed(mas_order), fontweight='bold')
+    
+    for spine in ax_a.spines.values(): 
+        spine.set_visible(False)
+    ax_a.tick_params(axis='both', length=0)
+    
+    # Add Colorbar
+    sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
+    cbar = plt.colorbar(sm, ax=ax_a, pad=0.02, shrink=0.7, aspect=15)
+    cbar.set_label('Failure Rate (%)', rotation=270, labelpad=20, fontweight='bold')
+    cbar.outline.set_visible(False)
+
+    ax_a.set_title("A. MAS Trajectories (Spatial Microarray Flow)", fontweight='bold', loc='left', pad=15)
+
+    # =========================================================
+    # Panel B: Dataset Evolution - Divergent Butterfly Streamgraph
+    # =========================================================
+    ax_b = fig.add_subplot(gs[0, 1])
+    
+    df_b = df_mode.groupby(['dataset', 'round_stage'], observed=False)['failed'].mean().reset_index()
+    df_b['failure_rate'] = df_b['failed'] * 100
+    
+    qa_datasets = ["MedQA", "PubMedQA", "MedXpertQA"]
+    vqa_datasets = ["PathVQA", "VQA-RAD", "SLAKE"]
+    
+    x_numeric = np.arange(len(x_order))
+    
+    # QA colors (Blues)
+    qa_colors = ["#c6dbef", "#6baed6", "#2171b5"]
+    # VQA colors (Oranges)
+    vqa_colors = ["#fdd0a2", "#fd8d3c", "#d94801"]
+    
+    # Stacked calculation for QA (Upwards)
+    qa_bottom = np.zeros(len(x_order))
+    for idx, ds in enumerate(qa_datasets):
+        if ds not in df_b['dataset'].unique(): 
+            continue
+        y_vals = df_b[df_b['dataset'] == ds].set_index('round_stage').reindex(x_order)['failure_rate'].fillna(0).values
+        ax_b.fill_between(x_numeric, qa_bottom, qa_bottom + y_vals, color=qa_colors[idx], alpha=0.9, label=f"QA: {ds}", edgecolor='white', lw=1)
+        qa_bottom += y_vals
+
+    # Stacked calculation for VQA (Downwards)
+    vqa_top = np.zeros(len(x_order))
+    for idx, ds in enumerate(vqa_datasets):
+        if ds not in df_b['dataset'].unique(): 
+            continue
+        y_vals = df_b[df_b['dataset'] == ds].set_index('round_stage').reindex(x_order)['failure_rate'].fillna(0).values
+        # Negative mapping
+        ax_b.fill_between(x_numeric, vqa_top, vqa_top - y_vals, color=vqa_colors[idx], alpha=0.9, label=f"VQA: {ds}", edgecolor='white', lw=1)
+        vqa_top -= y_vals
+
+    # Add central zero line
+    ax_b.axhline(0, color='black', linewidth=2, zorder=5)
+    
+    # Absolute value formatter for Y axis (so negative shows as positive percentage)
+    formatter = ticker.FuncFormatter(lambda y, pos: f"{abs(int(y))}%")
+    ax_b.yaxis.set_major_formatter(formatter)
+    
+    ax_b.set_xticks(x_numeric)
+    ax_b.set_xticklabels(x_order, rotation=30, ha='right', fontweight='bold')
+    ax_b.set_ylabel("Accumulated Failure Representation", fontweight='bold')
+    ax_b.set_title("B. Modality Divergence: Text (QA) vs Vision (VQA) Breakdown", fontweight='bold', loc='left', pad=15)
+    
+    # Legend
+    handles, labels = ax_b.get_legend_handles_labels()
+    ax_b.legend(handles[::-1], labels[::-1], loc='center left', bbox_to_anchor=(1.02, 0.5), frameon=False)
+    ax_b.grid(axis='x', linestyle='--', alpha=0.3)
+
+    # =========================================================
+    # Helper Function: Kinematic Acceleration Vector Plot (Panel C & D)
+    # =========================================================
+    def plot_kinematic_vectors(ax, df_subset, title, is_vqa=False):
+        if df_subset.empty:
+            ax.text(0.5, 0.5, "No Data Available", ha='center', va='center')
+            ax.axis('off')
+            return
+
+        df_agg = df_subset.groupby(['llm', 'round_stage'], observed=False)['failed'].mean().reset_index()
+        df_agg['failure_rate'] = df_agg['failed'] * 100
+        
+        models = sorted(df_agg['llm'].unique())
+        
+        # We need a diverging colormap to map the DELTA (acceleration)
+        delta_cmap = plt.cm.coolwarm
+        norm_delta = mcolors.CenteredNorm(vcenter=0, halfrange=20) # Maps -20% to +20% jump
+        
+        # Predefined line styles/colors for distinct models just for the markers
+        base_colors = sns.color_palette("Dark2" if is_vqa else "Set1", n_colors=len(models))
+        
+        x_numeric = np.arange(len(x_order))
+        
+        for idx, model in enumerate(models):
+            y_vals = df_agg[df_agg['llm'] == model].set_index('round_stage').reindex(x_order)['failure_rate'].fillna(np.nan).values
+            
+            # Plot the actual anchor points (Markers)
+            valid_idx = ~np.isnan(y_vals)
+            ax.scatter(x_numeric[valid_idx], y_vals[valid_idx], color=base_colors[idx], s=100, zorder=5, 
+                       edgecolors='white', lw=2, label=model)
+            
+            # Draw the kinematic vectors (Line segments mapping slope to color/width)
+            for i in range(len(x_order) - 1):
+                if np.isnan(y_vals[i]) or np.isnan(y_vals[i+1]):
+                    continue
+                
+                delta = y_vals[i+1] - y_vals[i]
+                
+                # Kinematic mapping:
+                # Color maps to delta (Red = getting worse, Blue = getting better)
+                # LineWidth maps to magnitude of change (accelerated failure = thicker line)
+                segment_color = delta_cmap(norm_delta(delta))
+                segment_lw = 2 + (abs(delta) / 5.0) # Base 2, +1 for every 5% jump
+                
+                # Draw Arrow/Line segment
+                ax.annotate("", xy=(x_numeric[i+1], y_vals[i+1]), xytext=(x_numeric[i], y_vals[i]),
+                            arrowprops=dict(arrowstyle="->", color=segment_color, lw=segment_lw, 
+                                            shrinkA=8, shrinkB=8, mutation_scale=15),
+                            zorder=3)
+
+        ax.set_title(title, fontweight='bold', loc='left', pad=15)
+        ax.set_xticks(x_numeric)
+        ax.set_xticklabels(x_order, rotation=30, ha='right', fontweight='bold')
+        ax.set_ylabel("Absolute Failure Rate (%)", fontweight='bold')
+        ax.set_ylim(-5, 105)
+        ax.grid(axis='y', linestyle=':', alpha=0.5)
+        
+        # Legends
+        ax.legend(title="Base LLM", frameon=False, loc='upper left')
+
+    # =========================================================
+    # Panel C: Kinematic Vectors QA
+    # =========================================================
+    ax_c = fig.add_subplot(gs[1, 0])
+    df_c = df_mode[df_mode['dataset'].isin(qa_datasets)].copy()
+    plot_kinematic_vectors(ax_c, df_c, "C. LLM Kinetic Degradation: Text QA")
+
+    # =========================================================
+    # Panel D: Kinematic Vectors VQA
+    # =========================================================
+    ax_d = fig.add_subplot(gs[1, 1])
+    df_d = df_mode[df_mode['dataset'].isin(vqa_datasets)].copy()
+    plot_kinematic_vectors(ax_d, df_d, "D. LLM Kinetic Degradation: Vision VQA", is_vqa=True)
+    
+    # Add an independent colorbar for the Kinematic Acceleration (Delta) inside the figure
+    cax_delta = fig.add_axes([0.92, 0.15, 0.015, 0.25])
+    sm_delta = plt.cm.ScalarMappable(cmap=plt.cm.coolwarm, norm=mcolors.CenteredNorm(vcenter=0, halfrange=20))
+    cbar_delta = plt.colorbar(sm_delta, cax=cax_delta)
+    cbar_delta.set_label('Stage-to-Stage Change ($\Delta$ %)', rotation=270, labelpad=20, fontweight='bold')
+    cbar_delta.outline.set_visible(False)
+
+    # Final layout adjustments
+    plt.subplots_adjust(right=0.9) # Make room for the delta colorbar
+    
+    filename = f"Failure_Mode_{code}_Nature_Evolution_V4.pdf"
+    save_path = output_dir / filename
+    plt.savefig(save_path, dpi=600, format='pdf', bbox_inches='tight', transparent=False)
+    plt.close()
+    print(f"Saved V4 Nature-quality comprehensive figure: {save_path}")
+
 def main():
     input_base_dir = project_root / "logs" / "audit_results" / "20260302"
-    output_dir = project_root / "logs" / "audit_results" / "figures_style_v3"
+    output_dir = project_root / "logs" / "audit_results" / "figures_style_v4"
     output_dir.mkdir(parents=True, exist_ok=True)
     print(f"Figures will be saved to: {output_dir}")
 
@@ -904,7 +1162,7 @@ def main():
     print("\nGenerating Plots...")
     for code in AUDIT_CONFIG.keys():
         df_mode = df_global[df_global['failure_mode'] == code]
-        plot_failure_mode_comprehensive_v3(code, df_mode, output_dir)
+        plot_failure_mode_comprehensive_v4(code, df_mode, output_dir)
 
     print("\nVisualization Audit Completed.")
 
