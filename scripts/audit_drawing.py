@@ -324,7 +324,7 @@ def plot_failure_mode_comprehensive(code, df_mode, output_dir):
     ax_a.set_xlim(-0.6, num_stages - 0.4)
     ax_a.set_ylim(-0.6, num_mas - 0.4)
     ax_a.set_xticks(x_positions)
-    ax_a.set_xticklabels(x_order, rotation=30, ha='right', fontweight='bold', fontsize=11)
+    ax_a.set_xticklabels(x_order, rotation=30, rotation_mode='anchor', ha='center', fontweight='bold', fontsize=11)
     ax_a.set_yticks(y_positions)
     ax_a.set_yticklabels(mas_order, fontweight='bold', fontsize=12)
 
@@ -415,7 +415,7 @@ def plot_failure_mode_comprehensive(code, df_mode, output_dir):
     ax_b.axhline(0, color='black', linewidth=2, zorder=5)
     ax_b.yaxis.set_major_formatter(ticker.FuncFormatter(lambda y_val, pos: f"{abs(int(y_val))}%"))
     ax_b.set_xticks(x_numeric)
-    ax_b.set_xticklabels(x_order, rotation=30, ha='right', fontweight='bold')
+    ax_b.set_xticklabels(x_order, rotation=0, rotation_mode='anchor', ha='center', fontweight='bold')
     ax_b.set_ylabel("Accumulated Failure Representation", fontweight='bold')
     ax_b.set_title("B. Modality Divergence: Text (QA) vs Vision (VQA) Breakdown", fontweight='bold', loc='left', pad=15)
     ax_b.grid(axis='x', linestyle='--', alpha=0.3)
@@ -489,7 +489,7 @@ def plot_failure_mode_comprehensive(code, df_mode, output_dir):
 
         ax.set_title(title, fontweight='bold', loc='left', pad=15)
         ax.set_xticks(x_numeric)
-        ax.set_xticklabels(x_order, rotation=30, ha='right', fontweight='bold')
+        ax.set_xticklabels(x_order, rotation=0, rotation_mode='anchor', ha='center', fontweight='bold')
         ax.set_ylabel("Absolute Failure Rate (%)", fontweight='bold')
         ax.set_ylim(-5, 105)
         ax.grid(axis='y', linestyle=':', alpha=0.5)
