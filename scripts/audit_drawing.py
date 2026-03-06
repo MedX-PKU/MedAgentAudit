@@ -61,6 +61,25 @@ STAGE_DISPLAY = {
     "decision": "Decision",
 }
 
+BOOTSTRAP_RESAMPLES = 2000
+BOOTSTRAP_BASE_SEED = 20260307
+
+
+def compute_bootstrap_failure_ci(failure_values, num_resamples=BOOTSTRAP_RESAMPLES, seed=BOOTSTRAP_BASE_SEED):
+    """
+    Compute a deterministic percentile bootstrap 95% confidence interval (%) for
+    the failure rate within a single Panel A cell.
+    """
+    values = np.asarray(failure_values, dtype=float)
+    if values.size == 0:
+        return np.nan, np.nan
+
+    rng = np.random.default_rng(seed)
+    resampled = rng.choice(values, size=(num_resamples, values.size), replace=True)
+    resampled_rates = resampled.mean(axis=1) * 100
+    ci_lower, ci_upper = np.percentile(resampled_rates, [2.5, 97.5])
+    return float(ci_lower), float(ci_upper)
+
 
 def process_audit_data_to_df(audit_results_path: Path):
     """
@@ -243,37 +262,66 @@ def plot_failure_mode_comprehensive(code, df_mode, output_dir):
     # =========================================================
     ax_a = fig.add_subplot(gs[0, 0])
 
-    df_a = df_mode.groupby(['mas', 'round_stage'], observed=False)['failed'].mean().reset_index()
-    df_a['failure_rate'] = df_a['failed'] * 100
-    pivot_a = df_a.pivot(index='mas', columns='round_stage', values='failure_rate')
-    pivot_a = pivot_a.reindex(index=mas_order, columns=x_order)
-
     num_stages = len(x_order)
     num_mas = len(mas_order)
-    x_positions = np.arange(num_stages)
-    y_positions = np.arange(num_mas)[::-1]
+    x_step = 1.30
+    y_step = 1.08
+    x_positions = np.arange(num_stages) * x_step
+    y_positions = np.arange(num_mas)[::-1] * y_step
     y_map = dict(zip(mas_order, y_positions))
+    panel_a_stats = {}
+
+    for mas_idx, mas in enumerate(mas_order):
+        for stage_idx, stage in enumerate(x_order):
+            cell_values = df_mode.loc[
+                (df_mode['mas'] == mas) & (df_mode['round_stage'] == stage),
+                'failed',
+            ].dropna().astype(float).to_numpy()
+
+            if cell_values.size == 0:
+                continue
+
+            panel_a_stats[(mas, stage)] = {
+                'failure_rate': float(cell_values.mean() * 100),
+                'failed_count': int(cell_values.sum()),
+                'total_count': int(cell_values.size),
+                'ci_95': compute_bootstrap_failure_ci(
+                    cell_values,
+                    seed=BOOTSTRAP_BASE_SEED + mas_idx * max(num_stages, 1) + stage_idx,
+                ),
+            }
 
     cmap_a = sns.color_palette("flare", as_cmap=True)
     norm_a = mcolors.Normalize(vmin=0, vmax=100)
 
     for y_val in y_positions:
-        ax_a.hlines(y_val, xmin=0, xmax=max(num_stages - 1, 0), color='#D3D3D3', linewidth=3, zorder=1)
+        ax_a.hlines(
+            y_val,
+            xmin=x_positions[0],
+            xmax=x_positions[-1],
+            color='#D3D3D3',
+            linewidth=3,
+            zorder=1,
+        )
 
-    box_width = 0.85
-    box_height = 0.6
+    box_width = 1.12
+    box_height = 0.92
+    box_rounding = 0.24
+    value_y_offset = 0.20
+    count_y_offset = 0.00
+    ci_y_offset = -0.20
 
     for mas in mas_order:
         y_val = y_map[mas]
         for x_val, stage in zip(x_positions, x_order):
-            val = pivot_a.loc[mas, stage]
+            cell_stats = panel_a_stats.get((mas, stage))
 
-            if np.isnan(val):
+            if cell_stats is None:
                 box = mpatches.FancyBboxPatch(
                     (x_val - box_width / 2, y_val - box_height / 2),
                     box_width,
                     box_height,
-                    boxstyle="round,pad=0,rounding_size=0.3",
+                    boxstyle=f"round,pad=0,rounding_size={box_rounding}",
                     facecolor='#F8F9FA',
                     edgecolor='#A0A0A0',
                     linewidth=1.5,
@@ -294,12 +342,16 @@ def plot_failure_mode_comprehensive(code, df_mode, output_dir):
                     zorder=3,
                 )
             else:
+                val = cell_stats['failure_rate']
+                failed_count = cell_stats['failed_count']
+                total_count = cell_stats['total_count']
+                ci_lower, ci_upper = cell_stats['ci_95']
                 bg_color = cmap_a(norm_a(val))
                 box = mpatches.FancyBboxPatch(
                     (x_val - box_width / 2, y_val - box_height / 2),
                     box_width,
                     box_height,
-                    boxstyle="round,pad=0,rounding_size=0.3",
+                    boxstyle=f"round,pad=0,rounding_size={box_rounding}",
                     facecolor=bg_color,
                     edgecolor='white',
                     linewidth=1.5,
@@ -311,18 +363,40 @@ def plot_failure_mode_comprehensive(code, df_mode, output_dir):
                 text_color = 'white' if luminance < 0.65 else 'black'
                 ax_a.text(
                     x_val,
-                    y_val,
-                    f"{val:.1f}",
+                    y_val + value_y_offset,
+                    f"{val:.1f}%",
                     ha='center',
                     va='center',
                     color=text_color,
-                    fontsize=11,
+                    fontsize=10.5,
+                    fontweight='bold',
+                    zorder=3,
+                )
+                ax_a.text(
+                    x_val,
+                    y_val + count_y_offset,
+                    f"{failed_count}/{total_count}",
+                    ha='center',
+                    va='center',
+                    color=text_color,
+                    fontsize=9.2,
+                    fontweight='bold',
+                    zorder=3,
+                )
+                ax_a.text(
+                    x_val,
+                    y_val + ci_y_offset,
+                    f"CI {ci_lower:.1f}–{ci_upper:.1f}",
+                    ha='center',
+                    va='center',
+                    color=text_color,
+                    fontsize=8.0,
                     fontweight='bold',
                     zorder=3,
                 )
 
-    ax_a.set_xlim(-0.6, num_stages - 0.4)
-    ax_a.set_ylim(-0.4, num_mas - 0.6)
+    ax_a.set_xlim(x_positions[0] - box_width / 2 - 0.2, x_positions[-1] + box_width / 2 + 0.2)
+    ax_a.set_ylim(y_positions[-1] - box_height / 2 - 0.12, y_positions[0] + box_height / 2 + 0.12)
     ax_a.set_xticks(x_positions)
     ax_a.set_xticklabels(x_order, rotation=30, rotation_mode='anchor', ha='center', fontweight='bold', fontsize=14)
     ax_a.set_yticks(y_positions)
