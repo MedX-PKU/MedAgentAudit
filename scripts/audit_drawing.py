@@ -221,7 +221,7 @@ def plot_failure_mode_comprehensive(code, df_mode, output_dir):
         f"Failure Mode {code}: {mode_name}\nSystemic Dynamics and Divergence of Cognitive Collapse",
         fontsize=26,
         fontweight='bold',
-        y=0.98,
+        y=1.01,
         ha='center',
     )
 
@@ -322,20 +322,22 @@ def plot_failure_mode_comprehensive(code, df_mode, output_dir):
                 )
 
     ax_a.set_xlim(-0.6, num_stages - 0.4)
-    ax_a.set_ylim(-0.6, num_mas - 0.4)
+    ax_a.set_ylim(-0.4, num_mas - 0.6)
     ax_a.set_xticks(x_positions)
-    ax_a.set_xticklabels(x_order, rotation=30, rotation_mode='anchor', ha='center', fontweight='bold', fontsize=11)
+    ax_a.set_xticklabels(x_order, rotation=30, rotation_mode='anchor', ha='center', fontweight='bold', fontsize=14)
     ax_a.set_yticks(y_positions)
-    ax_a.set_yticklabels(mas_order, fontweight='bold', fontsize=12)
+    ax_a.set_yticklabels(mas_order, fontweight='bold', fontsize=14)
 
     for spine in ['top', 'right', 'left', 'bottom']:
         ax_a.spines[spine].set_visible(False)
-    ax_a.tick_params(axis='both', length=0)
+
+    ax_a.tick_params(axis='x', length=0, pad=20)
+    ax_a.tick_params(axis='y', length=0)
 
     sm_a = plt.cm.ScalarMappable(cmap=cmap_a, norm=norm_a)
     sm_a.set_array([])
     cbar_a = plt.colorbar(sm_a, ax=ax_a, pad=0.02, shrink=0.7, aspect=15)
-    cbar_a.set_label('Failure Rate (%)', rotation=270, labelpad=20, fontweight='bold')
+    cbar_a.set_label('Failure Rate (%)', rotation=270, labelpad=20, fontsize=14, fontweight='bold')
     cbar_a.outline.set_visible(False)
 
     na_patch = mpatches.Patch(
@@ -347,12 +349,13 @@ def plot_failure_mode_comprehensive(code, df_mode, output_dir):
     )
     ax_a.legend(
         handles=[na_patch],
-        loc='upper left',
-        bbox_to_anchor=(0.0, -0.16),
+        loc='lower left',
+        bbox_to_anchor=(0.0, 0.985),
+        borderaxespad=0,
         frameon=False,
-        fontsize=11,
+        fontsize=14,
     )
-    ax_a.set_title("A. MAS Cognitive Pipeline Breakdown", fontweight='bold', loc='left', pad=20)
+    ax_a.set_title("A. MAS Cognitive Pipeline Breakdown", fontweight='bold', loc='left', pad=25)
 
     # =========================================================
     # Panel B: Modality Divergence Breakdown (V4 style)
@@ -516,7 +519,7 @@ def plot_failure_mode_comprehensive(code, df_mode, output_dir):
     cbar_delta.set_label('Stage-to-Stage Change ($\\Delta$ %)', rotation=270, labelpad=20, fontweight='bold')
     cbar_delta.outline.set_visible(False)
 
-    plt.subplots_adjust(right=0.9, top=0.93, bottom=0.08)
+    plt.subplots_adjust(right=0.9, top=0.92, bottom=0.08)
 
     filename = f"Failure_Mode_{code}_Nature_Evolution.pdf"
     save_path = output_dir / filename
