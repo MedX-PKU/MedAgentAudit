@@ -15,6 +15,7 @@ import matplotlib.colors as mcolors
 import matplotlib.patches as mpatches
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
+import matplotlib.transforms as mtransforms
 import numpy as np
 import pandas as pd
 import seaborn as sns
@@ -244,7 +245,7 @@ def plot_failure_mode_comprehensive(code, df_mode, output_dir):
         ha='center',
     )
 
-    gs = GridSpec(2, 2, figure=fig, wspace=0.25, hspace=0.4)
+    gs = GridSpec(2, 2, figure=fig, wspace=0.25, hspace=0.28, height_ratios=[1.1, 0.9])
 
     qa_datasets = ["MedQA", "PubMedQA", "MedXpertQA"]
     vqa_datasets = ["PathVQA", "VQA-RAD", "SLAKE"]
@@ -434,76 +435,259 @@ def plot_failure_mode_comprehensive(code, df_mode, output_dir):
     # =========================================================
     # Panel B: Modality Divergence Breakdown (V4 style)
     # =========================================================
-    ax_b = fig.add_subplot(gs[0, 1])
-
-    df_b = df_mode.groupby(['dataset', 'round_stage'], observed=False)['failed'].mean().reset_index()
-    df_b['failure_rate'] = df_b['failed'] * 100
+    gs_b = gs[0, 1].subgridspec(3, 1, height_ratios=[0.16, 0.52, 0.32], hspace=0.24)
+    ax_b_header = fig.add_subplot(gs_b[0, 0])
+    ax_b = fig.add_subplot(gs_b[1, 0])
+    ax_b_table = fig.add_subplot(gs_b[2, 0], sharex=ax_b)
 
     x_numeric = np.arange(len(x_order))
     qa_colors = ["#c6dbef", "#6baed6", "#2171b5"]
     vqa_colors = ["#fdd0a2", "#fd8d3c", "#d94801"]
+    qa_color_map = dict(zip(qa_datasets, qa_colors))
+    vqa_color_map = dict(zip(vqa_datasets, vqa_colors))
+
+    datasets_present = df_mode['dataset'].dropna().unique().tolist()
+    qa_present = [dataset for dataset in qa_datasets if dataset in datasets_present]
+    vqa_present = [dataset for dataset in vqa_datasets if dataset in datasets_present]
+    panel_b_datasets = qa_present + vqa_present
+    panel_b_stats = {}
+
+    for dataset_idx, dataset in enumerate(panel_b_datasets):
+        for stage_idx, stage in enumerate(x_order):
+            cell_values = df_mode.loc[
+                (df_mode['dataset'] == dataset) & (df_mode['round_stage'] == stage),
+                'failed',
+            ].dropna().astype(float).to_numpy()
+
+            if cell_values.size == 0:
+                continue
+
+            panel_b_stats[(dataset, stage)] = {
+                'failure_rate': float(cell_values.mean() * 100),
+                'failed_count': int(cell_values.sum()),
+                'total_count': int(cell_values.size),
+                'ci_95': compute_bootstrap_failure_ci(
+                    cell_values,
+                    seed=BOOTSTRAP_BASE_SEED + 5000 + dataset_idx * max(len(x_order), 1) + stage_idx,
+                ),
+            }
 
     qa_bottom = np.zeros(len(x_order))
-    for idx, dataset in enumerate(qa_datasets):
-        if dataset not in df_b['dataset'].unique():
-            continue
-        y_vals = (
-            df_b[df_b['dataset'] == dataset]
-            .set_index('round_stage')
-            .reindex(x_order)['failure_rate']
-            .fillna(0)
-            .values
+    for dataset in qa_present:
+        y_vals = np.array(
+            [panel_b_stats.get((dataset, stage), {}).get('failure_rate', 0.0) for stage in x_order],
+            dtype=float,
         )
         ax_b.fill_between(
             x_numeric,
             qa_bottom,
             qa_bottom + y_vals,
-            color=qa_colors[idx],
-            alpha=0.9,
-            label=f"QA: {dataset}",
+            color=qa_color_map[dataset],
+            alpha=0.92,
             edgecolor='white',
-            lw=1,
+            linewidth=1.2,
+            zorder=2,
         )
         qa_bottom += y_vals
 
     vqa_top = np.zeros(len(x_order))
-    for idx, dataset in enumerate(vqa_datasets):
-        if dataset not in df_b['dataset'].unique():
-            continue
-        y_vals = (
-            df_b[df_b['dataset'] == dataset]
-            .set_index('round_stage')
-            .reindex(x_order)['failure_rate']
-            .fillna(0)
-            .values
+    for dataset in vqa_present:
+        y_vals = np.array(
+            [panel_b_stats.get((dataset, stage), {}).get('failure_rate', 0.0) for stage in x_order],
+            dtype=float,
         )
         ax_b.fill_between(
             x_numeric,
             vqa_top,
             vqa_top - y_vals,
-            color=vqa_colors[idx],
-            alpha=0.9,
-            label=f"VQA: {dataset}",
+            color=vqa_color_map[dataset],
+            alpha=0.92,
             edgecolor='white',
-            lw=1,
+            linewidth=1.2,
+            zorder=2,
         )
         vqa_top -= y_vals
 
+    for x_val in x_numeric:
+        ax_b.axvline(x_val, color='#D8DEE6', linestyle='--', linewidth=0.9, alpha=0.45, zorder=1)
+
     ax_b.axhline(0, color='black', linewidth=2, zorder=5)
-    ax_b.yaxis.set_major_formatter(ticker.FuncFormatter(lambda y_val, pos: f"{abs(int(y_val))}%"))
+    ax_b.yaxis.set_major_formatter(ticker.FuncFormatter(lambda y_val, pos: f"{abs(y_val):.0f}%"))
+    ax_b.set_xlim(x_numeric[0] - 0.25, x_numeric[-1] + 0.25)
+    ax_b.set_ylabel("Accumulated Failure Representation", fontweight='bold', fontsize=14)
     ax_b.set_xticks(x_numeric)
-    ax_b.set_xticklabels(x_order, rotation=0, rotation_mode='anchor', ha='center', fontweight='bold')
-    ax_b.set_ylabel("Accumulated Failure Representation", fontweight='bold')
-    ax_b.set_title("B. Modality Divergence: Text (QA) vs Vision (VQA) Breakdown", fontweight='bold', loc='left', pad=15)
-    ax_b.grid(axis='x', linestyle='--', alpha=0.3)
+    ax_b.set_xticklabels(
+        x_order,
+        rotation=30,
+        rotation_mode='anchor',
+        ha='center',
+        fontweight='bold',
+        fontsize=14,
+    )
+    ax_b.tick_params(axis='x', labelbottom=True, length=0, pad=12)
+    ax_b.tick_params(axis='y', labelsize=14)
+    ax_b.grid(axis='y', linestyle=':', alpha=0.25)
+    ax_b.spines['bottom'].set_visible(False)
 
-    max_extent = max(float(qa_bottom.max()), float(np.abs(vqa_top.min())))
+    max_extent = max(
+        float(qa_bottom.max()) if qa_bottom.size else 0.0,
+        float(np.abs(vqa_top.min())) if vqa_top.size else 0.0,
+    )
     if max_extent > 0:
-        ax_b.set_ylim(-max_extent * 1.1, max_extent * 1.1)
+        ax_b.set_ylim(-max_extent * 1.05, max_extent * 1.05)
+    else:
+        ax_b.set_ylim(-5, 5)
 
-    handles_b, labels_b = ax_b.get_legend_handles_labels()
-    if handles_b:
-        ax_b.legend(handles_b[::-1], labels_b[::-1], loc='center left', bbox_to_anchor=(1.02, 0.5), frameon=False)
+    ax_b_header.axis('off')
+    ax_b_header.text(
+        0.0,
+        0.98,
+        "B. Modality Divergence: Text (QA) vs Vision (VQA) Breakdown",
+        transform=ax_b_header.transAxes,
+        ha='left',
+        va='top',
+        fontsize=16,
+        fontweight='bold',
+    )
+
+    qa_handles = [
+        mpatches.Patch(facecolor=qa_color_map[dataset], edgecolor='white', label=dataset)
+        for dataset in qa_present
+    ]
+    vqa_handles = [
+        mpatches.Patch(facecolor=vqa_color_map[dataset], edgecolor='white', label=dataset)
+        for dataset in vqa_present
+    ]
+
+    if qa_handles:
+        ax_b_header.text(
+            0.0,
+            0.52,
+            "QA",
+            transform=ax_b_header.transAxes,
+            ha='left',
+            va='center',
+            fontsize=12,
+            fontweight='bold',
+        )
+        legend_qa = ax_b_header.legend(
+            handles=qa_handles,
+            ncol=max(len(qa_handles), 1),
+            loc='center left',
+            bbox_to_anchor=(0.08, 0.52),
+            frameon=False,
+            fontsize=11,
+            handlelength=1.5,
+            handletextpad=0.5,
+            columnspacing=1.1,
+            borderaxespad=0,
+        )
+        ax_b_header.add_artist(legend_qa)
+
+    if vqa_handles:
+        ax_b_header.text(
+            0.0,
+            0.18,
+            "VQA",
+            transform=ax_b_header.transAxes,
+            ha='left',
+            va='center',
+            fontsize=12,
+            fontweight='bold',
+        )
+        ax_b_header.legend(
+            handles=vqa_handles,
+            ncol=max(len(vqa_handles), 1),
+            loc='center left',
+            bbox_to_anchor=(0.08, 0.18),
+            frameon=False,
+            fontsize=11,
+            handlelength=1.5,
+            handletextpad=0.5,
+            columnspacing=1.1,
+            borderaxespad=0,
+        )
+
+    table_row_order = qa_present + vqa_present
+    row_color_map = {**qa_color_map, **vqa_color_map}
+    row_positions = {}
+    row_spacing = 1.7
+    group_gap = 1.0
+    table_top_offset = 0.8
+    table_top_padding = 1.9
+    table_bottom_padding = 0.8
+    current_y = -table_top_offset
+
+    for dataset in qa_present:
+        row_positions[dataset] = current_y
+        current_y -= row_spacing
+
+    if qa_present and vqa_present:
+        current_y -= group_gap
+
+    for dataset in vqa_present:
+        row_positions[dataset] = current_y
+        current_y -= row_spacing
+
+    table_cell_fontsize = 8.2 if len(x_order) <= 8 else 7.3 if len(x_order) <= 11 else 6.6
+    table_label_fontsize = 12 if len(x_order) <= 11 else 11
+    label_transform = mtransforms.blended_transform_factory(ax_b_table.transAxes, ax_b_table.transData)
+
+    for dataset in table_row_order:
+        y_val = row_positions[dataset]
+        ax_b_table.text(
+            -0.035,
+            y_val,
+            dataset,
+            transform=label_transform,
+            ha='right',
+            va='center',
+            fontsize=table_label_fontsize,
+            fontweight='bold',
+            color=row_color_map[dataset],
+            clip_on=False,
+        )
+
+        for x_val, stage in zip(x_numeric, x_order):
+            cell_stats = panel_b_stats.get((dataset, stage))
+
+            if cell_stats is None:
+                cell_text = "N/A"
+                cell_color = '#9CA3AF'
+            else:
+                ci_lower, ci_upper = cell_stats['ci_95']
+                cell_text = (
+                    f"{cell_stats['failure_rate']:.1f}% "
+                    f"({cell_stats['failed_count']}/{cell_stats['total_count']})\n"
+                    f"[{ci_lower:.1f}–{ci_upper:.1f}]"
+                )
+                cell_color = '#111827'
+
+            ax_b_table.text(
+                x_val,
+                y_val,
+                cell_text,
+                ha='center',
+                va='center',
+                fontsize=table_cell_fontsize,
+                color=cell_color,
+                linespacing=1.5,
+                zorder=2,
+            )
+
+    ax_b_table.set_yticks([])
+    ax_b_table.set_xticks(x_numeric)
+    ax_b_table.tick_params(axis='x', top=False, labeltop=False, bottom=False, labelbottom=False, length=0)
+
+    if table_row_order:
+        table_y_min = min(row_positions.values()) - table_bottom_padding
+        table_y_max = max(row_positions.values()) + table_top_padding
+    else:
+        table_y_min, table_y_max = -0.5, 0.5
+    ax_b_table.set_ylim(table_y_min, table_y_max)
+
+    for spine in ['top', 'right', 'left', 'bottom']:
+        ax_b_table.spines[spine].set_visible(False)
 
     # =========================================================
     # Helper: Kinematic Acceleration Vector Plot (V4 style)
