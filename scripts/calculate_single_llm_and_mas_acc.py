@@ -36,6 +36,7 @@ COLOR_IMPROVED = "#6B8EAD"
 COLOR_NO_IMPROVEMENT = "#C6878F"
 TEXT_COLOR = "#333333"
 GRID_COLOR = "#D9D9D9"
+MAX_X_AXIS_TICK_COUNT = 8
 
 TEXT_DATASET_ORDER = ["medqa", "pubmedqa", "medxpertqa-text"]
 VISION_DATASET_ORDER = ["pathvqa", "slake", "vqa-rad"]
@@ -67,12 +68,12 @@ DATASET_MODALITY_MAP = {
 }
 
 LLM_DISPLAY_MAP = {
-    "deepseek-reasoner": "DeepSeek-V3.2",
-    "gemini-3-flash-preview": "Gemini-3-Flash",
+    "deepseek-reasoner": "DeepSeek-V3.2-Thinking",
+    "gemini-3-flash-preview": "Gemini-3-Flash-Preview",
     "gpt-5.2": "GPT-5.2",
     "qwen3-8b": "Qwen3-8B",
     "glm-4.6v": "GLM-4.6V",
-    "qwen3-vl-8b-thinking": "Qwen3-VL",
+    "qwen3-vl-8b-thinking": "Qwen3-VL-8B-Thinking",
 }
 
 
@@ -318,19 +319,28 @@ def get_display_positions(single_acc_percent, mas_acc_percent):
     return single_acc_percent, mas_acc_percent
 
 
-def get_axis_bounds(values):
+def get_axis_config(values):
     min_value = min(values)
     max_value = max(values)
 
-    left_bound = max(0, math.floor((min_value - 4) / 5) * 5)
-    right_bound = min(100, math.ceil((max_value + 3) / 5) * 5)
+    padded_left = max(0, min_value - 4)
+    padded_right = min(100, max_value + 3)
 
-    if right_bound - left_bound < 10:
-        midpoint = (left_bound + right_bound) / 2
-        left_bound = max(0, math.floor((midpoint - 5) / 5) * 5)
-        right_bound = min(100, math.ceil((midpoint + 5) / 5) * 5)
+    if padded_right - padded_left < 10:
+        midpoint = (padded_left + padded_right) / 2
+        padded_left = max(0, midpoint - 5)
+        padded_right = min(100, midpoint + 5)
 
-    return int(left_bound), int(right_bound)
+    tick_step_candidates = [5, 10, 20, 25, 50]
+    for tick_step in tick_step_candidates:
+        left_bound = max(0, math.floor(padded_left / tick_step) * tick_step)
+        right_bound = min(100, math.ceil(padded_right / tick_step) * tick_step)
+        tick_count = int((right_bound - left_bound) / tick_step) + 1
+
+        if tick_count <= MAX_X_AXIS_TICK_COUNT:
+            return int(left_bound), int(right_bound), tick_step
+
+    return 0, 100, tick_step_candidates[-1]
 
 
 def build_dataset_rows(dataset_names):
@@ -431,10 +441,11 @@ def plot_single_dataset_comparison(ax, dataset, dataset_records):
             color=TEXT_COLOR,
         )
 
-    axis_min, axis_max = get_axis_bounds(displayed_single_values + displayed_mas_values)
+    axis_min, axis_max, tick_step = get_axis_config(displayed_single_values + displayed_mas_values)
+    x_ticks = list(range(axis_min, axis_max + tick_step, tick_step))
     ax.set_xlim(axis_min, axis_max)
-    ax.set_xticks(list(range(axis_min, axis_max + 1, 5)))
-    ax.set_xticklabels([f"{tick}%" for tick in range(axis_min, axis_max + 1, 5)])
+    ax.set_xticks(x_ticks)
+    ax.set_xticklabels([f"{tick}%" for tick in x_ticks])
     ax.set_yticks(y_positions)
     ax.set_yticklabels(llm_labels)
     ax.invert_yaxis()
@@ -545,7 +556,7 @@ def plot_single_llm_vs_best_mas(best_mas_records):
         handletextpad=0.6,
         columnspacing=1.2,
     )
-    fig.subplots_adjust(left=0.07, right=0.98, bottom=0.08, top=0.87, wspace=0.38, hspace=0.46)
+    fig.subplots_adjust(left=0.07, right=0.98, bottom=0.08, top=0.87, wspace=0.55, hspace=0.46)
 
     fig.savefig(output_plot_png_file, dpi=300, bbox_inches="tight")
     fig.savefig(output_plot_pdf_file, dpi=300, bbox_inches="tight")
