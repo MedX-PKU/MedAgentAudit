@@ -245,7 +245,7 @@ def plot_failure_mode_comprehensive(code, df_mode, output_dir):
         ha='center',
     )
 
-    gs = GridSpec(2, 2, figure=fig, wspace=0.25, hspace=0.28, height_ratios=[1.1, 0.9])
+    gs = GridSpec(2, 2, figure=fig, wspace=0.25, hspace=0.18, height_ratios=[1.2, 0.8])
 
     qa_datasets = ["MedQA", "PubMedQA", "MedXpertQA"]
     vqa_datasets = ["PathVQA", "VQA-RAD", "SLAKE"]
@@ -305,12 +305,12 @@ def plot_failure_mode_comprehensive(code, df_mode, output_dir):
             zorder=1,
         )
 
-    box_width = 1.12
-    box_height = 0.92
-    box_rounding = 0.24
-    value_y_offset = 0.20
+    box_width = 1.02
+    box_height = 0.86
+    box_rounding = 0.30
+    value_y_offset = 0.18
     count_y_offset = 0.00
-    ci_y_offset = -0.20
+    ci_y_offset = -0.18
 
     for mas in mas_order:
         y_val = y_map[mas]
@@ -435,10 +435,9 @@ def plot_failure_mode_comprehensive(code, df_mode, output_dir):
     # =========================================================
     # Panel B: Modality Divergence Breakdown (V4 style)
     # =========================================================
-    gs_b = gs[0, 1].subgridspec(3, 1, height_ratios=[0.16, 0.52, 0.32], hspace=0.24)
-    ax_b_header = fig.add_subplot(gs_b[0, 0])
-    ax_b = fig.add_subplot(gs_b[1, 0])
-    ax_b_table = fig.add_subplot(gs_b[2, 0], sharex=ax_b)
+    gs_b = gs[0, 1].subgridspec(2, 1, height_ratios=[0.66, 0.34], hspace=0.22)
+    ax_b = fig.add_subplot(gs_b[0, 0])
+    ax_b_table = fig.add_subplot(gs_b[1, 0], sharex=ax_b)
 
     x_numeric = np.arange(len(x_order))
     qa_colors = ["#c6dbef", "#6baed6", "#2171b5"]
@@ -515,6 +514,12 @@ def plot_failure_mode_comprehensive(code, df_mode, output_dir):
     ax_b.yaxis.set_major_formatter(ticker.FuncFormatter(lambda y_val, pos: f"{abs(y_val):.0f}%"))
     ax_b.set_xlim(x_numeric[0] - 0.25, x_numeric[-1] + 0.25)
     ax_b.set_ylabel("Accumulated Failure Representation", fontweight='bold', fontsize=14)
+    ax_b.set_title(
+        "B. Modality Divergence: Text (QA) vs Vision (VQA) Breakdown",
+        fontweight='bold',
+        loc='left',
+        pad=18,
+    )
     ax_b.set_xticks(x_numeric)
     ax_b.set_xticklabels(
         x_order,
@@ -524,7 +529,7 @@ def plot_failure_mode_comprehensive(code, df_mode, output_dir):
         fontweight='bold',
         fontsize=14,
     )
-    ax_b.tick_params(axis='x', labelbottom=True, length=0, pad=12)
+    ax_b.tick_params(axis='x', labelbottom=True, length=0, pad=14)
     ax_b.tick_params(axis='y', labelsize=14)
     ax_b.grid(axis='y', linestyle=':', alpha=0.25)
     ax_b.spines['bottom'].set_visible(False)
@@ -538,84 +543,14 @@ def plot_failure_mode_comprehensive(code, df_mode, output_dir):
     else:
         ax_b.set_ylim(-5, 5)
 
-    ax_b_header.axis('off')
-    ax_b_header.text(
-        0.0,
-        0.98,
-        "B. Modality Divergence: Text (QA) vs Vision (VQA) Breakdown",
-        transform=ax_b_header.transAxes,
-        ha='left',
-        va='top',
-        fontsize=16,
-        fontweight='bold',
-    )
-
-    qa_handles = [
-        mpatches.Patch(facecolor=qa_color_map[dataset], edgecolor='white', label=dataset)
-        for dataset in qa_present
-    ]
-    vqa_handles = [
-        mpatches.Patch(facecolor=vqa_color_map[dataset], edgecolor='white', label=dataset)
-        for dataset in vqa_present
-    ]
-
-    if qa_handles:
-        ax_b_header.text(
-            0.0,
-            0.52,
-            "QA",
-            transform=ax_b_header.transAxes,
-            ha='left',
-            va='center',
-            fontsize=12,
-            fontweight='bold',
-        )
-        legend_qa = ax_b_header.legend(
-            handles=qa_handles,
-            ncol=max(len(qa_handles), 1),
-            loc='center left',
-            bbox_to_anchor=(0.08, 0.52),
-            frameon=False,
-            fontsize=11,
-            handlelength=1.5,
-            handletextpad=0.5,
-            columnspacing=1.1,
-            borderaxespad=0,
-        )
-        ax_b_header.add_artist(legend_qa)
-
-    if vqa_handles:
-        ax_b_header.text(
-            0.0,
-            0.18,
-            "VQA",
-            transform=ax_b_header.transAxes,
-            ha='left',
-            va='center',
-            fontsize=12,
-            fontweight='bold',
-        )
-        ax_b_header.legend(
-            handles=vqa_handles,
-            ncol=max(len(vqa_handles), 1),
-            loc='center left',
-            bbox_to_anchor=(0.08, 0.18),
-            frameon=False,
-            fontsize=11,
-            handlelength=1.5,
-            handletextpad=0.5,
-            columnspacing=1.1,
-            borderaxespad=0,
-        )
-
     table_row_order = qa_present + vqa_present
     row_color_map = {**qa_color_map, **vqa_color_map}
     row_positions = {}
-    row_spacing = 1.7
-    group_gap = 1.0
-    table_top_offset = 0.8
-    table_top_padding = 1.9
-    table_bottom_padding = 0.8
+    row_spacing = 2.2
+    group_gap = 1.45
+    table_top_offset = 1.2
+    table_top_padding = 1.8
+    table_bottom_padding = 1.1
     current_y = -table_top_offset
 
     for dataset in qa_present:
@@ -671,7 +606,7 @@ def plot_failure_mode_comprehensive(code, df_mode, output_dir):
                 va='center',
                 fontsize=table_cell_fontsize,
                 color=cell_color,
-                linespacing=1.5,
+                linespacing=1.6,
                 zorder=2,
             )
 
