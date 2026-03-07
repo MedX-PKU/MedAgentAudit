@@ -8,5 +8,5 @@ config.toml
 temp*
 
 datasets
-
+*.jpg*
 .DS_Store
