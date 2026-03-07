@@ -266,7 +266,7 @@ def plot_failure_mode_comprehensive(code, df_mode, output_dir):
     num_stages = len(x_order)
     num_mas = len(mas_order)
     x_step = 1.30
-    y_step = 1.08
+    y_step = 0.96
     x_positions = np.arange(num_stages) * x_step
     y_positions = np.arange(num_mas)[::-1] * y_step
     y_map = dict(zip(mas_order, y_positions))
@@ -305,12 +305,12 @@ def plot_failure_mode_comprehensive(code, df_mode, output_dir):
             zorder=1,
         )
 
-    box_width = 1.02
-    box_height = 0.86
-    box_rounding = 0.30
-    value_y_offset = 0.18
+    box_width = 0.92
+    box_height = 0.80
+    box_rounding = 0.24
+    value_y_offset = 0.17
     count_y_offset = 0.00
-    ci_y_offset = -0.18
+    ci_y_offset = -0.17
 
     for mas in mas_order:
         y_val = y_map[mas]
@@ -398,6 +398,8 @@ def plot_failure_mode_comprehensive(code, df_mode, output_dir):
 
     ax_a.set_xlim(x_positions[0] - box_width / 2 - 0.2, x_positions[-1] + box_width / 2 + 0.2)
     ax_a.set_ylim(y_positions[-1] - box_height / 2 - 0.12, y_positions[0] + box_height / 2 + 0.12)
+    ax_a.set_aspect('equal', adjustable='box')
+    ax_a.set_anchor('N')
     ax_a.set_xticks(x_positions)
     ax_a.set_xticklabels(x_order, rotation=30, rotation_mode='anchor', ha='center', fontweight='bold', fontsize=14)
     ax_a.set_yticks(y_positions)
