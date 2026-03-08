@@ -481,7 +481,7 @@ def plot_failure_mode_comprehensive(code, df_mode, output_dir):
         fontsize=14,
     )
     ax_a.set_title(
-        "A. MAS Cognitive Pipeline Breakdown",
+        "A. Failure rates across multi-agent architectures and collaboration stages.",
         fontweight='bold',
         loc='left',
         pad=18,
@@ -585,7 +585,7 @@ def plot_failure_mode_comprehensive(code, df_mode, output_dir):
         fontsize=common_axis_label_fontsize,
     )
     ax_b.set_title(
-        "B. Modality Divergence: Text (QA) vs Vision (VQA) Breakdown",
+        "B. Cumulative failure rates stratified by text and visual medical datasets.",
         fontweight='bold',
         loc='left',
         pad=18,
@@ -963,10 +963,22 @@ def plot_failure_mode_comprehensive(code, df_mode, output_dir):
     # Panels C & D: LLM Kinematic Degradation (V4 style)
     # =========================================================
     df_c = df_mode[df_mode['dataset'].isin(qa_datasets)].copy()
-    ax_c, _ = plot_kinematic_panel(gs[1, 0], df_c, "C. LLM Kinetic Degradation: Text QA", "Set1", seed_offset=10000)
+    ax_c, _ = plot_kinematic_panel(
+        gs[1, 0],
+        df_c,
+        "C. Absolute failure rates and stage-to-stage changes for large language models in text QA tasks.",
+        "Set1",
+        seed_offset=10000,
+    )
 
     df_d = df_mode[df_mode['dataset'].isin(vqa_datasets)].copy()
-    ax_d, _ = plot_kinematic_panel(gs[1, 1], df_d, "D. LLM Kinetic Degradation: Vision VQA", "Dark2", seed_offset=15000)
+    ax_d, _ = plot_kinematic_panel(
+        gs[1, 1],
+        df_d,
+        "D. Absolute failure rates and stage-to-stage changes for vision-language models in medical VQA tasks.",
+        "Dark2",
+        seed_offset=15000,
+    )
 
     plt.subplots_adjust(left=0.065, right=0.905, top=0.985, bottom=0.055)
     fig.canvas.draw()
