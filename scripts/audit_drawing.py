@@ -253,17 +253,23 @@ def plot_failure_mode_comprehensive(code, df_mode, output_dir):
     df_mode = df_mode.copy()
     df_mode['round_stage'] = pd.Categorical(df_mode['round_stage'], categories=x_order, ordered=True)
 
+    common_axis_label_fontsize = 14
+    common_tick_fontsize = 14
+    common_colorbar_label_fontsize = 14
+    common_colorbar_tick_fontsize = 12
+    panel_b_xtick_pad = 18
+
     plt.rcParams.update(
         {
             'font.family': 'sans-serif',
             'font.sans-serif': ['Arial', 'Helvetica'],
             'axes.linewidth': 1.2,
-            'axes.labelsize': 13,
+            'axes.labelsize': common_axis_label_fontsize,
             'axes.titlesize': 16,
-            'xtick.labelsize': 11,
-            'ytick.labelsize': 11,
-            'legend.fontsize': 11,
-            'legend.title_fontsize': 12,
+            'xtick.labelsize': common_tick_fontsize,
+            'ytick.labelsize': common_tick_fontsize,
+            'legend.fontsize': common_tick_fontsize,
+            'legend.title_fontsize': common_tick_fontsize,
             'axes.spines.top': False,
             'axes.spines.right': False,
         }
@@ -429,9 +435,16 @@ def plot_failure_mode_comprehensive(code, df_mode, output_dir):
     ax_a.set_aspect('equal', adjustable='box')
     ax_a.set_anchor('NW')
     ax_a.set_xticks(x_positions)
-    ax_a.set_xticklabels(x_order, rotation=30, rotation_mode='anchor', ha='center', fontweight='bold', fontsize=13)
+    ax_a.set_xticklabels(
+        x_order,
+        rotation=30,
+        rotation_mode='anchor',
+        ha='center',
+        fontweight='bold',
+        fontsize=common_tick_fontsize,
+    )
     ax_a.set_yticks(y_positions)
-    ax_a.set_yticklabels(mas_order, fontweight='bold', fontsize=14)
+    ax_a.set_yticklabels(mas_order, fontweight='bold', fontsize=common_tick_fontsize)
 
     for spine in ['top', 'right', 'left', 'bottom']:
         ax_a.spines[spine].set_visible(False)
@@ -442,7 +455,14 @@ def plot_failure_mode_comprehensive(code, df_mode, output_dir):
     sm_a = plt.cm.ScalarMappable(cmap=cmap_a, norm=norm_a)
     sm_a.set_array([])
     cbar_a = plt.colorbar(sm_a, ax=ax_a, pad=0.02, shrink=0.7, aspect=15)
-    cbar_a.set_label('Failure Rate (%)', rotation=270, labelpad=20, fontsize=14, fontweight='bold')
+    cbar_a.set_label(
+        'Failure Rate (%)',
+        rotation=270,
+        labelpad=20,
+        fontsize=common_colorbar_label_fontsize,
+        fontweight='bold',
+    )
+    cbar_a.ax.tick_params(labelsize=common_colorbar_tick_fontsize)
     cbar_a.outline.set_visible(False)
 
     na_patch = mpatches.Patch(
@@ -559,7 +579,11 @@ def plot_failure_mode_comprehensive(code, df_mode, output_dir):
     ax_b.axhline(0, color='black', linewidth=2, zorder=5)
     ax_b.yaxis.set_major_formatter(ticker.FuncFormatter(lambda y_val, pos: f"{abs(y_val):.0f}%"))
     ax_b.set_xlim(x_numeric[0] - 0.25, x_numeric[-1] + 0.25)
-    ax_b.set_ylabel("Accumulated Failure Representation", fontweight='bold', fontsize=14)
+    ax_b.set_ylabel(
+        "Accumulated Failure Representation",
+        fontweight='bold',
+        fontsize=common_axis_label_fontsize,
+    )
     ax_b.set_title(
         "B. Modality Divergence: Text (QA) vs Vision (VQA) Breakdown",
         fontweight='bold',
@@ -574,7 +598,7 @@ def plot_failure_mode_comprehensive(code, df_mode, output_dir):
         rotation_mode='anchor',
         ha='center',
         fontweight='bold',
-        fontsize=14,
+        fontsize=common_tick_fontsize,
     )
     ax_b.xaxis.set_ticks_position('bottom')
     ax_b.tick_params(
@@ -586,9 +610,9 @@ def plot_failure_mode_comprehensive(code, df_mode, output_dir):
         width=1.4,
         color='black',
         direction='out',
-        pad=12,
+        pad=panel_b_xtick_pad,
     )
-    ax_b.tick_params(axis='y', labelsize=14)
+    ax_b.tick_params(axis='y', labelsize=common_tick_fontsize)
     ax_b.grid(axis='y', linestyle=':', alpha=0.25)
     ax_b.spines['bottom'].set_visible(True)
     ax_b.spines['bottom'].set_linewidth(1.5)
@@ -747,7 +771,7 @@ def plot_failure_mode_comprehensive(code, df_mode, output_dir):
             ax.text(0.5, 0.5, "No Data Available", ha='center', va='center')
             ax.axis('off')
             ax_table.axis('off')
-            return
+            return ax, ax_table
 
         panel_stats = {}
         max_failure_rate = 0.0
@@ -829,15 +853,19 @@ def plot_failure_mode_comprehensive(code, df_mode, output_dir):
             rotation_mode='anchor',
             ha='right',
             fontweight='bold',
-            fontsize=15,
+            fontsize=common_tick_fontsize,
         )
         ax.set_xlim(x_numeric[0] - 0.2, x_numeric[-1] + 0.2)
-        ax.set_ylabel("Absolute Failure Rate (%)", fontweight='bold', fontsize=17)
+        ax.set_ylabel(
+            "Absolute Failure Rate (%)",
+            fontweight='bold',
+            fontsize=common_axis_label_fontsize,
+        )
         ax.set_ylim(y_min, y_max)
         ax.set_yticks(np.arange(y_min, y_max + 0.001, tick_step))
         ax.yaxis.set_major_formatter(ticker.PercentFormatter(xmax=100, decimals=0))
-        ax.tick_params(axis='x', labelsize=15, width=1.4, length=6, pad=8)
-        ax.tick_params(axis='y', labelsize=15, width=1.4, length=6)
+        ax.tick_params(axis='x', labelsize=common_tick_fontsize, width=1.4, length=6, pad=8)
+        ax.tick_params(axis='y', labelsize=common_tick_fontsize, width=1.4, length=6)
         ax.grid(axis='y', linestyle=':', alpha=0.4)
         ax.spines['left'].set_linewidth(1.5)
         ax.spines['bottom'].set_linewidth(1.5)
@@ -929,23 +957,39 @@ def plot_failure_mode_comprehensive(code, df_mode, output_dir):
         for spine in ['top', 'right', 'left', 'bottom']:
             ax_table.spines[spine].set_visible(False)
 
+        return ax, ax_table
+
     # =========================================================
     # Panels C & D: LLM Kinematic Degradation (V4 style)
     # =========================================================
     df_c = df_mode[df_mode['dataset'].isin(qa_datasets)].copy()
-    plot_kinematic_panel(gs[1, 0], df_c, "C. LLM Kinetic Degradation: Text QA", "Set1", seed_offset=10000)
+    ax_c, _ = plot_kinematic_panel(gs[1, 0], df_c, "C. LLM Kinetic Degradation: Text QA", "Set1", seed_offset=10000)
 
     df_d = df_mode[df_mode['dataset'].isin(vqa_datasets)].copy()
-    plot_kinematic_panel(gs[1, 1], df_d, "D. LLM Kinetic Degradation: Vision VQA", "Dark2", seed_offset=15000)
+    ax_d, _ = plot_kinematic_panel(gs[1, 1], df_d, "D. LLM Kinetic Degradation: Vision VQA", "Dark2", seed_offset=15000)
 
-    cax_delta = fig.add_axes([0.92, 0.15, 0.015, 0.25])
+    plt.subplots_adjust(left=0.065, right=0.905, top=0.985, bottom=0.055)
+    fig.canvas.draw()
+
+    kinematic_axes = [axis for axis in (ax_c, ax_d) if axis is not None]
+    kinematic_top = max(axis.get_position().y1 for axis in kinematic_axes)
+    kinematic_height = max(axis.get_position().height for axis in kinematic_axes)
+    cbar_height = kinematic_height * 0.82
+    cbar_bottom = kinematic_top - cbar_height
+    cbar_left = ax_d.get_position().x1 + 0.015
+    cax_delta = fig.add_axes([cbar_left, cbar_bottom, 0.015, cbar_height])
     sm_delta = plt.cm.ScalarMappable(cmap=delta_cmap, norm=delta_norm)
     sm_delta.set_array([])
     cbar_delta = plt.colorbar(sm_delta, cax=cax_delta)
-    cbar_delta.set_label('Stage-to-Stage Change ($\\Delta$ %)', rotation=270, labelpad=20, fontweight='bold')
+    cbar_delta.set_label(
+        'Stage-to-Stage Change ($\\Delta$ %)',
+        rotation=270,
+        labelpad=20,
+        fontweight='bold',
+        fontsize=common_colorbar_label_fontsize,
+    )
+    cbar_delta.ax.tick_params(labelsize=common_colorbar_tick_fontsize)
     cbar_delta.outline.set_visible(False)
-
-    plt.subplots_adjust(left=0.065, right=0.905, top=0.985, bottom=0.055)
 
     filename = f"Failure_Mode_{code}_Nature_Evolution.pdf"
     save_path = output_dir / filename
