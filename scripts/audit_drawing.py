@@ -437,7 +437,7 @@ def plot_failure_mode_comprehensive(code, df_mode, output_dir):
     # =========================================================
     # Panel B: Modality Divergence Breakdown (V4 style)
     # =========================================================
-    gs_b = gs[0, 1].subgridspec(2, 1, height_ratios=[0.66, 0.34], hspace=0.22)
+    gs_b = gs[0, 1].subgridspec(2, 1, height_ratios=[0.66, 0.34], hspace=0.32)
     ax_b = fig.add_subplot(gs_b[0, 0])
     ax_b_table = fig.add_subplot(gs_b[1, 0], sharex=ax_b)
 
@@ -531,10 +531,23 @@ def plot_failure_mode_comprehensive(code, df_mode, output_dir):
         fontweight='bold',
         fontsize=14,
     )
-    ax_b.tick_params(axis='x', labelbottom=True, length=0, pad=14)
+    ax_b.xaxis.set_ticks_position('bottom')
+    ax_b.tick_params(
+        axis='x',
+        which='major',
+        bottom=True,
+        labelbottom=True,
+        length=6,
+        width=1.4,
+        color='black',
+        direction='out',
+        pad=18,
+    )
     ax_b.tick_params(axis='y', labelsize=14)
     ax_b.grid(axis='y', linestyle=':', alpha=0.25)
-    ax_b.spines['bottom'].set_visible(False)
+    ax_b.spines['bottom'].set_visible(True)
+    ax_b.spines['bottom'].set_linewidth(1.5)
+    ax_b.spines['bottom'].set_color('black')
 
     max_extent = max(
         float(qa_bottom.max()) if qa_bottom.size else 0.0,
@@ -551,7 +564,7 @@ def plot_failure_mode_comprehensive(code, df_mode, output_dir):
     row_spacing = 2.2
     group_gap = 1.45
     table_top_offset = 1.2
-    table_top_padding = 1.8
+    table_top_padding = 2.8
     table_bottom_padding = 1.1
     current_y = -table_top_offset
 
