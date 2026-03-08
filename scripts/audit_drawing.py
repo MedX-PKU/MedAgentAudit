@@ -257,6 +257,10 @@ def plot_failure_mode_comprehensive(code, df_mode, output_dir):
     common_tick_fontsize = 14
     common_colorbar_label_fontsize = 14
     common_colorbar_tick_fontsize = 12
+    panel_title_fontsize = 20
+    panel_title_pad = 16
+    panel_title_y = 1.03
+    panel_title_linespacing = 1.12
     panel_b_xtick_pad = 18
 
     plt.rcParams.update(
@@ -265,7 +269,7 @@ def plot_failure_mode_comprehensive(code, df_mode, output_dir):
             'font.sans-serif': ['Arial', 'Helvetica'],
             'axes.linewidth': 1.2,
             'axes.labelsize': common_axis_label_fontsize,
-            'axes.titlesize': 16,
+            'axes.titlesize': panel_title_fontsize,
             'xtick.labelsize': common_tick_fontsize,
             'ytick.labelsize': common_tick_fontsize,
             'legend.fontsize': common_tick_fontsize,
@@ -275,11 +279,10 @@ def plot_failure_mode_comprehensive(code, df_mode, output_dir):
         }
     )
 
-    fig = plt.figure(figsize=(24, 18))
+    fig = plt.figure(figsize=(24, 18.4))
     fig.patch.set_facecolor('white')
 
-    gs = GridSpec(2, 2, figure=fig, wspace=0.24, hspace=0.15, height_ratios=[1.10, 1.20])
-    title_y = 1.03
+    gs = GridSpec(2, 2, figure=fig, wspace=0.24, hspace=0.22, height_ratios=[1.10, 1.20])
 
     qa_datasets = ["MedQA", "PubMedQA", "MedXpertQA"]
     vqa_datasets = ["PathVQA", "VQA-RAD", "SLAKE"]
@@ -483,9 +486,11 @@ def plot_failure_mode_comprehensive(code, df_mode, output_dir):
     ax_a.set_title(
         "A. Failure rates across multi-agent architectures and collaboration stages.",
         fontweight='bold',
+        fontsize=panel_title_fontsize,
         loc='left',
-        pad=18,
-        y=title_y,
+        pad=panel_title_pad,
+        y=panel_title_y,
+        linespacing=panel_title_linespacing,
     )
 
     # =========================================================
@@ -587,9 +592,11 @@ def plot_failure_mode_comprehensive(code, df_mode, output_dir):
     ax_b.set_title(
         "B. Cumulative failure rates stratified by text and visual medical datasets.",
         fontweight='bold',
+        fontsize=panel_title_fontsize,
         loc='left',
-        pad=18,
-        y=title_y,
+        pad=panel_title_pad,
+        y=panel_title_y,
+        linespacing=panel_title_linespacing,
     )
     ax_b.set_xticks(x_numeric)
     ax_b.set_xticklabels(
@@ -845,7 +852,15 @@ def plot_failure_mode_comprehensive(code, df_mode, output_dir):
                     zorder=3,
                 )
 
-        ax.set_title(title, fontweight='bold', loc='left', pad=15)
+        ax.set_title(
+            title,
+            fontweight='bold',
+            fontsize=panel_title_fontsize,
+            loc='left',
+            pad=panel_title_pad,
+            y=panel_title_y,
+            linespacing=panel_title_linespacing,
+        )
         ax.set_xticks(x_numeric)
         ax.set_xticklabels(
             display_x_order,
@@ -966,7 +981,7 @@ def plot_failure_mode_comprehensive(code, df_mode, output_dir):
     ax_c, _ = plot_kinematic_panel(
         gs[1, 0],
         df_c,
-        "C. Absolute failure rates and stage-to-stage changes for large language models in text QA tasks.",
+        "C. Absolute failure rates and stage-to-stage changes\nfor large language models in text QA tasks.",
         "Set1",
         seed_offset=10000,
     )
@@ -975,12 +990,12 @@ def plot_failure_mode_comprehensive(code, df_mode, output_dir):
     ax_d, _ = plot_kinematic_panel(
         gs[1, 1],
         df_d,
-        "D. Absolute failure rates and stage-to-stage changes for vision-language models in medical VQA tasks.",
+        "D. Absolute failure rates and stage-to-stage changes\nfor vision-language models in medical VQA tasks.",
         "Dark2",
         seed_offset=15000,
     )
 
-    plt.subplots_adjust(left=0.065, right=0.905, top=0.985, bottom=0.055)
+    plt.subplots_adjust(left=0.065, right=0.905, top=0.965, bottom=0.055)
     fig.canvas.draw()
 
     kinematic_axes = [axis for axis in (ax_c, ax_d) if axis is not None]
@@ -1003,7 +1018,7 @@ def plot_failure_mode_comprehensive(code, df_mode, output_dir):
     cbar_delta.ax.tick_params(labelsize=common_colorbar_tick_fontsize)
     cbar_delta.outline.set_visible(False)
 
-    filename = f"Failure_Mode_{code}_Nature_Evolution.pdf"
+    filename = f"failure_mode_{code}.pdf"
     save_path = output_dir / filename
     plt.savefig(save_path, dpi=600, format='pdf', bbox_inches='tight', transparent=False)
     plt.close()
