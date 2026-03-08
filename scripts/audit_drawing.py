@@ -272,7 +272,8 @@ def plot_failure_mode_comprehensive(code, df_mode, output_dir):
     fig = plt.figure(figsize=(24, 18))
     fig.patch.set_facecolor('white')
 
-    gs = GridSpec(2, 2, figure=fig, wspace=0.32, hspace=0.20, height_ratios=[1.08, 1.22])
+    gs = GridSpec(2, 2, figure=fig, wspace=0.24, hspace=0.15, height_ratios=[1.10, 1.20])
+    title_y = 1.03
 
     qa_datasets = ["MedQA", "PubMedQA", "MedXpertQA"]
     vqa_datasets = ["PathVQA", "VQA-RAD", "SLAKE"]
@@ -292,8 +293,8 @@ def plot_failure_mode_comprehensive(code, df_mode, output_dir):
 
     num_stages = len(x_order)
     num_mas = len(mas_order)
-    x_step = 1.30
-    y_step = 0.96
+    x_step = 1.16
+    y_step = 1.16
     x_positions = np.arange(num_stages) * x_step
     y_positions = np.arange(num_mas)[::-1] * y_step
     y_map = dict(zip(mas_order, y_positions))
@@ -332,9 +333,9 @@ def plot_failure_mode_comprehensive(code, df_mode, output_dir):
             zorder=1,
         )
 
-    box_width = 0.92
-    box_height = 0.80
-    box_rounding = 0.24
+    box_width = 0.94
+    box_height = 0.94
+    box_rounding = 0.22
     value_y_offset = 0.17
     count_y_offset = 0.00
     ci_y_offset = -0.17
@@ -423,19 +424,19 @@ def plot_failure_mode_comprehensive(code, df_mode, output_dir):
                     zorder=3,
                 )
 
-    ax_a.set_xlim(x_positions[0] - box_width / 2 - 0.2, x_positions[-1] + box_width / 2 + 0.2)
-    ax_a.set_ylim(y_positions[-1] - box_height / 2 - 0.12, y_positions[0] + box_height / 2 + 0.12)
+    ax_a.set_xlim(x_positions[0] - box_width / 2 - 0.08, x_positions[-1] + box_width / 2 + 0.10)
+    ax_a.set_ylim(y_positions[-1] - box_height / 2 - 0.06, y_positions[0] + box_height / 2 + 0.08)
     ax_a.set_aspect('equal', adjustable='box')
-    ax_a.set_anchor('N')
+    ax_a.set_anchor('NW')
     ax_a.set_xticks(x_positions)
-    ax_a.set_xticklabels(x_order, rotation=30, rotation_mode='anchor', ha='center', fontweight='bold', fontsize=14)
+    ax_a.set_xticklabels(x_order, rotation=30, rotation_mode='anchor', ha='center', fontweight='bold', fontsize=13)
     ax_a.set_yticks(y_positions)
     ax_a.set_yticklabels(mas_order, fontweight='bold', fontsize=14)
 
     for spine in ['top', 'right', 'left', 'bottom']:
         ax_a.spines[spine].set_visible(False)
 
-    ax_a.tick_params(axis='x', length=0, pad=20)
+    ax_a.tick_params(axis='x', length=0, pad=12)
     ax_a.tick_params(axis='y', length=0)
 
     sm_a = plt.cm.ScalarMappable(cmap=cmap_a, norm=norm_a)
@@ -459,7 +460,13 @@ def plot_failure_mode_comprehensive(code, df_mode, output_dir):
         frameon=False,
         fontsize=14,
     )
-    ax_a.set_title("A. MAS Cognitive Pipeline Breakdown", fontweight='bold', loc='left', pad=25)
+    ax_a.set_title(
+        "A. MAS Cognitive Pipeline Breakdown",
+        fontweight='bold',
+        loc='left',
+        pad=18,
+        y=title_y,
+    )
 
     # =========================================================
     # Panel B: Modality Divergence Breakdown (V4 style)
@@ -474,7 +481,7 @@ def plot_failure_mode_comprehensive(code, df_mode, output_dir):
         2,
         1,
         height_ratios=[1.90, max(0.60, 0.17 * panel_b_row_count)],
-        hspace=0.22,
+        hspace=0.30,
     )
     ax_b = fig.add_subplot(gs_b[0, 0])
     ax_b_table = fig.add_subplot(gs_b[1, 0], sharex=ax_b)
@@ -558,6 +565,7 @@ def plot_failure_mode_comprehensive(code, df_mode, output_dir):
         fontweight='bold',
         loc='left',
         pad=18,
+        y=title_y,
     )
     ax_b.set_xticks(x_numeric)
     ax_b.set_xticklabels(
@@ -578,7 +586,7 @@ def plot_failure_mode_comprehensive(code, df_mode, output_dir):
         width=1.4,
         color='black',
         direction='out',
-        pad=10,
+        pad=12,
     )
     ax_b.tick_params(axis='y', labelsize=14)
     ax_b.grid(axis='y', linestyle=':', alpha=0.25)
@@ -601,7 +609,7 @@ def plot_failure_mode_comprehensive(code, df_mode, output_dir):
     row_spacing = 1.26
     group_gap = 0.58
     table_top_offset = 0.72
-    table_top_padding = 0.84
+    table_top_padding = 1.08
     table_bottom_padding = 0.48
     current_y = -table_top_offset
 
@@ -727,7 +735,7 @@ def plot_failure_mode_comprehensive(code, df_mode, output_dir):
             2,
             1,
             height_ratios=[1.92, max(0.60, 0.17 * table_row_count)],
-            hspace=0.16,
+            hspace=0.30,
         )
         ax = fig.add_subplot(panel_gs[0, 0])
         ax_table = fig.add_subplot(panel_gs[1, 0], sharex=ax)
@@ -817,9 +825,9 @@ def plot_failure_mode_comprehensive(code, df_mode, output_dir):
         ax.set_xticks(x_numeric)
         ax.set_xticklabels(
             display_x_order,
-            rotation=0,
+            rotation=30,
             rotation_mode='anchor',
-            ha='center',
+            ha='right',
             fontweight='bold',
             fontsize=15,
         )
@@ -828,7 +836,7 @@ def plot_failure_mode_comprehensive(code, df_mode, output_dir):
         ax.set_ylim(y_min, y_max)
         ax.set_yticks(np.arange(y_min, y_max + 0.001, tick_step))
         ax.yaxis.set_major_formatter(ticker.PercentFormatter(xmax=100, decimals=0))
-        ax.tick_params(axis='x', labelsize=15, width=1.4, length=6, pad=6)
+        ax.tick_params(axis='x', labelsize=15, width=1.4, length=6, pad=8)
         ax.tick_params(axis='y', labelsize=15, width=1.4, length=6)
         ax.grid(axis='y', linestyle=':', alpha=0.4)
         ax.spines['left'].set_linewidth(1.5)
@@ -840,7 +848,7 @@ def plot_failure_mode_comprehensive(code, df_mode, output_dir):
         row_positions = {}
         row_spacing = 1.26
         table_top_offset = 0.72
-        table_top_padding = 0.84
+        table_top_padding = 1.18
         table_bottom_padding = 0.48
         current_y = -table_top_offset
 
@@ -937,7 +945,7 @@ def plot_failure_mode_comprehensive(code, df_mode, output_dir):
     cbar_delta.set_label('Stage-to-Stage Change ($\\Delta$ %)', rotation=270, labelpad=20, fontweight='bold')
     cbar_delta.outline.set_visible(False)
 
-    plt.subplots_adjust(left=0.08, right=0.9, top=0.96, bottom=0.06)
+    plt.subplots_adjust(left=0.065, right=0.905, top=0.985, bottom=0.055)
 
     filename = f"Failure_Mode_{code}_Nature_Evolution.pdf"
     save_path = output_dir / filename
