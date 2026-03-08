@@ -271,13 +271,6 @@ def plot_failure_mode_comprehensive(code, df_mode, output_dir):
 
     fig = plt.figure(figsize=(24, 18))
     fig.patch.set_facecolor('white')
-    plt.suptitle(
-        f"Failure Mode {code}: {mode_name}\nSystemic Dynamics and Divergence of Cognitive Collapse",
-        fontsize=26,
-        fontweight='bold',
-        y=1.01,
-        ha='center',
-    )
 
     gs = GridSpec(2, 2, figure=fig, wspace=0.32, hspace=0.20, height_ratios=[1.08, 1.22])
 
@@ -471,9 +464,23 @@ def plot_failure_mode_comprehensive(code, df_mode, output_dir):
     # =========================================================
     # Panel B: Modality Divergence Breakdown (V4 style)
     # =========================================================
-    gs_b = gs[0, 1].subgridspec(2, 1, height_ratios=[0.66, 0.34], hspace=0.32)
+    datasets_present = df_mode['dataset'].dropna().unique().tolist()
+    qa_present = [dataset for dataset in qa_datasets if dataset in datasets_present]
+    vqa_present = [dataset for dataset in vqa_datasets if dataset in datasets_present]
+    panel_b_datasets = qa_present + vqa_present
+    panel_b_row_count = max(len(panel_b_datasets), 1)
+
+    gs_b = gs[0, 1].subgridspec(
+        2,
+        1,
+        height_ratios=[1.90, max(0.60, 0.17 * panel_b_row_count)],
+        hspace=0.22,
+    )
     ax_b = fig.add_subplot(gs_b[0, 0])
     ax_b_table = fig.add_subplot(gs_b[1, 0], sharex=ax_b)
+    ax_b.set_zorder(2)
+    ax_b_table.set_zorder(1)
+    ax_b_table.set_facecolor('none')
 
     x_numeric = np.arange(len(x_order))
     qa_colors = ["#c6dbef", "#6baed6", "#2171b5"]
@@ -481,10 +488,6 @@ def plot_failure_mode_comprehensive(code, df_mode, output_dir):
     qa_color_map = dict(zip(qa_datasets, qa_colors))
     vqa_color_map = dict(zip(vqa_datasets, vqa_colors))
 
-    datasets_present = df_mode['dataset'].dropna().unique().tolist()
-    qa_present = [dataset for dataset in qa_datasets if dataset in datasets_present]
-    vqa_present = [dataset for dataset in vqa_datasets if dataset in datasets_present]
-    panel_b_datasets = qa_present + vqa_present
     panel_b_stats = {}
 
     for dataset_idx, dataset in enumerate(panel_b_datasets):
@@ -575,7 +578,7 @@ def plot_failure_mode_comprehensive(code, df_mode, output_dir):
         width=1.4,
         color='black',
         direction='out',
-        pad=18,
+        pad=10,
     )
     ax_b.tick_params(axis='y', labelsize=14)
     ax_b.grid(axis='y', linestyle=':', alpha=0.25)
@@ -595,11 +598,11 @@ def plot_failure_mode_comprehensive(code, df_mode, output_dir):
     table_row_order = qa_present + vqa_present
     row_color_map = {**qa_color_map, **vqa_color_map}
     row_positions = {}
-    row_spacing = 2.2
-    group_gap = 1.45
-    table_top_offset = 1.2
-    table_top_padding = 2.8
-    table_bottom_padding = 1.1
+    row_spacing = 1.26
+    group_gap = 0.58
+    table_top_offset = 0.72
+    table_top_padding = 0.84
+    table_bottom_padding = 0.48
     current_y = -table_top_offset
 
     for dataset in qa_present:
@@ -613,14 +616,45 @@ def plot_failure_mode_comprehensive(code, df_mode, output_dir):
         row_positions[dataset] = current_y
         current_y -= row_spacing
 
-    table_cell_fontsize = 8.2 if len(x_order) <= 8 else 7.3 if len(x_order) <= 11 else 6.6
-    table_label_fontsize = 12 if len(x_order) <= 11 else 11
+    table_cell_fontsize = 8.1 if len(x_order) <= 8 else 7.4 if len(x_order) <= 11 else 6.8
+    if len(table_row_order) >= 6:
+        table_cell_fontsize -= 0.4
+    table_label_fontsize = 10.8 if len(table_row_order) <= 4 else 10.2
     label_transform = mtransforms.blended_transform_factory(ax_b_table.transAxes, ax_b_table.transData)
+    label_x = -0.04
+    table_x_min = x_numeric[0] - 0.22
+    table_x_max = x_numeric[-1] + 0.22
+
+    for x_val in x_numeric:
+        ax_b_table.axvline(x_val, color='#E5E7EB', linestyle=':', linewidth=0.9, zorder=0)
+
+    for dataset in table_row_order:
+        ax_b_table.hlines(
+            row_positions[dataset],
+            xmin=table_x_min,
+            xmax=table_x_max,
+            color='#F1F5F9',
+            linewidth=1.0,
+            linestyle=':',
+            zorder=0,
+        )
+
+    if qa_present and vqa_present:
+        group_divider_y = (row_positions[qa_present[-1]] + row_positions[vqa_present[0]]) / 2
+        ax_b_table.hlines(
+            group_divider_y,
+            xmin=table_x_min,
+            xmax=table_x_max,
+            color='#CBD5E1',
+            linewidth=1.0,
+            linestyle='--',
+            zorder=1,
+        )
 
     for dataset in table_row_order:
         y_val = row_positions[dataset]
         ax_b_table.text(
-            -0.035,
+            label_x,
             y_val,
             dataset,
             transform=label_transform,
@@ -655,7 +689,7 @@ def plot_failure_mode_comprehensive(code, df_mode, output_dir):
                 va='center',
                 fontsize=table_cell_fontsize,
                 color=cell_color,
-                linespacing=1.6,
+                linespacing=1.04,
                 zorder=2,
             )
 
@@ -677,19 +711,29 @@ def plot_failure_mode_comprehensive(code, df_mode, output_dir):
     # Helper: Kinematic Acceleration Vector Plot (V4 style)
     # =========================================================
     def plot_kinematic_panel(subspec, df_subset, title, palette_name, seed_offset):
+        model_display_names = {
+            "DeepSeek-V3.2-Thinking": "DeepSeek",
+            "Gemini-3-Flash-Preview": "Gemini",
+            "Qwen3-8B": "Qwen",
+            "Qwen3-VL-8B-Thinking": "Qwen",
+        }
         model_values = df_subset['llm'].dropna().unique().tolist() if not df_subset.empty else []
         models = [llm for llm in LLM_PRIORITY if llm in model_values]
         models.extend(sorted(llm for llm in model_values if llm not in models))
+        display_x_order = [stage_label.replace("Svnthesis", "Synthesis") for stage_label in x_order]
 
         table_row_count = max(len(models), 1)
         panel_gs = subspec.subgridspec(
             2,
             1,
-            height_ratios=[1.75, max(0.95, 0.30 * table_row_count)],
-            hspace=0.10,
+            height_ratios=[1.92, max(0.60, 0.17 * table_row_count)],
+            hspace=0.16,
         )
         ax = fig.add_subplot(panel_gs[0, 0])
         ax_table = fig.add_subplot(panel_gs[1, 0], sharex=ax)
+        ax.set_zorder(2)
+        ax_table.set_zorder(1)
+        ax_table.set_facecolor('none')
 
         if df_subset.empty:
             ax.text(0.5, 0.5, "No Data Available", ha='center', va='center')
@@ -772,7 +816,7 @@ def plot_failure_mode_comprehensive(code, df_mode, output_dir):
         ax.set_title(title, fontweight='bold', loc='left', pad=15)
         ax.set_xticks(x_numeric)
         ax.set_xticklabels(
-            x_order,
+            display_x_order,
             rotation=0,
             rotation_mode='anchor',
             ha='center',
@@ -784,17 +828,20 @@ def plot_failure_mode_comprehensive(code, df_mode, output_dir):
         ax.set_ylim(y_min, y_max)
         ax.set_yticks(np.arange(y_min, y_max + 0.001, tick_step))
         ax.yaxis.set_major_formatter(ticker.PercentFormatter(xmax=100, decimals=0))
-        ax.tick_params(axis='x', labelsize=15, width=1.4, length=6, pad=8)
+        ax.tick_params(axis='x', labelsize=15, width=1.4, length=6, pad=6)
         ax.tick_params(axis='y', labelsize=15, width=1.4, length=6)
         ax.grid(axis='y', linestyle=':', alpha=0.4)
         ax.spines['left'].set_linewidth(1.5)
         ax.spines['bottom'].set_linewidth(1.5)
+        for tick_label in ax.get_xticklabels():
+            tick_label.set_clip_on(False)
+            tick_label.set_zorder(6)
 
         row_positions = {}
-        row_spacing = 2.35
-        table_top_offset = 1.15
-        table_top_padding = 1.4
-        table_bottom_padding = 1.15
+        row_spacing = 1.26
+        table_top_offset = 0.72
+        table_top_padding = 0.84
+        table_bottom_padding = 0.48
         current_y = -table_top_offset
 
         for model in models:
@@ -806,12 +853,14 @@ def plot_failure_mode_comprehensive(code, df_mode, output_dir):
             table_cell_fontsize -= 0.4
         table_label_fontsize = 10.8 if len(models) <= 4 else 10.2
         label_transform = mtransforms.blended_transform_factory(ax_table.transAxes, ax_table.transData)
+        label_x = -0.04
 
         for x_val in x_numeric:
             ax_table.axvline(x_val, color='#E5E7EB', linestyle=':', linewidth=0.9, zorder=0)
 
         for model in models:
             y_val = row_positions[model]
+            display_model = model_display_names.get(model, model)
             ax_table.hlines(
                 y_val,
                 xmin=x_numeric[0] - 0.22,
@@ -820,40 +869,16 @@ def plot_failure_mode_comprehensive(code, df_mode, output_dir):
                 linewidth=1.0,
                 zorder=0,
             )
-
-            ax_table.plot(
-                [-0.13, -0.095],
-                [y_val, y_val],
-                transform=label_transform,
-                color=color_map[model],
-                linewidth=3.0,
-                solid_capstyle='round',
-                clip_on=False,
-                zorder=3,
-            )
-            ax_table.plot(
-                [-0.1125],
-                [y_val],
-                transform=label_transform,
-                marker='o',
-                markersize=7,
-                markerfacecolor=color_map[model],
-                markeredgecolor='white',
-                markeredgewidth=1.2,
-                linestyle='None',
-                clip_on=False,
-                zorder=4,
-            )
             ax_table.text(
-                -0.085,
+                label_x,
                 y_val,
-                model,
+                display_model,
                 transform=label_transform,
-                ha='left',
+                ha='right',
                 va='center',
                 fontsize=table_label_fontsize,
                 fontweight='bold',
-                color='#111827',
+                color=color_map[model],
                 clip_on=False,
             )
 
@@ -878,7 +903,7 @@ def plot_failure_mode_comprehensive(code, df_mode, output_dir):
                     va='center',
                     fontsize=table_cell_fontsize,
                     color=cell_color,
-                    linespacing=1.45,
+                    linespacing=1.04,
                     zorder=2,
                 )
 
@@ -912,7 +937,7 @@ def plot_failure_mode_comprehensive(code, df_mode, output_dir):
     cbar_delta.set_label('Stage-to-Stage Change ($\\Delta$ %)', rotation=270, labelpad=20, fontweight='bold')
     cbar_delta.outline.set_visible(False)
 
-    plt.subplots_adjust(left=0.08, right=0.9, top=0.92, bottom=0.06)
+    plt.subplots_adjust(left=0.08, right=0.9, top=0.96, bottom=0.06)
 
     filename = f"Failure_Mode_{code}_Nature_Evolution.pdf"
     save_path = output_dir / filename
