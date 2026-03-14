@@ -10,3 +10,5 @@ temp*
 datasets
 *.jpg*
 .DS_Store
+markdown
+*tex*
