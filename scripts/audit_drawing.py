@@ -15,8 +15,10 @@ import matplotlib.colors as mcolors
 import matplotlib.patches as mpatches
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
+import matplotlib.transforms as mtransforms
 import numpy as np
 import pandas as pd
+import seaborn as sns
 from matplotlib.gridspec import GridSpec
 from tqdm import tqdm
 
@@ -226,291 +228,12 @@ def process_audit_data_to_df(audit_results_path: Path):
     return df
 
 
-def build_group_stage_stats(df_subset, group_key, group_order, x_order, seed_offset):
-    """
-    Aggregate failure-rate statistics for a group-by-stage panel.
-    """
-    panel_stats = {}
-    max_ci_upper = 0.0
-
-    for group_idx, group in enumerate(group_order):
-        for stage_idx, stage in enumerate(x_order):
-            cell_values = df_subset.loc[
-                (df_subset[group_key] == group) & (df_subset['round_stage'] == stage),
-                'failed',
-            ].dropna().astype(float).to_numpy()
-
-            if cell_values.size == 0:
-                continue
-
-            failure_rate = float(cell_values.mean() * 100)
-            ci_lower, ci_upper = compute_bootstrap_failure_ci(
-                cell_values,
-                seed=BOOTSTRAP_BASE_SEED + seed_offset + group_idx * max(len(x_order), 1) + stage_idx,
-            )
-            panel_stats[(group, stage)] = {
-                'failure_rate': failure_rate,
-                'failed_count': int(cell_values.sum()),
-                'total_count': int(cell_values.size),
-                'ci_95': (ci_lower, ci_upper),
-            }
-            max_ci_upper = max(
-                max_ci_upper,
-                failure_rate,
-                float(ci_upper) if np.isfinite(ci_upper) else failure_rate,
-            )
-
-    return panel_stats, max_ci_upper
-
-
-def extract_panel_series(panel_stats, group, x_order):
-    """
-    Convert panel stats into aligned y/CI arrays for plotting.
-    """
-    y_vals = []
-    ci_lower = []
-    ci_upper = []
-
-    for stage in x_order:
-        cell_stats = panel_stats.get((group, stage))
-        if cell_stats is None:
-            y_vals.append(np.nan)
-            ci_lower.append(np.nan)
-            ci_upper.append(np.nan)
-            continue
-
-        y_vals.append(cell_stats['failure_rate'])
-        lower, upper = cell_stats['ci_95']
-        ci_lower.append(lower)
-        ci_upper.append(upper)
-
-    return (
-        np.asarray(y_vals, dtype=float),
-        np.asarray(ci_lower, dtype=float),
-        np.asarray(ci_upper, dtype=float),
-    )
-
-
-def plot_series_with_ci(ax, x_numeric, y_vals, ci_lower, ci_upper, color, label):
-    """
-    Plot a line with large circular markers and a semi-transparent CI ribbon.
-    """
-    masked_y = np.ma.masked_invalid(y_vals)
-    if masked_y.count() == 0:
-        return
-
-    masked_lower = np.ma.masked_invalid(ci_lower)
-    masked_upper = np.ma.masked_invalid(ci_upper)
-    ax.fill_between(
-        x_numeric,
-        masked_lower,
-        masked_upper,
-        color=color,
-        alpha=0.14,
-        linewidth=0,
-        zorder=1,
-    )
-    ax.plot(
-        x_numeric,
-        masked_y,
-        color=color,
-        linewidth=2.4,
-        marker='o',
-        markersize=9,
-        markerfacecolor=color,
-        markeredgecolor='white',
-        markeredgewidth=1.6,
-        label=label,
-        zorder=3,
-    )
-
-
-def style_line_panel(
-    ax,
-    x_numeric,
-    x_labels,
-    title,
-    y_label,
-    y_axis_top,
-    tick_step,
-    panel_title_fontsize,
-    panel_title_pad,
-    panel_title_y,
-    panel_title_linespacing,
-    common_axis_label_fontsize,
-    common_tick_fontsize,
-    legend_loc='upper left',
-    legend_ncol=1,
-):
-    """
-    Apply the shared line-chart style used by Panels B-D.
-    """
-    for x_val in x_numeric:
-        ax.axvline(x_val, color='#E8E9EE', linewidth=1.0, zorder=0)
-
-    ax.set_title(
-        title,
-        fontweight='bold',
-        fontsize=panel_title_fontsize,
-        loc='left',
-        pad=panel_title_pad,
-        y=panel_title_y,
-        linespacing=panel_title_linespacing,
-    )
-    ax.set_xlim(x_numeric[0] - 0.15, x_numeric[-1] + 0.15)
-    ax.set_xticks(x_numeric)
-    ax.set_xticklabels(
-        x_labels,
-        rotation=0 if len(x_labels) <= 4 else 18,
-        ha='center',
-        fontweight='bold',
-        fontsize=common_tick_fontsize,
-    )
-    ax.set_ylabel(
-        y_label,
-        fontweight='bold',
-        fontsize=common_axis_label_fontsize,
-    )
-    ax.set_ylim(0.0, y_axis_top)
-    ax.set_yticks(np.arange(0.0, y_axis_top + 0.001, tick_step))
-    ax.yaxis.set_major_formatter(ticker.PercentFormatter(xmax=100, decimals=0))
-    ax.tick_params(axis='x', labelsize=common_tick_fontsize, width=1.4, length=6, pad=8)
-    ax.tick_params(axis='y', labelsize=common_tick_fontsize, width=1.4, length=6)
-    ax.grid(axis='y', color='#E8E9EE', linestyle='-', linewidth=0.9, alpha=0.85)
-    ax.set_axisbelow(True)
-    ax.spines['left'].set_linewidth(1.5)
-    ax.spines['bottom'].set_linewidth(1.5)
-    ax.spines['left'].set_color('#3F3F46')
-    ax.spines['bottom'].set_color('#3F3F46')
-
-    handles, labels = ax.get_legend_handles_labels()
-    if handles:
-        legend = ax.legend(
-            loc=legend_loc,
-            ncol=legend_ncol,
-            frameon=True,
-            fancybox=False,
-            framealpha=0.95,
-            facecolor='white',
-            edgecolor='#C7CAD3',
-            borderpad=0.6,
-            handlelength=1.8,
-            columnspacing=1.0,
-            handletextpad=0.6,
-        )
-        legend.get_frame().set_linewidth(1.0)
-
-
-def format_stats_cell(cell_stats):
-    """
-    Render a compact multi-line cell string for appendix tables.
-    """
-    if cell_stats is None:
-        return "N/A"
-
-    ci_lower, ci_upper = cell_stats['ci_95']
-    return (
-        f"{cell_stats['failure_rate']:.1f}%\n"
-        f"{cell_stats['failed_count']}/{cell_stats['total_count']}\n"
-        f"CI [{ci_lower:.1f}, {ci_upper:.1f}]"
-    )
-
-
-def render_stats_table(
-    ax,
-    title,
-    row_order,
-    col_order,
-    panel_stats,
-    row_display_map=None,
-    row_color_map=None,
-    col_display_labels=None,
-):
-    """
-    Render a standalone appendix table with the numeric values removed from the main figure.
-    """
-    if not row_order:
-        ax.axis('off')
-        ax.text(0.5, 0.5, "No Data Available", ha='center', va='center', fontsize=13)
-        return
-
-    row_display_map = row_display_map or {}
-    row_color_map = row_color_map or {}
-    col_display_labels = col_display_labels or col_order
-    row_positions = np.arange(len(row_order))[::-1]
-    col_positions = np.arange(len(col_order))
-
-    ax.set_xlim(-0.5, len(col_order) - 0.5)
-    ax.set_ylim(-0.5, len(row_order) - 0.5)
-
-    for row_idx, y_val in enumerate(row_positions):
-        bg_color = '#FBFCFE' if row_idx % 2 == 0 else '#F4F6FA'
-        ax.add_patch(
-            mpatches.Rectangle(
-                (-0.5, y_val - 0.5),
-                len(col_order),
-                1.0,
-                facecolor=bg_color,
-                edgecolor='none',
-                zorder=0,
-            )
-        )
-
-    for x_edge in np.arange(-0.5, len(col_order) + 0.5, 1.0):
-        ax.axvline(x_edge, color='#D7D9E0', linewidth=1.0, zorder=1)
-    for y_edge in np.arange(-0.5, len(row_order) + 0.5, 1.0):
-        ax.axhline(y_edge, color='#D7D9E0', linewidth=1.0, zorder=1)
-
-    for row_idx, row in enumerate(row_order):
-        y_val = row_positions[row_idx]
-        for x_val, stage in zip(col_positions, col_order):
-            cell_stats = panel_stats.get((row, stage))
-            ax.text(
-                x_val,
-                y_val,
-                format_stats_cell(cell_stats),
-                ha='center',
-                va='center',
-                fontsize=9.3,
-                color='#111827' if cell_stats is not None else '#9CA3AF',
-                linespacing=1.15,
-                zorder=2,
-            )
-
-    ax.set_xticks(col_positions)
-    ax.set_xticklabels(col_display_labels, fontsize=12, fontweight='bold')
-    ax.tick_params(axis='x', top=True, labeltop=True, bottom=False, labelbottom=False, length=0, pad=10)
-
-    ax.set_yticks(row_positions)
-    ax.set_yticklabels(
-        [row_display_map.get(row, row) for row in row_order],
-        fontsize=12,
-        fontweight='bold',
-    )
-    ax.tick_params(axis='y', length=0, pad=10)
-    for tick_label, row in zip(ax.get_yticklabels(), row_order):
-        tick_label.set_color(row_color_map.get(row, '#111827'))
-
-    for spine in ['top', 'right', 'left', 'bottom']:
-        ax.spines[spine].set_visible(False)
-
-    ax.set_title(title, loc='left', fontsize=15, fontweight='bold', pad=18)
-
-
-def save_figure_outputs(fig, output_prefix: Path, dpi=600):
-    """
-    Save both PDF and PNG outputs for a figure.
-    """
-    pdf_path = output_prefix.parent / f"{output_prefix.name}.pdf"
-    png_path = output_prefix.parent / f"{output_prefix.name}.png"
-    fig.savefig(pdf_path, dpi=dpi, format='pdf', bbox_inches='tight', transparent=False)
-    fig.savefig(png_path, dpi=max(300, dpi // 2), format='png', bbox_inches='tight', transparent=False)
-    return pdf_path, png_path
-
-
 def plot_failure_mode_comprehensive(code, df_mode, output_dir):
     """
-    Generate the redesigned comprehensive figure and separate appendix tables.
+    Generate the final comprehensive figure.
+    - Panel A uses the V3 MAS cognitive pipeline style.
+    - Panel B uses the V4 dataset modality divergence style.
+    - Panels C and D use the V4 kinematic degradation style.
     """
     config = AUDIT_CONFIG[code]
     mode_name = config["name"]
@@ -531,18 +254,19 @@ def plot_failure_mode_comprehensive(code, df_mode, output_dir):
     df_mode['round_stage'] = pd.Categorical(df_mode['round_stage'], categories=x_order, ordered=True)
 
     common_axis_label_fontsize = 14
-    common_tick_fontsize = 13
+    common_tick_fontsize = 14
     common_colorbar_label_fontsize = 14
     common_colorbar_tick_fontsize = 12
-    panel_title_fontsize = 18
+    panel_title_fontsize = 20
     panel_title_pad = 16
     panel_title_y = 1.03
     panel_title_linespacing = 1.12
+    panel_b_xtick_pad = 18
 
     plt.rcParams.update(
         {
-            'font.family': 'Arial',
-            'font.sans-serif': ['Arial'],
+            'font.family': 'sans-serif',
+            'font.sans-serif': ['Arial', 'Helvetica'],
             'axes.linewidth': 1.2,
             'axes.labelsize': common_axis_label_fontsize,
             'axes.titlesize': panel_title_fontsize,
@@ -552,50 +276,27 @@ def plot_failure_mode_comprehensive(code, df_mode, output_dir):
             'legend.title_fontsize': common_tick_fontsize,
             'axes.spines.top': False,
             'axes.spines.right': False,
-            'pdf.fonttype': 42,
-            'ps.fonttype': 42,
         }
     )
 
-    fig = plt.figure(figsize=(23.4, 14.8))
+    fig = plt.figure(figsize=(24, 18.4))
     fig.patch.set_facecolor('white')
 
-    gs = GridSpec(2, 2, figure=fig, wspace=0.28, hspace=0.34, height_ratios=[1.0, 1.0])
+    gs = GridSpec(2, 2, figure=fig, wspace=0.24, hspace=0.22, height_ratios=[1.10, 1.20])
 
     qa_datasets = ["MedQA", "PubMedQA", "MedXpertQA"]
     vqa_datasets = ["PathVQA", "VQA-RAD", "SLAKE"]
-    dataset_color_map = {
-        "MedQA": "#2F5D8A",
-        "PubMedQA": "#5C84B1",
-        "MedXpertQA": "#8FB3D9",
-        "PathVQA": "#6F7D8C",
-        "VQA-RAD": "#A45D78",
-        "SLAKE": "#D1845D",
-    }
-    model_color_map = {
-        "DeepSeek-V3.2-Thinking": "#2F5D8A",
-        "GPT-5.2": "#2F8A74",
-        "Gemini-3-Flash-Preview": "#A16E98",
-        "Qwen3-8B": "#C67A3B",
-        "GLM-4.6V": "#6F7681",
-        "Qwen3-VL-8B-Thinking": "#9C4F73",
-    }
-    model_display_names = {
-        "DeepSeek-V3.2-Thinking": "DeepSeek",
-        "Gemini-3-Flash-Preview": "Gemini",
-        "Qwen3-8B": "Qwen",
-        "Qwen3-VL-8B-Thinking": "Qwen-VL",
-    }
-    display_x_order = [stage_label.replace("Svnthesis", "Synthesis") for stage_label in x_order]
-    x_numeric = np.arange(len(x_order), dtype=float)
 
     mas_priority = ["ColaCare", "HealthcareAgent", "MAC", "MDAgents", "MedAgent", "ReConcile"]
     mas_present = df_mode['mas'].dropna().unique().tolist()
     mas_order = [mas for mas in mas_priority if mas in mas_present]
     mas_order.extend(sorted(mas for mas in mas_present if mas not in mas_order))
 
+    delta_cmap = plt.cm.coolwarm
+    delta_norm = mcolors.CenteredNorm(vcenter=0, halfrange=20)
+
     # =========================================================
-    # Panel A: square-cell grey heatmap
+    # Panel A: MAS Cognitive Pipeline Breakdown (V3 style)
     # =========================================================
     ax_a = fig.add_subplot(gs[0, 0])
 
@@ -606,12 +307,29 @@ def plot_failure_mode_comprehensive(code, df_mode, output_dir):
     x_positions = np.arange(num_stages) * x_step
     y_positions = np.arange(num_mas)[::-1] * y_step
     y_map = dict(zip(mas_order, y_positions))
-    panel_a_stats, _ = build_group_stage_stats(df_mode, 'mas', mas_order, x_order, seed_offset=0)
+    panel_a_stats = {}
 
-    cmap_a = mcolors.LinearSegmentedColormap.from_list(
-        "failure_mode_greys",
-        ['#EFEFF6', '#777792'],
-    )
+    for mas_idx, mas in enumerate(mas_order):
+        for stage_idx, stage in enumerate(x_order):
+            cell_values = df_mode.loc[
+                (df_mode['mas'] == mas) & (df_mode['round_stage'] == stage),
+                'failed',
+            ].dropna().astype(float).to_numpy()
+
+            if cell_values.size == 0:
+                continue
+
+            panel_a_stats[(mas, stage)] = {
+                'failure_rate': float(cell_values.mean() * 100),
+                'failed_count': int(cell_values.sum()),
+                'total_count': int(cell_values.size),
+                'ci_95': compute_bootstrap_failure_ci(
+                    cell_values,
+                    seed=BOOTSTRAP_BASE_SEED + mas_idx * max(num_stages, 1) + stage_idx,
+                ),
+            }
+
+    cmap_a = sns.color_palette("flare", as_cmap=True)
     norm_a = mcolors.Normalize(vmin=0, vmax=100)
 
     for y_val in y_positions:
@@ -626,6 +344,7 @@ def plot_failure_mode_comprehensive(code, df_mode, output_dir):
 
     box_width = 0.94
     box_height = 0.94
+    box_rounding = 0.22
     value_y_offset = 0.17
     count_y_offset = 0.00
     ci_y_offset = -0.17
@@ -636,10 +355,11 @@ def plot_failure_mode_comprehensive(code, df_mode, output_dir):
             cell_stats = panel_a_stats.get((mas, stage))
 
             if cell_stats is None:
-                box = mpatches.Rectangle(
+                box = mpatches.FancyBboxPatch(
                     (x_val - box_width / 2, y_val - box_height / 2),
                     box_width,
                     box_height,
+                    boxstyle=f"round,pad=0,rounding_size={box_rounding}",
                     facecolor='#F8F9FA',
                     edgecolor='#A0A0A0',
                     linewidth=1.5,
@@ -665,12 +385,13 @@ def plot_failure_mode_comprehensive(code, df_mode, output_dir):
                 total_count = cell_stats['total_count']
                 ci_lower, ci_upper = cell_stats['ci_95']
                 bg_color = cmap_a(norm_a(val))
-                box = mpatches.Rectangle(
+                box = mpatches.FancyBboxPatch(
                     (x_val - box_width / 2, y_val - box_height / 2),
                     box_width,
                     box_height,
+                    boxstyle=f"round,pad=0,rounding_size={box_rounding}",
                     facecolor=bg_color,
-                    edgecolor='#D4D6DE',
+                    edgecolor='white',
                     linewidth=1.5,
                     zorder=2,
                 )
@@ -718,7 +439,7 @@ def plot_failure_mode_comprehensive(code, df_mode, output_dir):
     ax_a.set_anchor('NW')
     ax_a.set_xticks(x_positions)
     ax_a.set_xticklabels(
-        display_x_order,
+        x_order,
         rotation=30,
         rotation_mode='anchor',
         ha='center',
@@ -747,8 +468,23 @@ def plot_failure_mode_comprehensive(code, df_mode, output_dir):
     cbar_a.ax.tick_params(labelsize=common_colorbar_tick_fontsize)
     cbar_a.outline.set_visible(False)
 
+    na_patch = mpatches.Patch(
+        facecolor='#F8F9FA',
+        edgecolor='#A0A0A0',
+        linestyle='--',
+        hatch='//////',
+        label='Structurally N/A',
+    )
+    ax_a.legend(
+        handles=[na_patch],
+        loc='lower left',
+        bbox_to_anchor=(0.0, 0.985),
+        borderaxespad=0,
+        frameon=False,
+        fontsize=14,
+    )
     ax_a.set_title(
-        "A. Failure rates across multi-agent architectures\nand collaboration stages.",
+        "A. Failure rates across multi-agent architectures and collaboration stages.",
         fontweight='bold',
         fontsize=panel_title_fontsize,
         loc='left',
@@ -758,201 +494,535 @@ def plot_failure_mode_comprehensive(code, df_mode, output_dir):
     )
 
     # =========================================================
-    # Panel B: dataset trajectories
+    # Panel B: Modality Divergence Breakdown (V4 style)
     # =========================================================
     datasets_present = df_mode['dataset'].dropna().unique().tolist()
     qa_present = [dataset for dataset in qa_datasets if dataset in datasets_present]
     vqa_present = [dataset for dataset in vqa_datasets if dataset in datasets_present]
     panel_b_datasets = qa_present + vqa_present
-    ax_b = fig.add_subplot(gs[0, 1])
-    panel_b_stats, max_b_upper = build_group_stage_stats(
-        df_mode,
-        'dataset',
-        panel_b_datasets,
-        x_order,
-        seed_offset=5000,
+    panel_b_row_count = max(len(panel_b_datasets), 1)
+
+    gs_b = gs[0, 1].subgridspec(
+        2,
+        1,
+        height_ratios=[1.90, max(0.60, 0.17 * panel_b_row_count)],
+        hspace=0.30,
     )
-    for dataset in panel_b_datasets:
-        y_vals, ci_lower, ci_upper = extract_panel_series(panel_b_stats, dataset, x_order)
-        plot_series_with_ci(
-            ax_b,
-            x_numeric,
-            y_vals,
-            ci_lower,
-            ci_upper,
-            dataset_color_map[dataset],
-            dataset,
+    ax_b = fig.add_subplot(gs_b[0, 0])
+    ax_b_table = fig.add_subplot(gs_b[1, 0], sharex=ax_b)
+    ax_b.set_zorder(2)
+    ax_b_table.set_zorder(1)
+    ax_b_table.set_facecolor('none')
+
+    x_numeric = np.arange(len(x_order))
+    qa_colors = ["#c6dbef", "#6baed6", "#2171b5"]
+    vqa_colors = ["#fdd0a2", "#fd8d3c", "#d94801"]
+    qa_color_map = dict(zip(qa_datasets, qa_colors))
+    vqa_color_map = dict(zip(vqa_datasets, vqa_colors))
+
+    panel_b_stats = {}
+
+    for dataset_idx, dataset in enumerate(panel_b_datasets):
+        for stage_idx, stage in enumerate(x_order):
+            cell_values = df_mode.loc[
+                (df_mode['dataset'] == dataset) & (df_mode['round_stage'] == stage),
+                'failed',
+            ].dropna().astype(float).to_numpy()
+
+            if cell_values.size == 0:
+                continue
+
+            panel_b_stats[(dataset, stage)] = {
+                'failure_rate': float(cell_values.mean() * 100),
+                'failed_count': int(cell_values.sum()),
+                'total_count': int(cell_values.size),
+                'ci_95': compute_bootstrap_failure_ci(
+                    cell_values,
+                    seed=BOOTSTRAP_BASE_SEED + 5000 + dataset_idx * max(len(x_order), 1) + stage_idx,
+                ),
+            }
+
+    qa_bottom = np.zeros(len(x_order))
+    for dataset in qa_present:
+        y_vals = np.array(
+            [panel_b_stats.get((dataset, stage), {}).get('failure_rate', 0.0) for stage in x_order],
+            dtype=float,
         )
-    _, y_max_b, tick_step_b = compute_adaptive_rate_axis(max_b_upper)
-    style_line_panel(
-        ax_b,
-        x_numeric,
-        display_x_order,
-        "B. Stage-wise failure-rate trajectories across\ntext and visual medical datasets.",
-        "Failure Rate (%)",
-        y_max_b,
-        tick_step_b,
-        panel_title_fontsize,
-        panel_title_pad,
-        panel_title_y,
-        panel_title_linespacing,
-        common_axis_label_fontsize,
-        common_tick_fontsize,
-        legend_loc='upper left',
-        legend_ncol=2,
+        ax_b.fill_between(
+            x_numeric,
+            qa_bottom,
+            qa_bottom + y_vals,
+            color=qa_color_map[dataset],
+            alpha=0.92,
+            edgecolor='white',
+            linewidth=1.2,
+            zorder=2,
+        )
+        qa_bottom += y_vals
+
+    vqa_top = np.zeros(len(x_order))
+    for dataset in vqa_present:
+        y_vals = np.array(
+            [panel_b_stats.get((dataset, stage), {}).get('failure_rate', 0.0) for stage in x_order],
+            dtype=float,
+        )
+        ax_b.fill_between(
+            x_numeric,
+            vqa_top,
+            vqa_top - y_vals,
+            color=vqa_color_map[dataset],
+            alpha=0.92,
+            edgecolor='white',
+            linewidth=1.2,
+            zorder=2,
+        )
+        vqa_top -= y_vals
+
+    for x_val in x_numeric:
+        ax_b.axvline(x_val, color='#D8DEE6', linestyle='--', linewidth=0.9, alpha=0.45, zorder=1)
+
+    ax_b.axhline(0, color='black', linewidth=2, zorder=5)
+    ax_b.yaxis.set_major_formatter(ticker.FuncFormatter(lambda y_val, pos: f"{abs(y_val):.0f}%"))
+    ax_b.set_xlim(x_numeric[0] - 0.25, x_numeric[-1] + 0.25)
+    ax_b.set_ylabel(
+        "Accumulated Failure Representation",
+        fontweight='bold',
+        fontsize=common_axis_label_fontsize,
     )
+    ax_b.set_title(
+        "B. Cumulative failure rates stratified by text and visual medical datasets.",
+        fontweight='bold',
+        fontsize=panel_title_fontsize,
+        loc='left',
+        pad=panel_title_pad,
+        y=panel_title_y,
+        linespacing=panel_title_linespacing,
+    )
+    ax_b.set_xticks(x_numeric)
+    ax_b.set_xticklabels(
+        x_order,
+        rotation=30,
+        rotation_mode='anchor',
+        ha='center',
+        fontweight='bold',
+        fontsize=common_tick_fontsize,
+    )
+    ax_b.xaxis.set_ticks_position('bottom')
+    ax_b.tick_params(
+        axis='x',
+        which='major',
+        bottom=True,
+        labelbottom=True,
+        length=6,
+        width=1.4,
+        color='black',
+        direction='out',
+        pad=panel_b_xtick_pad,
+    )
+    ax_b.tick_params(axis='y', labelsize=common_tick_fontsize)
+    ax_b.grid(axis='y', linestyle=':', alpha=0.25)
+    ax_b.spines['bottom'].set_visible(True)
+    ax_b.spines['bottom'].set_linewidth(1.5)
+    ax_b.spines['bottom'].set_color('black')
+
+    max_extent = max(
+        float(qa_bottom.max()) if qa_bottom.size else 0.0,
+        float(np.abs(vqa_top.min())) if vqa_top.size else 0.0,
+    )
+    if max_extent > 0:
+        ax_b.set_ylim(-max_extent * 1.05, max_extent * 1.05)
+    else:
+        ax_b.set_ylim(-5, 5)
+
+    table_row_order = qa_present + vqa_present
+    row_color_map = {**qa_color_map, **vqa_color_map}
+    row_positions = {}
+    row_spacing = 1.26
+    group_gap = 0.58
+    table_top_offset = 0.72
+    table_top_padding = 1.08
+    table_bottom_padding = 0.48
+    current_y = -table_top_offset
+
+    for dataset in qa_present:
+        row_positions[dataset] = current_y
+        current_y -= row_spacing
+
+    if qa_present and vqa_present:
+        current_y -= group_gap
+
+    for dataset in vqa_present:
+        row_positions[dataset] = current_y
+        current_y -= row_spacing
+
+    table_cell_fontsize = 8.1 if len(x_order) <= 8 else 7.4 if len(x_order) <= 11 else 6.8
+    if len(table_row_order) >= 6:
+        table_cell_fontsize -= 0.4
+    table_label_fontsize = 10.8 if len(table_row_order) <= 4 else 10.2
+    label_transform = mtransforms.blended_transform_factory(ax_b_table.transAxes, ax_b_table.transData)
+    label_x = -0.04
+    table_x_min = x_numeric[0] - 0.22
+    table_x_max = x_numeric[-1] + 0.22
+
+    for x_val in x_numeric:
+        ax_b_table.axvline(x_val, color='#E5E7EB', linestyle=':', linewidth=0.9, zorder=0)
+
+    for dataset in table_row_order:
+        ax_b_table.hlines(
+            row_positions[dataset],
+            xmin=table_x_min,
+            xmax=table_x_max,
+            color='#F1F5F9',
+            linewidth=1.0,
+            linestyle=':',
+            zorder=0,
+        )
+
+    if qa_present and vqa_present:
+        group_divider_y = (row_positions[qa_present[-1]] + row_positions[vqa_present[0]]) / 2
+        ax_b_table.hlines(
+            group_divider_y,
+            xmin=table_x_min,
+            xmax=table_x_max,
+            color='#CBD5E1',
+            linewidth=1.0,
+            linestyle='--',
+            zorder=1,
+        )
+
+    for dataset in table_row_order:
+        y_val = row_positions[dataset]
+        ax_b_table.text(
+            label_x,
+            y_val,
+            dataset,
+            transform=label_transform,
+            ha='right',
+            va='center',
+            fontsize=table_label_fontsize,
+            fontweight='bold',
+            color=row_color_map[dataset],
+            clip_on=False,
+        )
+
+        for x_val, stage in zip(x_numeric, x_order):
+            cell_stats = panel_b_stats.get((dataset, stage))
+
+            if cell_stats is None:
+                cell_text = "N/A"
+                cell_color = '#9CA3AF'
+            else:
+                ci_lower, ci_upper = cell_stats['ci_95']
+                cell_text = (
+                    f"{cell_stats['failure_rate']:.1f}% "
+                    f"({cell_stats['failed_count']}/{cell_stats['total_count']})\n"
+                    f"[{ci_lower:.1f}–{ci_upper:.1f}]"
+                )
+                cell_color = '#111827'
+
+            ax_b_table.text(
+                x_val,
+                y_val,
+                cell_text,
+                ha='center',
+                va='center',
+                fontsize=table_cell_fontsize,
+                color=cell_color,
+                linespacing=1.04,
+                zorder=2,
+            )
+
+    ax_b_table.set_yticks([])
+    ax_b_table.set_xticks(x_numeric)
+    ax_b_table.tick_params(axis='x', top=False, labeltop=False, bottom=False, labelbottom=False, length=0)
+
+    if table_row_order:
+        table_y_min = min(row_positions.values()) - table_bottom_padding
+        table_y_max = max(row_positions.values()) + table_top_padding
+    else:
+        table_y_min, table_y_max = -0.5, 0.5
+    ax_b_table.set_ylim(table_y_min, table_y_max)
+
+    for spine in ['top', 'right', 'left', 'bottom']:
+        ax_b_table.spines[spine].set_visible(False)
 
     # =========================================================
-    # Panels C & D: LLM trajectories
+    # Helper: Kinematic Acceleration Vector Plot (V4 style)
+    # =========================================================
+    def plot_kinematic_panel(subspec, df_subset, title, palette_name, seed_offset):
+        model_display_names = {
+            "DeepSeek-V3.2-Thinking": "DeepSeek",
+            "Gemini-3-Flash-Preview": "Gemini",
+            "Qwen3-8B": "Qwen",
+            "Qwen3-VL-8B-Thinking": "Qwen",
+        }
+        model_values = df_subset['llm'].dropna().unique().tolist() if not df_subset.empty else []
+        models = [llm for llm in LLM_PRIORITY if llm in model_values]
+        models.extend(sorted(llm for llm in model_values if llm not in models))
+        display_x_order = [stage_label.replace("Svnthesis", "Synthesis") for stage_label in x_order]
+
+        table_row_count = max(len(models), 1)
+        panel_gs = subspec.subgridspec(
+            2,
+            1,
+            height_ratios=[1.92, max(0.60, 0.17 * table_row_count)],
+            hspace=0.30,
+        )
+        ax = fig.add_subplot(panel_gs[0, 0])
+        ax_table = fig.add_subplot(panel_gs[1, 0], sharex=ax)
+        ax.set_zorder(2)
+        ax_table.set_zorder(1)
+        ax_table.set_facecolor('none')
+
+        if df_subset.empty:
+            ax.text(0.5, 0.5, "No Data Available", ha='center', va='center')
+            ax.axis('off')
+            ax_table.axis('off')
+            return ax, ax_table
+
+        panel_stats = {}
+        max_failure_rate = 0.0
+        for model_idx, model in enumerate(models):
+            for stage_idx, stage in enumerate(x_order):
+                cell_values = df_subset.loc[
+                    (df_subset['llm'] == model) & (df_subset['round_stage'] == stage),
+                    'failed',
+                ].dropna().astype(float).to_numpy()
+
+                if cell_values.size == 0:
+                    continue
+
+                failure_rate = float(cell_values.mean() * 100)
+                panel_stats[(model, stage)] = {
+                    'failure_rate': failure_rate,
+                    'failed_count': int(cell_values.sum()),
+                    'total_count': int(cell_values.size),
+                    'ci_95': compute_bootstrap_failure_ci(
+                        cell_values,
+                        seed=BOOTSTRAP_BASE_SEED + seed_offset + model_idx * max(len(x_order), 1) + stage_idx,
+                    ),
+                }
+                max_failure_rate = max(max_failure_rate, failure_rate)
+
+        base_colors = sns.color_palette(palette_name, n_colors=max(len(models), 1))
+        color_map = dict(zip(models, base_colors))
+        y_min, y_max, tick_step = compute_adaptive_rate_axis(max_failure_rate)
+
+        for x_val in x_numeric:
+            ax.axvline(x_val, color='#E5E7EB', linestyle='--', linewidth=0.9, alpha=0.55, zorder=1)
+
+        for idx, model in enumerate(models):
+            y_vals = np.array(
+                [panel_stats.get((model, stage), {}).get('failure_rate', np.nan) for stage in x_order],
+                dtype=float,
+            )
+
+            valid_mask = ~np.isnan(y_vals)
+            if valid_mask.any():
+                ax.scatter(
+                    x_numeric[valid_mask],
+                    y_vals[valid_mask],
+                    color=color_map[model],
+                    s=115,
+                    zorder=5,
+                    edgecolors='white',
+                    lw=2,
+                )
+
+            for stage_idx in range(len(x_order) - 1):
+                if np.isnan(y_vals[stage_idx]) or np.isnan(y_vals[stage_idx + 1]):
+                    continue
+
+                delta = y_vals[stage_idx + 1] - y_vals[stage_idx]
+                segment_color = delta_cmap(delta_norm(delta))
+                segment_lw = 2 + abs(delta) / 5.0
+
+                ax.annotate(
+                    "",
+                    xy=(x_numeric[stage_idx + 1], y_vals[stage_idx + 1]),
+                    xytext=(x_numeric[stage_idx], y_vals[stage_idx]),
+                    arrowprops={
+                        'arrowstyle': "->",
+                        'color': segment_color,
+                        'lw': segment_lw,
+                        'shrinkA': 8,
+                        'shrinkB': 8,
+                        'mutation_scale': 17,
+                    },
+                    zorder=3,
+                )
+
+        ax.set_title(
+            title,
+            fontweight='bold',
+            fontsize=panel_title_fontsize,
+            loc='left',
+            pad=panel_title_pad,
+            y=panel_title_y,
+            linespacing=panel_title_linespacing,
+        )
+        ax.set_xticks(x_numeric)
+        ax.set_xticklabels(
+            display_x_order,
+            rotation=30,
+            rotation_mode='anchor',
+            ha='right',
+            fontweight='bold',
+            fontsize=common_tick_fontsize,
+        )
+        ax.set_xlim(x_numeric[0] - 0.2, x_numeric[-1] + 0.2)
+        ax.set_ylabel(
+            "Absolute Failure Rate (%)",
+            fontweight='bold',
+            fontsize=common_axis_label_fontsize,
+        )
+        ax.set_ylim(y_min, y_max)
+        ax.set_yticks(np.arange(y_min, y_max + 0.001, tick_step))
+        ax.yaxis.set_major_formatter(ticker.PercentFormatter(xmax=100, decimals=0))
+        ax.tick_params(axis='x', labelsize=common_tick_fontsize, width=1.4, length=6, pad=8)
+        ax.tick_params(axis='y', labelsize=common_tick_fontsize, width=1.4, length=6)
+        ax.grid(axis='y', linestyle=':', alpha=0.4)
+        ax.spines['left'].set_linewidth(1.5)
+        ax.spines['bottom'].set_linewidth(1.5)
+        for tick_label in ax.get_xticklabels():
+            tick_label.set_clip_on(False)
+            tick_label.set_zorder(6)
+
+        row_positions = {}
+        row_spacing = 1.26
+        table_top_offset = 0.72
+        table_top_padding = 1.18
+        table_bottom_padding = 0.48
+        current_y = -table_top_offset
+
+        for model in models:
+            row_positions[model] = current_y
+            current_y -= row_spacing
+
+        table_cell_fontsize = 8.1 if len(x_order) <= 8 else 7.4
+        if len(models) >= 6:
+            table_cell_fontsize -= 0.4
+        table_label_fontsize = 10.8 if len(models) <= 4 else 10.2
+        label_transform = mtransforms.blended_transform_factory(ax_table.transAxes, ax_table.transData)
+        label_x = -0.04
+
+        for x_val in x_numeric:
+            ax_table.axvline(x_val, color='#E5E7EB', linestyle=':', linewidth=0.9, zorder=0)
+
+        for model in models:
+            y_val = row_positions[model]
+            display_model = model_display_names.get(model, model)
+            ax_table.hlines(
+                y_val,
+                xmin=x_numeric[0] - 0.22,
+                xmax=x_numeric[-1] + 0.22,
+                color='#F1F5F9',
+                linewidth=1.0,
+                zorder=0,
+            )
+            ax_table.text(
+                label_x,
+                y_val,
+                display_model,
+                transform=label_transform,
+                ha='right',
+                va='center',
+                fontsize=table_label_fontsize,
+                fontweight='bold',
+                color=color_map[model],
+                clip_on=False,
+            )
+
+            for x_val, stage in zip(x_numeric, x_order):
+                cell_stats = panel_stats.get((model, stage))
+                if cell_stats is None:
+                    cell_text = "N/A"
+                    cell_color = '#9CA3AF'
+                else:
+                    ci_lower, ci_upper = cell_stats['ci_95']
+                    cell_text = (
+                        f"{cell_stats['failure_rate']:.1f}% ({cell_stats['failed_count']}/{cell_stats['total_count']})\n"
+                        f"CI [{ci_lower:.1f}–{ci_upper:.1f}]"
+                    )
+                    cell_color = '#111827'
+
+                ax_table.text(
+                    x_val,
+                    y_val,
+                    cell_text,
+                    ha='center',
+                    va='center',
+                    fontsize=table_cell_fontsize,
+                    color=cell_color,
+                    linespacing=1.04,
+                    zorder=2,
+                )
+
+        ax_table.set_yticks([])
+        ax_table.set_xticks(x_numeric)
+        ax_table.tick_params(axis='x', top=False, labeltop=False, bottom=False, labelbottom=False, length=0)
+
+        if row_positions:
+            table_y_min = min(row_positions.values()) - table_bottom_padding
+            table_y_max = max(row_positions.values()) + table_top_padding
+        else:
+            table_y_min, table_y_max = -0.5, 0.5
+        ax_table.set_ylim(table_y_min, table_y_max)
+
+        for spine in ['top', 'right', 'left', 'bottom']:
+            ax_table.spines[spine].set_visible(False)
+
+        return ax, ax_table
+
+    # =========================================================
+    # Panels C & D: LLM Kinematic Degradation (V4 style)
     # =========================================================
     df_c = df_mode[df_mode['dataset'].isin(qa_datasets)].copy()
-    model_values_c = df_c['llm'].dropna().unique().tolist()
-    models_c = [llm for llm in LLM_PRIORITY if llm in model_values_c]
-    models_c.extend(sorted(llm for llm in model_values_c if llm not in models_c))
-    ax_c = fig.add_subplot(gs[1, 0])
-    panel_c_stats, max_c_upper = build_group_stage_stats(
+    ax_c, _ = plot_kinematic_panel(
+        gs[1, 0],
         df_c,
-        'llm',
-        models_c,
-        x_order,
+        "C. Absolute failure rates and stage-to-stage changes\nfor large language models in text QA tasks.",
+        "Set1",
         seed_offset=10000,
-    )
-    for model in models_c:
-        y_vals, ci_lower, ci_upper = extract_panel_series(panel_c_stats, model, x_order)
-        plot_series_with_ci(
-            ax_c,
-            x_numeric,
-            y_vals,
-            ci_lower,
-            ci_upper,
-            model_color_map.get(model, '#4B5563'),
-            model_display_names.get(model, model),
-        )
-    _, y_max_c, tick_step_c = compute_adaptive_rate_axis(max_c_upper)
-    style_line_panel(
-        ax_c,
-        x_numeric,
-        display_x_order,
-        "C. Absolute failure-rate trajectories for large language models in text QA tasks.",
-        "Failure Rate (%)",
-        y_max_c,
-        tick_step_c,
-        panel_title_fontsize,
-        panel_title_pad,
-        panel_title_y,
-        panel_title_linespacing,
-        common_axis_label_fontsize,
-        common_tick_fontsize,
-        legend_loc='upper left',
-        legend_ncol=1,
     )
 
     df_d = df_mode[df_mode['dataset'].isin(vqa_datasets)].copy()
-    model_values_d = df_d['llm'].dropna().unique().tolist()
-    models_d = [llm for llm in LLM_PRIORITY if llm in model_values_d]
-    models_d.extend(sorted(llm for llm in model_values_d if llm not in models_d))
-    ax_d = fig.add_subplot(gs[1, 1])
-    panel_d_stats, max_d_upper = build_group_stage_stats(
+    ax_d, _ = plot_kinematic_panel(
+        gs[1, 1],
         df_d,
-        'llm',
-        models_d,
-        x_order,
+        "D. Absolute failure rates and stage-to-stage changes\nfor vision-language models in medical VQA tasks.",
+        "Dark2",
         seed_offset=15000,
     )
-    for model in models_d:
-        y_vals, ci_lower, ci_upper = extract_panel_series(panel_d_stats, model, x_order)
-        plot_series_with_ci(
-            ax_d,
-            x_numeric,
-            y_vals,
-            ci_lower,
-            ci_upper,
-            model_color_map.get(model, '#4B5563'),
-            model_display_names.get(model, model),
-        )
-    _, y_max_d, tick_step_d = compute_adaptive_rate_axis(max_d_upper)
-    style_line_panel(
-        ax_d,
-        x_numeric,
-        display_x_order,
-        "D. Absolute failure-rate trajectories for vision-language models in medical VQA tasks.",
-        "Failure Rate (%)",
-        y_max_d,
-        tick_step_d,
-        panel_title_fontsize,
-        panel_title_pad,
-        panel_title_y,
-        panel_title_linespacing,
-        common_axis_label_fontsize,
-        common_tick_fontsize,
-        legend_loc='upper left',
-        legend_ncol=1,
-    )
 
-    plt.subplots_adjust(left=0.07, right=0.985, top=0.955, bottom=0.07)
-    main_pdf_path, main_png_path = save_figure_outputs(fig, output_dir / f"failure_mode_{code}")
-    plt.close()
-    print(f"Saved redesigned figure: {main_pdf_path}")
-    print(f"Saved redesigned figure preview: {main_png_path}")
+    plt.subplots_adjust(left=0.065, right=0.905, top=0.965, bottom=0.055)
+    fig.canvas.draw()
 
-    appendix_fig = plt.figure(figsize=(17.5, 12.5))
-    appendix_fig.patch.set_facecolor('white')
-    appendix_fig.suptitle(
-        f"Supplementary Numeric Tables for Failure Mode {code}",
-        fontsize=18,
+    kinematic_axes = [axis for axis in (ax_c, ax_d) if axis is not None]
+    kinematic_top = max(axis.get_position().y1 for axis in kinematic_axes)
+    kinematic_height = max(axis.get_position().height for axis in kinematic_axes)
+    cbar_height = kinematic_height * 0.82
+    cbar_bottom = kinematic_top - cbar_height
+    cbar_left = ax_d.get_position().x1 + 0.015
+    cax_delta = fig.add_axes([cbar_left, cbar_bottom, 0.015, cbar_height])
+    sm_delta = plt.cm.ScalarMappable(cmap=delta_cmap, norm=delta_norm)
+    sm_delta.set_array([])
+    cbar_delta = plt.colorbar(sm_delta, cax=cax_delta)
+    cbar_delta.set_label(
+        'Stage-to-Stage Change ($\\Delta$ %)',
+        rotation=270,
+        labelpad=20,
         fontweight='bold',
-        y=0.985,
+        fontsize=common_colorbar_label_fontsize,
     )
-    appendix_gs = GridSpec(
-        3,
-        1,
-        figure=appendix_fig,
-        height_ratios=[
-            max(2.4, 0.55 * max(len(panel_b_datasets), 1)),
-            max(2.1, 0.55 * max(len(models_c), 1)),
-            max(2.1, 0.55 * max(len(models_d), 1)),
-        ],
-        hspace=0.54,
-    )
-    ax_b_table = appendix_fig.add_subplot(appendix_gs[0, 0])
-    render_stats_table(
-        ax_b_table,
-        "Panel B. Dataset-level failure rates, counts, and 95% confidence intervals.",
-        panel_b_datasets,
-        x_order,
-        panel_b_stats,
-        row_color_map=dataset_color_map,
-        col_display_labels=display_x_order,
-    )
-    ax_c_table = appendix_fig.add_subplot(appendix_gs[1, 0])
-    render_stats_table(
-        ax_c_table,
-        "Panel C. Text-QA model failure rates, counts, and 95% confidence intervals.",
-        models_c,
-        x_order,
-        panel_c_stats,
-        row_display_map=model_display_names,
-        row_color_map=model_color_map,
-        col_display_labels=display_x_order,
-    )
-    ax_d_table = appendix_fig.add_subplot(appendix_gs[2, 0])
-    render_stats_table(
-        ax_d_table,
-        "Panel D. Medical-VQA model failure rates, counts, and 95% confidence intervals.",
-        models_d,
-        x_order,
-        panel_d_stats,
-        row_display_map=model_display_names,
-        row_color_map=model_color_map,
-        col_display_labels=display_x_order,
-    )
-    appendix_pdf_path, appendix_png_path = save_figure_outputs(
-        appendix_fig,
-        output_dir / f"failure_mode_{code}_appendix_tables",
-    )
-    plt.close(appendix_fig)
-    print(f"Saved appendix tables: {appendix_pdf_path}")
-    print(f"Saved appendix tables preview: {appendix_png_path}")
+    cbar_delta.ax.tick_params(labelsize=common_colorbar_tick_fontsize)
+    cbar_delta.outline.set_visible(False)
+
+    filename = f"failure_mode_{code}.pdf"
+    save_path = output_dir / filename
+    plt.savefig(save_path, dpi=600, format='pdf', bbox_inches='tight', transparent=False)
+    plt.close()
+    print(f"Saved Nature-quality comprehensive figure: {save_path}")
 
 
 def main():
