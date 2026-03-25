@@ -1,11 +1,26 @@
 '''
 ./scripts/audit_drawing.py
-This script visualizes the failure rates for each failure mode across different rounds and stages,
-based on the audit results from multi-agent systems.
-It answers 3 core questions regarding the evolution of failure modes:
-1. MAS frameworks evolution
-2. Medical scenarios/datasets evolution
-3. Base LLMs evolution for Medical QA & VQA
+Build publication figures for the audit logs stored under `logs/audit_results/`.
+
+The script turns per-case JSONL audit traces into a long Pandas table and then
+renders one figure per failure mode. Each figure answers three analysis
+questions:
+1. How the error changes across multi-agent system (MAS) architectures.
+2. How the error changes across medical datasets / modalities.
+3. How the error changes across base models in text QA and medical VQA.
+
+Reproduction notes
+------------------
+1. The default input directory is `logs/audit_results/20260302`.
+2. Output figures are written to `logs/audit_results/figures_final`.
+3. Run a single figure with:
+   `uv run python scripts/audit_drawing.py 1.1.1`
+4. Run all registered failure modes with:
+   `uv run python scripts/audit_drawing.py`
+
+The figure path for `1.1.1` is handled by a dedicated renderer because that
+panel set received substantial paper-specific layout tuning. The remaining
+failure modes use the more generic comprehensive renderer below.
 '''
 import json
 import sys
@@ -26,6 +41,10 @@ current_file_path = Path(__file__).resolve()
 project_root = current_file_path.parents[1]
 sys.path.append(str(project_root))
 
+# `AUDIT_CONFIG` maps a human-readable failure-mode code used in the paper to:
+# - the status field stored in each JSON audit result
+# - the paper-facing title
+# - the rounds in which the metric is defined
 AUDIT_CONFIG = {
     "1.1.1": {"status_key": "factual_hallucination_status", "name": "Factual Hallucination", "valid_rounds": [1, 2, 3]},
     "1.2.1": {"status_key": "modality_neglect_status", "name": "Modality Neglect", "valid_rounds": [1, 2, 3]},
@@ -39,6 +58,8 @@ AUDIT_CONFIG = {
     "3.2.1": {"status_key": "inter_round_consistency_status", "name": "Inter-round Inconsistency", "valid_rounds": [2, 3]},
 }
 
+# Each failure mode is stored in a different key inside the raw JSONL audit
+# object. This map isolates that schema detail from the plotting logic.
 LOG_KEY_MAP = {
     "1.1.1": "1_1_1_factual_hallucination",
     "1.2.1": "1_2_1_neglect_or_misinterpretation_of_modality_info",
@@ -52,6 +73,7 @@ LOG_KEY_MAP = {
     "3.2.1": "3_2_1_self_contradiction_when_decision",
 }
 
+# Canonical within-round step order used everywhere for sorting and plotting.
 STAGE_ORDER = ["role_assignment", "analysis", "synthesis", "review", "decision"]
 
 STAGE_DISPLAY = {
@@ -62,6 +84,8 @@ STAGE_DISPLAY = {
     "decision": "Decision",
 }
 
+# All confidence intervals are deterministic bootstrap intervals so repeated
+# runs produce the exact same numbers and figure geometry.
 BOOTSTRAP_RESAMPLES = 2000
 BOOTSTRAP_BASE_SEED = 20260307
 LLM_PRIORITY = [
@@ -81,11 +105,11 @@ PALETTE_5 = ["#F4F1D0", "#F4F1D0", "#F4F1D0", "#DCD2A1", "#D0C78E", "#C5AC45"]
 PALETTE_6 = ["#E4E9E3", "#DAE4D9", "#CBE0D1", "#BBD4BF", "#AFCDB1", "#7FAB87"]
 
 ENHANCED_DATASET_COLOR_MAP = {
-    "MedQA": "#B5B3DA",
-    "PubMedQA": "#96B4CB",
-    "MedXpertQA": "#F4AEA3",
-    "PathVQA": "#F89499",
-    "VQA-RAD": "#F5E39A",
+    "MedQA": "#CCCBE8",
+    "PubMedQA": "#C1D5E5",
+    "MedXpertQA": "#E3BDB7",
+    "PathVQA": "#FAC5AE",
+    "VQA-RAD": "#F3E5B0",
     "SLAKE": "#B4EDBE",
 }
 
@@ -103,8 +127,12 @@ SERIES_MARKERS = ["o", "s", "^", "D", "P", "X"]
 
 def compute_bootstrap_failure_ci(failure_values, num_resamples=BOOTSTRAP_RESAMPLES, seed=BOOTSTRAP_BASE_SEED):
     """
-    Compute a deterministic percentile bootstrap 95% confidence interval (%) for
-    the failure rate within a single Panel A cell.
+    Compute a deterministic percentile bootstrap 95% confidence interval (%).
+
+    `failure_values` is expected to be a binary vector for a single cell, where
+    each element corresponds to one audited case at one round-step location.
+    The returned interval is expressed in percentage points so it can be drawn
+    directly on the figure without further scaling.
     """
     values = np.asarray(failure_values, dtype=float)
     if values.size == 0:
@@ -121,6 +149,10 @@ def compute_adaptive_rate_axis(max_rate):
     """
     Choose a compact, human-friendly y-axis ceiling for failure-rate panels.
     Example: max=45 -> top=50 instead of leaving a large empty band up to 100.
+
+    We keep the lower bound fixed at 0 because all panels visualize absolute
+    failure rates, then add a small amount of headroom so the top marker / CI
+    does not visually collide with the panel title or legend.
     """
     if not np.isfinite(max_rate) or max_rate <= 0:
         return 0.0, 5.0, 1.0
@@ -146,6 +178,10 @@ def compute_adaptive_rate_axis(max_rate):
 def collect_group_stage_stats(df_subset, group_column, groups, x_order, seed_offset):
     """
     Collect per-group, per-stage failure statistics with deterministic bootstrap CIs.
+
+    The return value is a dictionary keyed by `(group_name, round_stage)` so the
+    same structure can be reused by the heatmap-like Panel A, the stacked area
+    Panel B, the arrow panels C/D, and the appendix tables.
     """
     stats = {}
     max_failure_rate = 0.0
@@ -178,6 +214,9 @@ def collect_group_stage_stats(df_subset, group_column, groups, x_order, seed_off
 def save_figure_variants(fig, output_dir, stem):
     """
     Save a figure as both PDF and PNG into the requested output directory.
+
+    PDF is the paper-facing artifact. PNG is used for quick visual inspection
+    during iterative layout work.
     """
     output_dir.mkdir(parents=True, exist_ok=True)
     pdf_path = output_dir / f"{stem}.pdf"
@@ -190,6 +229,17 @@ def save_figure_variants(fig, output_dir, stem):
 def process_audit_data_to_df(audit_results_path: Path):
     """
     Parse JSONL logs and construct a structured Pandas DataFrame.
+
+    Expected filename pattern:
+        `<mas>_<dataset>_<llm>.jsonl`
+
+    Expected JSONL content:
+    - one case per line
+    - each case contains `case_history.audit.rounds`
+    - each round stores one or more failure-mode-specific audit entries
+
+    Output columns are normalized so downstream plotting code does not need to
+    know the raw JSON schema or filename aliases.
     """
     records = []
     jsonl_files = list(audit_results_path.rglob("*.jsonl"))
@@ -214,6 +264,7 @@ def process_audit_data_to_df(audit_results_path: Path):
     }
 
     for jsonl_file in tqdm(jsonl_files, desc="Scanning Logs"):
+        # Error files do not contain usable per-case audit traces.
         if "errors" in jsonl_file.name:
             continue
 
@@ -222,6 +273,8 @@ def process_audit_data_to_df(audit_results_path: Path):
         if len(parts) < 3:
             continue
 
+        # System / dataset / model identifiers are encoded in the filename and
+        # normalized here to match paper-facing names.
         raw_mas = parts[0]
         mas = mas_map.get(raw_mas.lower(), raw_mas)
 
@@ -275,6 +328,9 @@ def process_audit_data_to_df(audit_results_path: Path):
 
                                 result_obj = entry.get("audit_result", {})
                                 status_val = result_obj.get(status_key)
+                                # The raw logs use a mixture of string and
+                                # boolean statuses. We collapse everything to a
+                                # strict binary failure indicator here.
                                 is_failed = int(str(status_val) == "1" or status_val is True)
 
                                 round_stage = f"R{round_num}-{STAGE_DISPLAY.get(step, step)}"
@@ -301,7 +357,17 @@ def process_audit_data_to_df(audit_results_path: Path):
 
 def plot_failure_mode_111_enhanced(code, df_mode, output_dir):
     """
-    Generate the revised 1.1.1 figure with a cleaner main figure and separate appendix tables.
+    Generate the paper-tuned `1.1.1` figure and its appendix tables.
+
+    This renderer is intentionally more bespoke than the generic figure builder:
+    - Panel a uses six mini-matrices (2 columns x 3 rows) so the MAS section
+      fills the top-left quadrant efficiently.
+    - Panel b uses mirrored cumulative stacked areas to contrast text QA
+      datasets (positive direction) against VQA datasets (negative direction).
+    - Panels c/d show absolute failure rates, 95% CIs, and step-to-step change
+      vectors in a single view.
+    - Separate appendix tables preserve exact numbers without overloading the
+      main figure.
     """
     config = AUDIT_CONFIG[code]
     mode_name = config["name"]
@@ -310,6 +376,8 @@ def plot_failure_mode_111_enhanced(code, df_mode, output_dir):
         print(f"Skipping plot for {code} ({mode_name}): No data found.")
         return
 
+    # Build the x-axis directly from the data so the figure remains valid even
+    # if future audits contain fewer rounds or only a subset of steps.
     unique_round_stages = df_mode[['round_num', 'step', 'round_stage']].drop_duplicates()
     unique_round_stages['step_idx'] = unique_round_stages['step'].map({step: idx for idx, step in enumerate(STAGE_ORDER)})
     unique_round_stages = unique_round_stages.sort_values(['round_num', 'step_idx'])
@@ -340,6 +408,8 @@ def plot_failure_mode_111_enhanced(code, df_mode, output_dir):
     delta_cmap = plt.cm.coolwarm
     delta_norm = mcolors.CenteredNorm(vcenter=0, halfrange=10)
 
+    # Keep exported PDF/SVG text editable in Illustrator. Type-42 / text.usetex
+    # choices here are important for the paper workflow.
     plt.rcParams.update(
         {
             'font.family': 'sans-serif',
@@ -361,6 +431,8 @@ def plot_failure_mode_111_enhanced(code, df_mode, output_dir):
     )
 
     def build_series_arrays(panel_stats, series_name):
+        # Convert sparse `(series, stage) -> stats` dictionaries into aligned
+        # NumPy arrays so CI bands and arrows can be drawn stage by stage.
         y_vals = []
         ci_lower = []
         ci_upper = []
@@ -379,6 +451,8 @@ def plot_failure_mode_111_enhanced(code, df_mode, output_dir):
 
     def plot_dataset_divergence_panel(ax, panel_stats):
         def style_decorated_axes(target_ax, x_pad=8, add_y_minor=True):
+            # Apply the lighter axis treatment requested for the final paper
+            # figure so panel b matches panels c/d stylistically.
             for spine_name in ['left', 'bottom']:
                 target_ax.spines[spine_name].set_linewidth(1.0)
                 target_ax.spines[spine_name].set_color('#334155')
@@ -411,6 +485,9 @@ def plot_failure_mode_111_enhanced(code, df_mode, output_dir):
                     color='#64748B',
                 )
 
+        # Text QA datasets accumulate upward from zero, while VQA datasets
+        # accumulate downward. The mirrored layout makes the modality split
+        # visible at a glance without using separate subplots.
         qa_bottom = np.zeros(len(x_order))
         for dataset in qa_present:
             y_vals = np.array(
@@ -455,7 +532,7 @@ def plot_failure_mode_111_enhanced(code, df_mode, output_dir):
         ax.set_xlim(x_numeric[0] - 0.25, x_numeric[-1] + 0.25)
         ax.set_ylabel("Accumulated Failure Representation", fontweight='bold', fontsize=18)
         ax.set_title(
-            "B. Cumulative failure rates stratified by text and visual medical datasets.",
+            "b. Cumulative failure rates stratified by text\nand visual medical datasets.",
             fontweight='bold',
             fontsize=24,
             loc='left',
@@ -506,6 +583,10 @@ def plot_failure_mode_111_enhanced(code, df_mode, output_dir):
             )
 
     def plot_kinematic_panel(ax, panel_stats, series_order, color_map, title, display_names=None):
+        # Panels c/d encode three quantities at once:
+        # 1. marker position = absolute failure rate
+        # 2. translucent ribbon = 95% CI
+        # 3. arrow color / thickness = signed step-to-step change magnitude
         max_panel_rate = max(
             (panel_stats[(series, stage)]['failure_rate'] for series in series_order for stage in x_order if (series, stage) in panel_stats),
             default=0.0,
@@ -545,6 +626,8 @@ def plot_failure_mode_111_enhanced(code, df_mode, output_dir):
 
         for series in prepared_series:
             if np.count_nonzero(series['valid_mask']) >= 2:
+                # Draw CI underneath the arrows and markers so the central
+                # trajectory remains visually dominant.
                 ax.fill_between(
                     x_numeric[series['valid_mask']],
                     series['ci_lower'][series['valid_mask']],
@@ -578,6 +661,9 @@ def plot_failure_mode_111_enhanced(code, df_mode, output_dir):
                 segment_color = delta_cmap(delta_norm(delta))
                 segment_lw = 2.2 + abs(delta) / 5.5
 
+                # No base line is drawn below the arrows: the arrow itself is
+                # the only trajectory cue, which avoids implying an additional
+                # independent series.
                 ax.annotate(
                     "",
                     xy=(x_numeric[stage_idx + 1], series['y_vals'][stage_idx + 1]),
@@ -667,6 +753,8 @@ def plot_failure_mode_111_enhanced(code, df_mode, output_dir):
             )
 
     def draw_appendix_table(ax, title, row_order, color_map, panel_stats, display_names=None):
+        # The appendix tables intentionally mirror the same ordering as the
+        # main figure, making it easy to cross-reference exact values.
         row_count = max(len(row_order), 1)
         row_step = 1.24
         y_positions = np.arange(row_count)[::-1] * row_step
@@ -750,6 +838,8 @@ def plot_failure_mode_111_enhanced(code, df_mode, output_dir):
     mas_order = [mas for mas in mas_priority if mas in mas_present]
     mas_order.extend(sorted(mas for mas in mas_present if mas not in mas_order))
 
+    # Precompute all panel statistics before any plotting. This keeps the
+    # rendering layer mostly declarative and makes debugging easier.
     panel_a_stats, panel_a_max = collect_group_stage_stats(df_mode, 'mas', mas_order, x_order, seed_offset=0)
     panel_b_stats, _ = collect_group_stage_stats(df_mode, 'dataset', panel_b_datasets, x_order, seed_offset=5000)
     df_c = df_mode[df_mode['dataset'].isin(qa_datasets)].copy()
@@ -767,55 +857,95 @@ def plot_failure_mode_111_enhanced(code, df_mode, output_dir):
     fig.patch.set_facecolor('white')
     gs = GridSpec(2, 2, figure=fig, wspace=0.16, hspace=0.28, height_ratios=[1.0, 1.0])
 
-    # Panel A
+    # Panel a
     ax_a = fig.add_subplot(gs[0, 0])
-    x_step = 1.68
-    y_step = 1.12
-    box_width = 0.98
-    box_height = 0.98
-    x_positions = np.arange(len(x_order)) * x_step
-    y_positions = np.arange(len(mas_order))[::-1] * y_step
-    y_map = dict(zip(mas_order, y_positions))
+    ax_a.set_axis_off()
 
     panel_a_cmap = mcolors.LinearSegmentedColormap.from_list("panel_a_gray_purple", PALETTE_1)
     _, panel_a_top, panel_a_tick = compute_adaptive_rate_axis(panel_a_max)
     panel_a_norm = mcolors.Normalize(vmin=0, vmax=panel_a_top)
+    mini_x_step = 1.03
+    mini_box_width = 0.82
+    mini_box_height = 0.82
+    mini_x_positions = np.arange(len(x_order)) * mini_x_step
+    # Each MAS gets its own inset axis so the top-left quadrant can be filled
+    # as a 2 x 3 grid, rather than wasting space on one large sparse matrix.
+    panel_a_group_positions = [
+        (0.00, 0.69),
+        (0.46, 0.69),
+        (0.00, 0.385),
+        (0.46, 0.385),
+        (0.00, 0.08),
+        (0.46, 0.08),
+    ]
+    panel_a_group_width = 0.45
+    panel_a_group_height = 0.20
 
-    for y_val in y_positions:
-        ax_a.hlines(
-            y_val,
-            xmin=x_positions[0] - box_width / 2,
-            xmax=x_positions[-1] + box_width / 2,
-            color='#E2E8F0',
-            linewidth=2.6,
-            zorder=0,
+    ax_a.text(
+        0.0,
+        1.05,
+        "a. Failure rates across multi-agent architectures\nand collaboration stages.",
+        transform=ax_a.transAxes,
+        ha='left',
+        va='bottom',
+        fontweight='bold',
+        fontsize=24,
+        clip_on=False,
+    )
+
+    na_patch = mpatches.Patch(
+        facecolor='#F8FAFC',
+        edgecolor='#94A3B8',
+        linestyle='--',
+        hatch='////',
+        label='Structurally N/A',
+    )
+    ax_a.legend(
+        handles=[na_patch],
+        loc='upper left',
+        bbox_to_anchor=(0.0, 1.01),
+        borderaxespad=0,
+        frameon=True,
+        fancybox=False,
+        framealpha=0.96,
+        facecolor='white',
+        edgecolor='#CBD5E1',
+        borderpad=0.45,
+        fontsize=14,
+    )
+
+    for (left, bottom), mas_name in zip(panel_a_group_positions, mas_order):
+        ax_mini = ax_a.inset_axes(
+            [left, bottom, panel_a_group_width, panel_a_group_height],
+            transform=ax_a.transAxes,
         )
+        ax_mini.set_title(mas_name, loc='left', fontsize=16, fontweight='bold', pad=4)
 
-    for mas_name in mas_order:
-        y_val = y_map[mas_name]
-        for x_val, stage in zip(x_positions, x_order):
+        for x_val, stage in zip(mini_x_positions, x_order):
             cell_stats = panel_a_stats.get((mas_name, stage))
             if cell_stats is None:
+                # Some MASes structurally do not expose later stages. These are
+                # rendered explicitly as N/A instead of being left blank.
                 box = mpatches.Rectangle(
-                    (x_val - box_width / 2, y_val - box_height / 2),
-                    box_width,
-                    box_height,
+                    (x_val - mini_box_width / 2, -mini_box_height / 2),
+                    mini_box_width,
+                    mini_box_height,
                     facecolor='#F8FAFC',
                     edgecolor='#94A3B8',
-                    linewidth=1.6,
+                    linewidth=1.5,
                     linestyle='--',
                     hatch='////',
                     zorder=1,
                 )
-                ax_a.add_patch(box)
-                ax_a.text(
+                ax_mini.add_patch(box)
+                ax_mini.text(
                     x_val,
-                    y_val,
+                    0,
                     "N/A",
                     ha='center',
                     va='center',
                     color='#94A3B8',
-                    fontsize=12.2,
+                    fontsize=10.2,
                     fontweight='bold',
                     zorder=2,
                 )
@@ -827,128 +957,98 @@ def plot_failure_mode_111_enhanced(code, df_mode, output_dir):
             ci_lower, ci_upper = cell_stats['ci_95']
             face_color = panel_a_cmap(panel_a_norm(failure_rate))
             box = mpatches.Rectangle(
-                (x_val - box_width / 2, y_val - box_height / 2),
-                box_width,
-                box_height,
+                (x_val - mini_box_width / 2, -mini_box_height / 2),
+                mini_box_width,
+                mini_box_height,
                 facecolor=face_color,
                 edgecolor='white',
-                linewidth=2.2,
+                linewidth=2.0,
                 zorder=1,
             )
-            ax_a.add_patch(box)
+            ax_mini.add_patch(box)
 
             luminance = 0.299 * face_color[0] + 0.587 * face_color[1] + 0.114 * face_color[2]
             text_color = 'white' if luminance < 0.62 else '#111827'
-            ax_a.text(
+            ax_mini.text(
                 x_val,
-                y_val + 0.19,
+                0.16,
                 f"{failure_rate:.1f}%",
                 ha='center',
                 va='center',
                 color=text_color,
-                fontsize=14.0,
+                fontsize=11.0,
                 fontweight='bold',
                 zorder=2,
             )
-            ax_a.text(
+            ax_mini.text(
                 x_val,
-                y_val,
+                0.0,
                 f"{failed_count}/{total_count}",
                 ha='center',
                 va='center',
                 color=text_color,
-                fontsize=11.6,
+                fontsize=9.4,
                 fontweight='bold',
                 zorder=2,
             )
-            ax_a.text(
+            ax_mini.text(
                 x_val,
-                y_val - 0.19,
+                -0.16,
                 f"CI {ci_lower:.1f}-{ci_upper:.1f}",
                 ha='center',
                 va='center',
                 color=text_color,
-                fontsize=10.0,
+                fontsize=8.2,
                 fontweight='bold',
                 zorder=2,
             )
 
-    ax_a.set_xlim(x_positions[0] - 0.65, x_positions[-1] + 0.70)
-    ax_a.set_ylim(y_positions[-1] - 0.62, y_positions[0] + 0.72)
-    ax_a.set_aspect('equal', adjustable='box')
-    ax_a.set_anchor('NW')
-    ax_a.set_xticks(x_positions)
-    ax_a.set_xticklabels(
-        display_x_order,
-        rotation=0,
-        ha='center',
-        fontweight='bold',
-        fontsize=16,
-    )
-    ax_a.set_yticks(y_positions)
-    ax_a.set_yticklabels(mas_order, fontweight='bold', fontsize=16)
-    for spine in ['top', 'right', 'left', 'bottom']:
-        ax_a.spines[spine].set_visible(False)
-    ax_a.tick_params(axis='x', length=0, pad=12)
-    ax_a.tick_params(axis='y', length=0)
+        ax_mini.set_xlim(mini_x_positions[0] - 0.55, mini_x_positions[-1] + 0.55)
+        ax_mini.set_ylim(-0.56, 0.56)
+        ax_mini.set_aspect('equal', adjustable='box')
+        ax_mini.set_xticks(mini_x_positions)
+        ax_mini.set_xticklabels(
+            display_x_order,
+            rotation=0,
+            ha='center',
+            fontweight='bold',
+            fontsize=11.5,
+        )
+        ax_mini.set_yticks([])
+        ax_mini.tick_params(axis='x', length=0, pad=8)
+        for spine_name in ['top', 'right', 'left', 'bottom']:
+            ax_mini.spines[spine_name].set_visible(False)
 
+    cax_a = ax_a.inset_axes([0.945, 0.17, 0.024, 0.64], transform=ax_a.transAxes)
     sm_a = plt.cm.ScalarMappable(cmap=panel_a_cmap, norm=panel_a_norm)
     sm_a.set_array([])
-    cbar_a = plt.colorbar(sm_a, ax=ax_a, pad=0.024, shrink=0.82, aspect=18)
+    cbar_a = plt.colorbar(sm_a, cax=cax_a)
     cbar_a.set_label(
         'Failure Rate (%)',
         rotation=270,
-        labelpad=20,
-        fontsize=17,
+        labelpad=12,
+        fontsize=15,
         fontweight='bold',
     )
     cbar_ticks = np.arange(0, panel_a_top + 0.001, panel_a_tick)
     cbar_a.set_ticks(cbar_ticks)
-    cbar_a.ax.tick_params(labelsize=14)
+    cbar_a.ax.yaxis.set_label_position('left')
+    cbar_a.ax.yaxis.set_ticks_position('right')
+    cbar_a.ax.tick_params(labelsize=13)
     cbar_a.outline.set_visible(False)
 
-    na_patch = mpatches.Patch(
-        facecolor='#F8FAFC',
-        edgecolor='#94A3B8',
-        linestyle='--',
-        hatch='////',
-        label='Structurally N/A',
-    )
-    ax_a.legend(
-        handles=[na_patch],
-        loc='lower left',
-        bbox_to_anchor=(0.0, 0.985),
-        borderaxespad=0,
-        frameon=True,
-        fancybox=False,
-        framealpha=0.96,
-        facecolor='white',
-        edgecolor='#CBD5E1',
-        borderpad=0.45,
-        fontsize=14,
-    )
-    ax_a.set_title(
-        "A. Failure rates across multi-agent architectures and collaboration stages.",
-        fontweight='bold',
-        fontsize=24,
-        loc='left',
-        pad=16,
-        y=1.02,
-        linespacing=1.08,
-    )
-
-    # Panel B
+    # Panel b
     ax_b = fig.add_subplot(gs[0, 1])
     plot_dataset_divergence_panel(ax_b, panel_b_stats)
 
-    # Panels C and D
+    # Panels c and d
     ax_c = fig.add_subplot(gs[1, 0])
     plot_kinematic_panel(
         ax_c,
         panel_c_stats,
         panel_c_models,
         panel_c_color_map,
-        "C. Absolute failure rates and step-to-step changes\nfor large language models in text QA tasks.",
+        "c. Absolute failure rates and step-to-step changes\nfor large language models in text QA tasks.",
         display_names=model_display_names,
     )
 
@@ -958,29 +1058,42 @@ def plot_failure_mode_111_enhanced(code, df_mode, output_dir):
         panel_d_stats,
         panel_d_models,
         panel_d_color_map,
-        "D. Absolute failure rates and step-to-step changes\nfor vision-language models in medical VQA tasks.",
+        "d. Absolute failure rates and step-to-step changes\nfor vision-language models in medical VQA tasks.",
         display_names=model_display_names,
     )
 
     plt.subplots_adjust(left=0.065, right=0.92, top=0.96, bottom=0.08)
     fig.canvas.draw()
 
+    # A small amount of manual post-layout alignment is used here because the
+    # publication figure mixes regular subplots, inset axes, and floating
+    # shared colorbars. Let Matplotlib build the base layout first, then nudge
+    # the panels and bars into the final column alignment.
     ax_a_pos = ax_a.get_position()
     ax_b_pos = ax_b.get_position()
     ax_c_pos = ax_c.get_position()
     ax_d_pos = ax_d.get_position()
-    cbar_a_pos = cbar_a.ax.get_position()
 
     target_a_left = ax_c_pos.x0
     target_right_left = 0.495
-    cbar_a_gap = 0.012
 
     ax_a.set_position([target_a_left, ax_a_pos.y0, ax_a_pos.width, ax_a_pos.height])
-    cbar_a.ax.set_position(
-        [target_a_left + ax_a_pos.width + cbar_a_gap, cbar_a_pos.y0, cbar_a_pos.width, cbar_a_pos.height]
-    )
     ax_b.set_position([target_right_left, ax_b_pos.y0, ax_b_pos.width, ax_b_pos.height])
     ax_d.set_position([target_right_left, ax_d_pos.y0, ax_d_pos.width, ax_d_pos.height])
+    fig.canvas.draw()
+
+    ax_a_pos = ax_a.get_position()
+    ax_c_pos = ax_c.get_position()
+    ax_d_pos = ax_d.get_position()
+    column_gap = max(ax_d_pos.x0 - ax_c_pos.x1, 0.02)
+    shared_cbar_width = min(0.012, column_gap * 0.30)
+    shared_cbar_pad = max(0.0035, min(0.006, (column_gap - shared_cbar_width) * 0.22))
+    shared_cbar_left = ax_c_pos.x1 + max(0.001, shared_cbar_pad - 0.0045)
+    # Place the panel-a colorbar and the shared c/d colorbar on the same
+    # middle column so the page reads as a clean two-column composition.
+    cbar_a_height = ax_a_pos.height * 0.64
+    cbar_a_bottom = ax_a_pos.y0 + ax_a_pos.height * 0.17
+    cbar_a.ax.set_position([shared_cbar_left, cbar_a_bottom, shared_cbar_width, cbar_a_height])
     fig.canvas.draw()
 
     kinematic_axes = [axis for axis in (ax_c, ax_d) if axis is not None]
@@ -988,19 +1101,20 @@ def plot_failure_mode_111_enhanced(code, df_mode, output_dir):
     kinematic_height = max(axis.get_position().height for axis in kinematic_axes)
     cbar_height = kinematic_height * 0.82
     cbar_bottom = kinematic_top - cbar_height
-    cbar_left = ax_d.get_position().x1 + 0.018
-    cax_delta = fig.add_axes([cbar_left, cbar_bottom, 0.018, cbar_height])
+    cax_delta = fig.add_axes([shared_cbar_left, cbar_bottom, shared_cbar_width, cbar_height])
     sm_delta = plt.cm.ScalarMappable(cmap=delta_cmap, norm=delta_norm)
     sm_delta.set_array([])
     cbar_delta = plt.colorbar(sm_delta, cax=cax_delta)
     cbar_delta.set_label(
         'Arrow Color = Step-to-Step Change (Delta %)',
         rotation=270,
-        labelpad=20,
+        labelpad=14,
         fontweight='bold',
-        fontsize=17,
+        fontsize=16,
     )
     cbar_delta.set_ticks([-10, -5, 0, 5, 10])
+    cbar_delta.ax.yaxis.set_label_position('left')
+    cbar_delta.ax.yaxis.set_ticks_position('left')
     cbar_delta.ax.tick_params(labelsize=14)
     cbar_delta.outline.set_visible(False)
 
@@ -1022,7 +1136,7 @@ def plot_failure_mode_111_enhanced(code, df_mode, output_dir):
     appendix_ax_b = appendix_fig.add_subplot(appendix_gs[0, 0])
     draw_appendix_table(
         appendix_ax_b,
-        "B. Exact step-wise statistics for dataset trajectories.",
+        "b. Exact step-wise statistics for dataset trajectories.",
         panel_b_datasets,
         ENHANCED_DATASET_COLOR_MAP,
         panel_b_stats,
@@ -1031,7 +1145,7 @@ def plot_failure_mode_111_enhanced(code, df_mode, output_dir):
     appendix_ax_c = appendix_fig.add_subplot(appendix_gs[1, 0])
     draw_appendix_table(
         appendix_ax_c,
-        "C. Exact step-wise statistics for text QA base models.",
+        "c. Exact step-wise statistics for text QA base models.",
         panel_c_models,
         panel_c_color_map,
         panel_c_stats,
@@ -1041,7 +1155,7 @@ def plot_failure_mode_111_enhanced(code, df_mode, output_dir):
     appendix_ax_d = appendix_fig.add_subplot(appendix_gs[2, 0])
     draw_appendix_table(
         appendix_ax_d,
-        "D. Exact step-wise statistics for medical VQA base models.",
+        "d. Exact step-wise statistics for medical VQA base models.",
         panel_d_models,
         panel_d_color_map,
         panel_d_stats,
@@ -1065,6 +1179,9 @@ def plot_failure_mode_comprehensive(code, df_mode, output_dir):
     - Panel A uses the V3 MAS cognitive pipeline style.
     - Panel B uses the V4 dataset modality divergence style.
     - Panels C and D use the V4 kinematic degradation style.
+
+    Compared with `plot_failure_mode_111_enhanced`, this path favors reuse and
+    consistency over bespoke page-level tuning.
     """
     config = AUDIT_CONFIG[code]
     mode_name = config["name"]
@@ -1861,6 +1978,14 @@ def plot_failure_mode_comprehensive(code, df_mode, output_dir):
 
 
 def main():
+    """
+    Entry point used for paper figure reproduction.
+
+    Examples:
+        `uv run python scripts/audit_drawing.py 1.1.1`
+        `uv run python scripts/audit_drawing.py 1.2.1 2.2.2`
+        `uv run python scripts/audit_drawing.py`
+    """
     input_base_dir = project_root / "logs" / "audit_results" / "20260302"
     output_dir = project_root / "logs" / "audit_results" / "figures_final"
     output_dir.mkdir(parents=True, exist_ok=True)
