@@ -6,10 +6,10 @@ logs
 config.toml
 *__pycache__*
 temp*
-
 datasets
 *.jpg*
 .DS_Store
 markdown
 *tex*
 *case_study*
+prompt
