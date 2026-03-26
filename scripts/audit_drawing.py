@@ -1123,55 +1123,6 @@ def plot_failure_mode_111_enhanced(code, df_mode, output_dir):
     print(f"Saved enhanced main figure: {main_pdf_path}")
     print(f"Saved enhanced main figure PNG: {main_png_path}")
 
-    appendix_fig = plt.figure(figsize=(24.8, 15.6))
-    appendix_fig.patch.set_facecolor('white')
-    appendix_gs = GridSpec(
-        3,
-        1,
-        figure=appendix_fig,
-        height_ratios=[1.45, 1.0, 1.0],
-        hspace=0.56,
-    )
-
-    appendix_ax_b = appendix_fig.add_subplot(appendix_gs[0, 0])
-    draw_appendix_table(
-        appendix_ax_b,
-        "b. Exact step-wise statistics for dataset trajectories.",
-        panel_b_datasets,
-        ENHANCED_DATASET_COLOR_MAP,
-        panel_b_stats,
-    )
-
-    appendix_ax_c = appendix_fig.add_subplot(appendix_gs[1, 0])
-    draw_appendix_table(
-        appendix_ax_c,
-        "c. Exact step-wise statistics for text QA base models.",
-        panel_c_models,
-        panel_c_color_map,
-        panel_c_stats,
-        display_names=model_display_names,
-    )
-
-    appendix_ax_d = appendix_fig.add_subplot(appendix_gs[2, 0])
-    draw_appendix_table(
-        appendix_ax_d,
-        "d. Exact step-wise statistics for medical VQA base models.",
-        panel_d_models,
-        panel_d_color_map,
-        panel_d_stats,
-        display_names=model_display_names,
-    )
-
-    plt.subplots_adjust(left=0.07, right=0.995, top=0.965, bottom=0.055)
-    appendix_pdf_path, appendix_png_path = save_figure_variants(
-        appendix_fig,
-        output_dir,
-        f"failure_mode_{code}_appendix_tables",
-    )
-    plt.close(appendix_fig)
-    print(f"Saved appendix tables: {appendix_pdf_path}")
-    print(f"Saved appendix tables PNG: {appendix_png_path}")
-
 
 def plot_failure_mode_comprehensive(code, df_mode, output_dir):
     """
