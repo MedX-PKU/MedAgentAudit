@@ -74,6 +74,12 @@ AUDIT_CONFIG = {
     }
 }
 
+# Phase II unresolved-conflict statistics exclude synthesis nodes and keep only
+# the discussion-loop analysis / review steps.
+AUDIT_STEP_FILTERS = {
+    "2.2.2": {"analysis", "review"},
+}
+
 def extract_metadata_from_path(file_path: str) -> Tuple[str, str, str]:
     """
     Extracts MAS, Dataset, and LLM from the file path.
@@ -123,6 +129,7 @@ def process_audit_files_rounds_aggregated(audit_results_path: Path) -> defaultdi
                     for code, config in AUDIT_CONFIG.items():
                         log_key = config["log_key"]
                         status_key = config["status_key"]
+                        allowed_steps = AUDIT_STEP_FILTERS.get(code)
                         
                         entries = audit_round_data.get(log_key, [])
                         
@@ -132,6 +139,9 @@ def process_audit_files_rounds_aggregated(audit_results_path: Path) -> defaultdi
                         
                         if entries and isinstance(entries, list):
                             for entry in entries:
+                                step = str(entry.get("step", "")).lower()
+                                if allowed_steps is not None and step not in allowed_steps:
+                                    continue
                                 aggregated_stats[(code,mas,dataset,llm)]['total'] += 1
                                 result_obj = entry.get("audit_result", {})
                                 # Check failure status ("1" is failure)
@@ -174,6 +184,7 @@ def process_audit_files_case_granularity(audit_results_path: Path) -> defaultdic
                 for code, config in AUDIT_CONFIG.items():
                     failure_detected_in_case = False
                     failure_audited_in_case = False
+                    allowed_steps = AUDIT_STEP_FILTERS.get(code)
                 # 3. Count Failures per Round
                     for audit_round_data in rounds:
                         log_key = config["log_key"]
@@ -186,8 +197,11 @@ def process_audit_files_case_granularity(audit_results_path: Path) -> defaultdic
                             entries = [entries]
                         
                         if entries and isinstance(entries, list):
-                            failure_audited_in_case = True
                             for entry in entries:
+                                step = str(entry.get("step", "")).lower()
+                                if allowed_steps is not None and step not in allowed_steps:
+                                    continue
+                                failure_audited_in_case = True
                                 result_obj = entry.get("audit_result", {})
                                 # Check failure status ("1" is failure)
                                 if str(result_obj.get(status_key)) == "1":
