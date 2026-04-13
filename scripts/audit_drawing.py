@@ -279,7 +279,7 @@ def process_audit_data_to_df(audit_results_path: Path):
         "healthcareagent": "HealthcareAgent",
         "mac": "MAC",
         "mdagents": "MDAgents",
-        "medagent": "MedAgents",
+        "medagents": "MedAgents",
         "reconcile": "ReConcile",
     }
 
