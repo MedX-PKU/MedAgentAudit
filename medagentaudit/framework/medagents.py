@@ -1,5 +1,5 @@
 """
-./medagentaudit/framework/medagent.py
+./medagentaudit/framework/medagents.py
 """
 
 import json
@@ -384,7 +384,7 @@ class MDTConsultation:
     """Multi-disciplinary team consultation coordinator."""
 
     def __init__(self,
-                max_rounds: int = 1, # MedAgent原框架为单轮，此处设为1以保持一致，可调
+                max_rounds: int = 1, # MedAgents原框架为单轮，此处设为1以保持一致，可调
                 model_key: str = "qwen-max-latest",
                 meta_model_key: str = "qwen-max-latest",
                 decision_model_key: str = "qwen-max-latest",

@@ -76,7 +76,7 @@ We evaluate our method on the test sets of 6 distinct medical datasets, covering
 ## 🛠️ Frameworks Audited
 
 The repository includes implementations of the following Multi-Agent Systems (MAS):
-1.  **MedAgent**
+1.  **MedAgents**
 2.  **ColaCare**
 3.  **HealthcareAgent**
 4.  **MAC**

@@ -73,18 +73,18 @@ echo "Starting experiments..."
 #     done
 # done
 
-# 3. MedAgent QA fixed
+# 3. MedAgents QA fixed
 for dataset in "${QA_DATASETS[@]}"; do
     for qa_llm in "${QA_LLM[@]}"; do
-        cmd="python -m medagentaudit.framework.medagent --dataset $dataset --model $qa_llm --meta_model $qa_llm --decision_model $qa_llm --auditor_model $AUDITOR --config_path config.toml --num_samples $num --time_stamp $time_stamp --task $task"
+        cmd="python -m medagentaudit.framework.medagents --dataset $dataset --model $qa_llm --meta_model $qa_llm --decision_model $qa_llm --auditor_model $AUDITOR --config_path config.toml --num_samples $num --time_stamp $time_stamp --task $task"
         run_command "$cmd"
     done
 done
 
-# 4. MedAgent VQA fixed
+# 4. MedAgents VQA fixed
 for dataset in "${VQA_DATASETS[@]}"; do
     for vqa_llm in "${VQA_LLM[@]}"; do
-        cmd="python -m medagentaudit.framework.medagent --dataset $dataset --model $vqa_llm --meta_model $vqa_llm --decision_model $vqa_llm --auditor_model $AUDITOR --config_path config.toml --num_samples $num --time_stamp $time_stamp --task $task"
+        cmd="python -m medagentaudit.framework.medagents --dataset $dataset --model $vqa_llm --meta_model $vqa_llm --decision_model $vqa_llm --auditor_model $AUDITOR --config_path config.toml --num_samples $num --time_stamp $time_stamp --task $task"
         run_command "$cmd"
     done
 done

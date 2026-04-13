@@ -67,10 +67,10 @@ for dataset in "${VQA_DATASETS[@]}"; do
 done
 
 
-# 4. MedAgent VQA fixed
+# 4. MedAgents VQA fixed
 for dataset in "${VQA_DATASETS[@]}"; do
     for vqa_llm in "${VQA_LLM[@]}"; do
-        cmd="python -m medagentaudit.framework.medagent --dataset $dataset --model $vqa_llm --meta_model $vqa_llm --decision_model $vqa_llm --auditor_model $AUDITOR --config_path config.toml --num_samples $num --time_stamp $time_stamp --task $task"
+        cmd="python -m medagentaudit.framework.medagents --dataset $dataset --model $vqa_llm --meta_model $vqa_llm --decision_model $vqa_llm --auditor_model $AUDITOR --config_path config.toml --num_samples $num --time_stamp $time_stamp --task $task"
         run_command "$cmd"
     done
 done

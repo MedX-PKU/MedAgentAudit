@@ -35,7 +35,7 @@ const slugify = (value: string) =>
 
 const normalizeFramework = (value: string) => {
   const normalized = value.trim().toLowerCase()
-  if (normalized === 'medagent') return 'MedAgent'
+  if (normalized === 'medagents') return 'MedAgents'
   if (normalized === 'healthcareagent') return 'HealthcareAgent'
   if (normalized === 'mdagents') return 'MDAgents'
   if (normalized === 'colacare') return 'ColaCare'

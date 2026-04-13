@@ -71,18 +71,18 @@ for dataset in "${VQA_DATASETS[@]}"; do
     done
 done
 
-# 3. MedAgent QA fixed
+# 3. MedAgents QA fixed
 for dataset in "${QA_DATASETS[@]}"; do
     for qa_llm in "${QA_LLM[@]}"; do
-        cmd="python -m scripts.run_open_coding --dataset $dataset --llm $qa_llm --mas medagent" 
+        cmd="python -m scripts.run_open_coding --dataset $dataset --llm $qa_llm --mas medagents" 
         run_command "$cmd"
     done
 done
 
-# 4. MedAgent VQA fixed
+# 4. MedAgents VQA fixed
 for dataset in "${VQA_DATASETS[@]}"; do
     for vqa_llm in "${VQA_LLM[@]}"; do
-        cmd="python -m scripts.run_open_coding --dataset $dataset --llm $vqa_llm --mas medagent" 
+        cmd="python -m scripts.run_open_coding --dataset $dataset --llm $vqa_llm --mas medagents" 
         run_command "$cmd"
     done
 done
