@@ -1,6 +1,6 @@
 '''
 ./scripts/audit_drawing.py
-Build publication figures for the audit logs stored under `logs/audit_results/`.
+Build figures for the audit logs.
 
 The script turns per-case JSONL audit traces into a long Pandas table and then
 renders one figure per failure mode. Each figure answers three analysis
@@ -95,11 +95,12 @@ STAGE_DISPLAY = {
     "decision": "Decision",
 }
 
-# Some failure modes are only interpreted on a subset of within-round steps in
-# the manuscript. For 2.2.2, Phase II excludes synthesis nodes and keeps only
-# the discussion-loop analysis / review steps.
-FAILURE_MODE_STEP_FILTERS = {
-    "2.2.2": {"analysis", "review"},
+# Some failure modes are defined only on a subset of within-round steps even if
+# the raw logs also contain later-stage audit entries. Keep the plotted stage
+# order explicit so regenerated manuscript figures stay aligned with the text.
+FIGURE_STAGE_ORDER_OVERRIDES = {
+    # 2.2.2 is reported only within the Phase II discussion loop.
+    "2.2.2": ["R1-Review", "R2-Analysis", "R2-Review", "R3-Analysis", "R3-Review"],
 }
 
 # All confidence intervals are deterministic bootstrap intervals so repeated
@@ -227,14 +228,6 @@ def collect_group_stage_stats(df_subset, group_column, groups, x_order, seed_off
             max_failure_rate = max(max_failure_rate, failure_rate)
 
     return stats, max_failure_rate
-
-
-def apply_failure_mode_step_filter(code, df_mode):
-    """Restrict a failure mode to the manuscript-approved audited steps."""
-    allowed_steps = FAILURE_MODE_STEP_FILTERS.get(code)
-    if not allowed_steps:
-        return df_mode
-    return df_mode[df_mode["step"].isin(allowed_steps)].copy()
 
 
 def save_figure_variants(fig, output_dir, stem):
@@ -414,17 +407,17 @@ def plot_failure_mode_111_enhanced(code, df_mode, output_dir):
         print(f"Skipping plot for {code} ({mode_name}): No data found.")
         return
 
-    df_mode = apply_failure_mode_step_filter(code, df_mode)
-    if df_mode.empty:
-        print(f"Skipping plot for {code} ({mode_name}): No data found after step filtering.")
-        return
-
     # Build the x-axis directly from the data so the figure remains valid even
     # if future audits contain fewer rounds or only a subset of steps.
     unique_round_stages = df_mode[['round_num', 'step', 'round_stage']].drop_duplicates()
     unique_round_stages['step_idx'] = unique_round_stages['step'].map({step: idx for idx, step in enumerate(STAGE_ORDER)})
     unique_round_stages = unique_round_stages.sort_values(['round_num', 'step_idx'])
     x_order = unique_round_stages['round_stage'].tolist()
+    stage_override = FIGURE_STAGE_ORDER_OVERRIDES.get(code)
+    if stage_override is not None:
+        allowed_stages = set(stage_override)
+        df_mode = df_mode[df_mode['round_stage'].isin(allowed_stages)].copy()
+        x_order = [stage for stage in stage_override if stage in x_order]
 
     if not x_order:
         return
@@ -1204,9 +1197,11 @@ def plot_failure_mode_212_enhanced(code, df_mode, output_dir):
     Generate the appendix-style main-text figure for dense multi-stage modes.
 
     This variant is currently used for Failure Modes `2.1.2`, `2.2.1`,
-    `2.2.2`, `3.1.1`, `3.1.2`, and `3.1.3`.
+    `2.2.2`, `3.1.1`, `3.1.2`, `3.1.3`, and `3.2.1`.
     It keeps Panel a in the dense matrix layout that already fits the five- or
-    six-stage Phase II pipelines well, but applies the same paper-facing
+    six-stage Phase II pipelines well, and it also fits the compact four-stage
+    3.2.1 layout without changing the Panel a cell structure. It applies the
+    same paper-facing
     cleanup used by the Phase I figures:
     - Panel titles are reduced to panel letters only.
     - Exact numbers under Panels b--d are removed from the figure and shifted to
@@ -1221,15 +1216,15 @@ def plot_failure_mode_212_enhanced(code, df_mode, output_dir):
         print(f"Skipping plot for {code} ({mode_name}): No data found.")
         return
 
-    df_mode = apply_failure_mode_step_filter(code, df_mode)
-    if df_mode.empty:
-        print(f"Skipping plot for {code} ({mode_name}): No data found after step filtering.")
-        return
-
     unique_round_stages = df_mode[['round_num', 'step', 'round_stage']].drop_duplicates()
     unique_round_stages['step_idx'] = unique_round_stages['step'].map({step: idx for idx, step in enumerate(STAGE_ORDER)})
     unique_round_stages = unique_round_stages.sort_values(['round_num', 'step_idx'])
     x_order = unique_round_stages['round_stage'].tolist()
+    stage_override = FIGURE_STAGE_ORDER_OVERRIDES.get(code)
+    if stage_override is not None:
+        allowed_stages = set(stage_override)
+        df_mode = df_mode[df_mode['round_stage'].isin(allowed_stages)].copy()
+        x_order = [stage for stage in stage_override if stage in x_order]
 
     if not x_order:
         return
@@ -1423,6 +1418,14 @@ def plot_failure_mode_212_enhanced(code, df_mode, output_dir):
                 }
             )
 
+        observed_panel_max = max(
+            (
+                float(np.nanmax(series['y_vals'][series['valid_mask']]))
+                for series in prepared_series
+                if np.count_nonzero(series['valid_mask']) > 0
+            ),
+            default=0.0,
+        )
         max_panel_upper = max(
             (
                 float(np.nanmax(series['ci_upper'][series['valid_mask']]))
@@ -1431,7 +1434,31 @@ def plot_failure_mode_212_enhanced(code, df_mode, output_dir):
             ),
             default=0.0,
         )
-        _, y_max, tick_step = compute_adaptive_rate_axis(max_panel_upper)
+        _, _, observed_tick_step = compute_adaptive_rate_axis(observed_panel_max)
+
+        # Tiny denominators can yield very wide bootstrap ribbons such as
+        # 33.3% [0, 100], which would otherwise push the whole panel to 100%
+        # and leave most of the plotting area empty. Use the observed rate as
+        # the anchor and allow only limited CI-driven headroom when choosing
+        # the axis top.
+        ci_headroom_cap = max(observed_tick_step * 2.0, observed_panel_max * 0.18, 4.0)
+        robust_upper_candidates = []
+        for series in prepared_series:
+            if not np.count_nonzero(series['valid_mask']):
+                continue
+
+            y_valid = series['y_vals'][series['valid_mask']]
+            ci_upper_valid = series['ci_upper'][series['valid_mask']]
+            robust_upper_candidates.append(np.minimum(ci_upper_valid, y_valid + ci_headroom_cap))
+
+        robust_panel_upper = observed_panel_max
+        if robust_upper_candidates:
+            robust_panel_upper = max(
+                robust_panel_upper,
+                float(np.nanmax(np.concatenate(robust_upper_candidates))),
+            )
+
+        _, y_max, tick_step = compute_adaptive_rate_axis(robust_panel_upper)
 
         robust_lower_candidates = []
         for series in prepared_series:
@@ -1531,7 +1558,7 @@ def plot_failure_mode_212_enhanced(code, df_mode, output_dir):
         ax.tick_params(axis='y', which='minor', width=0.75, length=2.4, direction='out', color='#64748B')
 
         if handles:
-            legend_upper_left_codes = {"2.2.2", "3.1.1", "3.1.2", "3.1.3"}
+            legend_upper_left_codes = {"2.2.2", "3.1.1", "3.1.2", "3.1.3", "3.2.1"}
             legend_loc = 'upper left' if code in legend_upper_left_codes else 'lower left'
             legend_anchor = (0.0, 0.98) if code in legend_upper_left_codes else (0.0, 0.02)
             ax.legend(
@@ -1701,6 +1728,17 @@ def plot_failure_mode_212_enhanced(code, df_mode, output_dir):
     plt.subplots_adjust(left=0.065, right=0.925, top=0.96, bottom=0.08)
     fig.canvas.draw()
 
+    if code == "2.2.2":
+        ax_a_pos = ax_a.get_position()
+        ax_a_new_height = ax_a_pos.height * 0.90
+        ax_a_new_y = ax_a_pos.y1 - ax_a_new_height
+        ax_a.set_position([ax_a_pos.x0, ax_a_new_y, ax_a_pos.width, ax_a_new_height])
+
+        cbar_a_pos = cbar_a.ax.get_position()
+        cbar_a_new_height = cbar_a_pos.height * 0.90
+        cbar_a_new_y = ax_a_pos.y1 - cbar_a_new_height
+        cbar_a.ax.set_position([cbar_a_pos.x0, cbar_a_new_y, cbar_a_pos.width, cbar_a_new_height])
+
     # Keep the Panel b typography unchanged. For the dense Phase III synthesis
     # modes, the user requested a narrower but taller plotting region relative
     # to the current panel-b geometry; other modes keep the previous 90% x 90%
@@ -1763,11 +1801,6 @@ def plot_failure_mode_comprehensive(code, df_mode, output_dir):
 
     if df_mode.empty:
         print(f"Skipping plot for {code} ({mode_name}): No data found.")
-        return
-
-    df_mode = apply_failure_mode_step_filter(code, df_mode)
-    if df_mode.empty:
-        print(f"Skipping plot for {code} ({mode_name}): No data found after step filtering.")
         return
 
     unique_round_stages = df_mode[['round_num', 'step', 'round_stage']].drop_duplicates()
@@ -2587,7 +2620,7 @@ def main():
         # renderer, add another branch like `elif code == "x.x.x": ...`.
         if code in {"1.1.1", "1.2.1"}:
             plot_failure_mode_111_enhanced(code, df_mode, output_dir)
-        elif code in {"2.1.2", "2.2.1", "2.2.2", "3.1.1", "3.1.2", "3.1.3"}:
+        elif code in {"2.1.2", "2.2.1", "2.2.2", "3.1.1", "3.1.2", "3.1.3", "3.2.1"}:
             plot_failure_mode_212_enhanced(code, df_mode, output_dir)
         else:
             plot_failure_mode_comprehensive(code, df_mode, output_dir)
