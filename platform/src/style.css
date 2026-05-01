@@ -2,13 +2,13 @@
 @plugin '@tailwindcss/typography';
 
 :root {
-  --maa-bg: #eef3f7;
+  --maa-bg: #f7fafc;
   --maa-ink: #0f172a;
   --maa-ink-soft: #475569;
-  --maa-line: rgba(15, 23, 42, 0.12);
-  --maa-card: rgba(255, 255, 255, 0.82);
-  --maa-font: 'Instrument Sans', 'SF Pro Display', 'Helvetica Neue', Arial, sans-serif;
-  --maa-display: 'Instrument Sans', 'SF Pro Display', 'Helvetica Neue', Arial, sans-serif;
+  --maa-line: rgba(15, 23, 42, 0.1);
+  --maa-card: rgba(255, 255, 255, 0.78);
+  --maa-font: 'DIN Next', 'DINNext', 'DIN Next LT Pro', 'Helvetica Neue', Arial, sans-serif;
+  --maa-display: 'DIN Next', 'DINNext', 'DIN Next LT Pro', 'Helvetica Neue', Arial, sans-serif;
 }
 
 html {
@@ -26,8 +26,8 @@ body {
   font-family: var(--maa-font);
   color: var(--maa-ink);
   background:
-    linear-gradient(180deg, rgba(248, 250, 252, 0.98), rgba(238, 243, 247, 0.95) 55%, rgba(242, 246, 250, 0.98)),
-    linear-gradient(120deg, rgba(14, 116, 144, 0.08), rgba(37, 99, 235, 0.04) 36%, rgba(16, 185, 129, 0.06));
+    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(247, 250, 252, 0.98) 46%, rgba(243, 247, 250, 0.98)),
+    linear-gradient(120deg, rgba(14, 116, 144, 0.025), rgba(37, 99, 235, 0.018) 40%, rgba(16, 185, 129, 0.022));
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;

@@ -1,8 +1,10 @@
 export const projectMeta = {
   name: 'MedAgentAudit',
   title: 'MedAgentAudit: Diagnosing and Quantifying Collaborative Failure Modes in Medical Multi-Agent Systems',
-  abstract:
-    'MedAgentAudit evaluates medical multi-agent systems beyond final-answer accuracy by auditing where collaboration fails, how failures persist through discussion, and how they are carried into synthesis and decision-making. The study builds a 10-mode collaborative failure taxonomy from 3,600 execution logs and applies an automated auditor across 14,400 medical MAS cases spanning six frameworks, six datasets, and multiple underlying LLMs.',
+  titleLines: [
+    'MedAgentAudit: Diagnosing and Quantifying Collaborative',
+    'Failure Modes in Medical Multi-Agent Systems',
+  ],
   authors: [
     { name: 'Yinghao Zhu', marks: ['1', '2', '*'] },
     { name: 'Lei Gu', marks: ['1', '*'] },
@@ -39,13 +41,13 @@ export const projectMeta = {
   ],
   notes: [
     { mark: '*', text: 'Equal contributions' },
-    { mark: '#', text: 'Corresponding authors: Yinghao Zhu, Lequan Yu, and Liantao Ma' },
+    { mark: '#', text: 'Corresponding authors: Lequan Yu and Liantao Ma. Contact: yhzhu99@gmail.com' },
   ],
   links: [
     {
       label: 'Annotation',
       href: '/annotation/open-coding',
-      kind: 'primary' as const,
+      kind: 'secondary' as const,
     },
     {
       label: 'Repository',
@@ -65,19 +67,19 @@ export const sectionNav = [
 
 export const projectFacts = [
   {
-    label: 'Taxonomy source',
+    label: 'Logs analyzed',
     value: '3,600 logs',
-    note: 'Execution traces sampled across six medical MAS frameworks and six datasets.',
+    note: 'Execution traces sampled for taxonomy development.',
   },
   {
     label: 'Failure modes',
     value: '10 modes',
-    note: 'Grouped across task comprehension, collaborative discussion, and synthesis or decision-making.',
+    note: 'Grouped by task comprehension, discussion, and synthesis.',
   },
   {
-    label: 'Audit scale',
+    label: 'Audited cases',
     value: '14,400 cases',
-    note: 'Automated probes run alongside 144 framework, dataset, and LLM combinations.',
+    note: 'Evaluated across framework, dataset, and LLM combinations.',
   },
 ]
 
@@ -166,54 +168,26 @@ export const phaseDeck = [
   },
 ]
 
-export const resultDeck = [
+export const keyFindings = [
   {
-    id: 'phase-entry',
-    label: 'Where failures enter',
-    title: 'Failures can enter at the first read of the case.',
-    summary:
-      'Phase 1 errors usually arise during initial task comprehension, including hallucinated clinical observations and answers that bypass the required modality.',
-    stats: [
-      { label: 'Factual hallucinations', value: '16.63%' },
-      { label: 'Modality neglect', value: '4.59%' },
-      { label: 'Highest VQA-RAD F-1.1.1', value: '36.14%' },
-    ],
+    label: 'Task comprehension',
+    value: '16.63%',
+    detail: 'Factual hallucinations; modality neglect reaches 4.59%.',
   },
   {
-    id: 'discussion',
-    label: 'How they persist',
-    title: 'Discussion often repeats instead of correcting.',
-    summary:
-      'Repetition of initial views dominates collaborative discussion, while role mismatch and inactive specialist reasoning can prevent the needed clinical checks from entering the dialogue.',
-    stats: [
-      { label: 'Repetition', value: '98.42%' },
-      { label: 'Specialist inactive', value: '42.73%' },
-      { label: 'Role mismatch', value: '22.71%' },
-    ],
+    label: 'Collaborative discussion',
+    value: '98.42%',
+    detail: 'Repetition of initial views dominates the discussion phase.',
   },
   {
-    id: 'decision',
-    label: 'How they decide',
-    title: 'Synthesis can amplify authority and majority effects.',
-    summary:
-      'Later synthesis and decision steps can follow authoritative roles, retain incorrect majority answers, or merge incompatible reasoning into one final conclusion.',
-    stats: [
-      { label: 'Authority bias', value: '28.76%' },
-      { label: 'Self-contradiction', value: '18.53%' },
-      { label: 'Contradiction neglect', value: '5.48%' },
-    ],
+    label: 'Synthesis and decision',
+    value: '28.76%',
+    detail: 'Authority bias is the most frequent decision-stage failure.',
   },
   {
-    id: 'validation',
     label: 'Auditor validation',
-    title: 'Automated auditing is benchmarked against clinical reviewers.',
-    summary:
-      'The auditor is evaluated on a 400-case human-annotated validation set, with three medical researchers reviewing each instance.',
-    stats: [
-      { label: 'Human cases', value: '400' },
-      { label: 'Macro F1', value: '0.845' },
-      { label: 'Human-AI kappa', value: '0.730' },
-    ],
+    value: '0.845',
+    detail: 'Macro F1 on the human-annotated validation set.',
   },
 ]
 
@@ -228,15 +202,13 @@ export const annotationCards = [
   {
     title: 'Open-coding',
     route: '/annotation/open-coding',
-    body:
-      'Review the complete collaboration trace and assign taxonomy labels across the 10 collaborative failure modes.',
-    meta: 'Full log + taxonomy multi-select',
+    body: 'Code complete collaboration traces using the 10-mode taxonomy.',
+    meta: 'Open coding',
   },
   {
     title: 'Audit',
     route: '/annotation/audit',
-    body:
-      'Review minimal phase-matched context for one failure mode and provide a binary yes/no judgment.',
-    meta: 'Mode-level validation',
+    body: 'Validate a single failure-mode judgment with phase-matched context.',
+    meta: 'Audit validation',
   },
 ]

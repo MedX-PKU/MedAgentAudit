@@ -50,7 +50,7 @@ const brandIconUrl = toBasePath('branding/medagentaudit-icon.svg')
 const pageLabel = computed(() => (props.title === 'MedAgentAudit' ? '' : props.title.replace(/^MedAgentAudit\s*\/\s*/, '')))
 const navItemClass = (isActive: boolean) =>
   isActive
-    ? 'bg-sky-50 text-sky-900 shadow-[0_12px_28px_rgba(56,189,248,0.14)] ring-1 ring-sky-200'
+    ? 'bg-white text-slate-950 ring-1 ring-slate-200'
     : 'text-slate-500 hover:bg-white hover:text-slate-950'
 
 const onDocumentClick = (event: MouseEvent) => {
@@ -72,32 +72,29 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="min-h-screen bg-[var(--maa-bg)] text-[var(--maa-ink)]">
-    <div
-      class="pointer-events-none fixed inset-0 bg-[linear-gradient(rgba(15,23,42,0.045)_1px,transparent_1px),linear-gradient(90deg,rgba(15,23,42,0.035)_1px,transparent_1px)] bg-[size:48px_48px]"
-    />
     <header
-      class="sticky top-0 z-50 px-2.5 py-3 transition-[margin] duration-300 ease-out sm:px-3 lg:px-4"
+      class="sticky top-0 z-50 border-b border-slate-200/80 bg-white/90 px-2.5 transition-[margin] duration-300 ease-out backdrop-blur-xl sm:px-3 lg:px-4"
       :class="props.drawerOpen ? 'lg:ml-[320px]' : 'ml-0'"
     >
       <div
-        class="mx-auto flex w-full items-center justify-between gap-4 rounded-full border border-white/70 bg-white/80 px-4 py-3 shadow-[0_20px_60px_rgba(15,23,42,0.08)] backdrop-blur-xl sm:px-5"
+        class="mx-auto flex w-full items-center justify-between gap-4 py-3"
         :class="contentWidthClass"
       >
         <div class="flex min-w-0 items-center gap-3">
           <slot name="title-left" />
-          <RouterLink to="/" class="flex min-w-0 items-center gap-3 text-sm font-semibold tracking-[0.12em] text-slate-900">
+          <RouterLink to="/" class="flex min-w-0 items-center gap-3 text-sm font-medium text-slate-900">
             <img :src="brandIconUrl" alt="" class="h-9 w-9 rounded-full bg-slate-950/5 p-1.5" />
             <span class="hidden sm:inline">MedAgentAudit</span>
           </RouterLink>
-          <span v-if="pageLabel" class="hidden truncate rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-600 md:inline">
+          <span v-if="pageLabel" class="hidden truncate rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-600 md:inline">
             {{ pageLabel }}
           </span>
         </div>
 
-        <nav class="flex shrink-0 items-center gap-1 rounded-full border border-slate-200/80 bg-slate-50/80 p-1">
+        <nav class="flex shrink-0 items-center gap-1 rounded-full border border-slate-200/80 bg-white/68 p-1">
           <RouterLink
             to="/"
-            class="rounded-full px-3 py-2 text-sm font-semibold tracking-[-0.01em] transition sm:px-4"
+            class="rounded-full px-3 py-2 text-sm font-medium transition sm:px-4"
             :aria-current="active('/') && !inAnnotation ? 'page' : undefined"
             :class="navItemClass(active('/') && !inAnnotation)"
           >
@@ -107,7 +104,7 @@ onBeforeUnmount(() => {
           <div class="relative" data-annotation-menu>
             <button
               type="button"
-              class="cursor-pointer rounded-full px-3 py-2 text-sm font-semibold tracking-[-0.01em] transition sm:px-4"
+              class="cursor-pointer rounded-full px-3 py-2 text-sm font-medium transition sm:px-4"
               :class="navItemClass(inAnnotation)"
               :aria-expanded="isAnnotationMenuOpen"
               @click="isAnnotationMenuOpen = !isAnnotationMenuOpen"
@@ -120,7 +117,7 @@ onBeforeUnmount(() => {
             >
               <RouterLink
                 to="/annotation/open-coding"
-                class="block px-4 py-3 text-sm font-semibold hover:bg-slate-50"
+                class="block px-4 py-3 text-sm font-medium hover:bg-slate-50"
                 :class="active('/annotation/open-coding') ? 'bg-sky-50 text-sky-900' : 'text-slate-700'"
                 @click="isAnnotationMenuOpen = false"
               >
@@ -128,7 +125,7 @@ onBeforeUnmount(() => {
               </RouterLink>
               <RouterLink
                 to="/annotation/audit"
-                class="block border-t border-slate-100 px-4 py-3 text-sm font-semibold hover:bg-slate-50"
+                class="block border-t border-slate-100 px-4 py-3 text-sm font-medium hover:bg-slate-50"
                 :class="active('/annotation/audit') ? 'bg-sky-50 text-sky-900' : 'text-slate-700'"
                 @click="isAnnotationMenuOpen = false"
               >
