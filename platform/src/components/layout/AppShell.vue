@@ -4,12 +4,21 @@ import { computed, onBeforeUnmount, onMounted, provide, readonly, ref } from 'vu
 import { useRoute } from 'vue-router'
 
 import { ANNOTATION_DRAWER_KEY } from './annotationDrawer'
+import { toBasePath } from '../../lib/assets'
 
-const props = defineProps<{
-  title: string
-  /** When true (annotation sidebar open), header and main shift right to make room */
-  drawerOpen?: boolean
-}>()
+const props = withDefaults(
+  defineProps<{
+    title?: string
+    contentWidth?: 'default' | 'wide'
+    /** When true (annotation sidebar open), header and main shift right to make room */
+    drawerOpen?: boolean
+  }>(),
+  {
+    title: 'MedAgentAudit',
+    contentWidth: 'default',
+    drawerOpen: false,
+  },
+)
 
 const route = useRoute()
 
@@ -32,11 +41,17 @@ if (!inAnnotationRoute) {
 }
 
 
-const nav = computed(() => [{ to: '/', label: 'Home' }])
-
 const active = (path: string) => route.path === path || route.path.startsWith(path + '/')
 
 const inAnnotation = computed(() => route.path === '/annotation' || route.path.startsWith('/annotation/'))
+
+const contentWidthClass = computed(() => (props.contentWidth === 'wide' ? 'max-w-[1680px]' : 'max-w-7xl'))
+const brandIconUrl = toBasePath('branding/medagentaudit-icon.svg')
+const pageLabel = computed(() => (props.title === 'MedAgentAudit' ? '' : props.title.replace(/^MedAgentAudit\s*\/\s*/, '')))
+const navItemClass = (isActive: boolean) =>
+  isActive
+    ? 'bg-sky-50 text-sky-900 shadow-[0_12px_28px_rgba(56,189,248,0.14)] ring-1 ring-sky-200'
+    : 'text-slate-500 hover:bg-white hover:text-slate-950'
 
 const onDocumentClick = (event: MouseEvent) => {
   if (!isAnnotationMenuOpen.value) return
@@ -56,53 +71,65 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="min-h-screen bg-slate-50 text-slate-900">
+  <div class="min-h-screen bg-[var(--maa-bg)] text-[var(--maa-ink)]">
+    <div
+      class="pointer-events-none fixed inset-0 bg-[linear-gradient(rgba(15,23,42,0.045)_1px,transparent_1px),linear-gradient(90deg,rgba(15,23,42,0.035)_1px,transparent_1px)] bg-[size:48px_48px]"
+    />
     <header
-      class="sticky top-0 z-40 border-b border-slate-200 bg-white/80 backdrop-blur transition-[margin] duration-300 ease-out"
-      :class="props.drawerOpen ? 'ml-[320px]' : 'ml-0'"
+      class="sticky top-0 z-50 px-2.5 py-3 transition-[margin] duration-300 ease-out sm:px-3 lg:px-4"
+      :class="props.drawerOpen ? 'lg:ml-[320px]' : 'ml-0'"
     >
-      <div class="flex w-full items-center gap-4 px-3 py-3 lg:px-4">
-        <div class="flex items-center font-semibold tracking-tight">
+      <div
+        class="mx-auto flex w-full items-center justify-between gap-4 rounded-full border border-white/70 bg-white/80 px-4 py-3 shadow-[0_20px_60px_rgba(15,23,42,0.08)] backdrop-blur-xl sm:px-5"
+        :class="contentWidthClass"
+      >
+        <div class="flex min-w-0 items-center gap-3">
           <slot name="title-left" />
-          {{ props.title }}
+          <RouterLink to="/" class="flex min-w-0 items-center gap-3 text-sm font-semibold tracking-[0.12em] text-slate-900">
+            <img :src="brandIconUrl" alt="" class="h-9 w-9 rounded-full bg-slate-950/5 p-1.5" />
+            <span class="hidden sm:inline">MedAgentAudit</span>
+          </RouterLink>
+          <span v-if="pageLabel" class="hidden truncate rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-600 md:inline">
+            {{ pageLabel }}
+          </span>
         </div>
-        <div class="flex-1" />
-        <nav class="flex items-center gap-1">
+
+        <nav class="flex shrink-0 items-center gap-1 rounded-full border border-slate-200/80 bg-slate-50/80 p-1">
           <RouterLink
-            v-for="item in nav"
-            :key="item.to"
-            :to="item.to"
-            class="rounded-lg px-3 py-2 text-sm transition hover:bg-slate-100"
-            :class="active(item.to) ? 'bg-slate-100 text-slate-900' : 'text-slate-600'"
+            to="/"
+            class="rounded-full px-3 py-2 text-sm font-semibold tracking-[-0.01em] transition sm:px-4"
+            :aria-current="active('/') && !inAnnotation ? 'page' : undefined"
+            :class="navItemClass(active('/') && !inAnnotation)"
           >
-            {{ item.label }}
+            Home
           </RouterLink>
 
           <div class="relative" data-annotation-menu>
             <button
               type="button"
-              class="cursor-pointer rounded-lg px-3 py-2 text-sm transition hover:bg-slate-100"
-              :class="inAnnotation ? 'bg-slate-100 text-slate-900' : 'text-slate-600'"
+              class="cursor-pointer rounded-full px-3 py-2 text-sm font-semibold tracking-[-0.01em] transition sm:px-4"
+              :class="navItemClass(inAnnotation)"
+              :aria-expanded="isAnnotationMenuOpen"
               @click="isAnnotationMenuOpen = !isAnnotationMenuOpen"
             >
               Annotation
             </button>
             <div
               v-if="isAnnotationMenuOpen"
-              class="absolute right-0 mt-2 w-44 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg"
+              class="absolute right-0 mt-2 w-52 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-[0_20px_50px_rgba(15,23,42,0.14)]"
             >
               <RouterLink
                 to="/annotation/open-coding"
-                class="block px-3 py-2 text-sm hover:bg-slate-50 hover:text-slate-900"
-                :class="active('/annotation/open-coding') ? 'bg-blue-600 text-white hover:bg-blue-600 hover:text-slate-900' : 'text-slate-700'"
+                class="block px-4 py-3 text-sm font-semibold hover:bg-slate-50"
+                :class="active('/annotation/open-coding') ? 'bg-sky-50 text-sky-900' : 'text-slate-700'"
                 @click="isAnnotationMenuOpen = false"
               >
-                OpenCoding
+                Open-coding
               </RouterLink>
               <RouterLink
                 to="/annotation/audit"
-                class="block px-3 py-2 text-sm hover:bg-slate-50 hover:text-slate-900"
-                :class="active('/annotation/audit') ? 'bg-blue-600 text-white hover:bg-blue-600 hover:text-slate-900' : 'text-slate-700'"
+                class="block border-t border-slate-100 px-4 py-3 text-sm font-semibold hover:bg-slate-50"
+                :class="active('/annotation/audit') ? 'bg-sky-50 text-sky-900' : 'text-slate-700'"
                 @click="isAnnotationMenuOpen = false"
               >
                 Audit
@@ -113,8 +140,10 @@ onBeforeUnmount(() => {
       </div>
     </header>
 
-    <main class="w-full px-3 py-4 lg:px-4 lg:py-5">
-      <slot />
+    <main class="relative transition-[margin] duration-300 ease-out" :class="props.drawerOpen ? 'lg:ml-[320px]' : 'ml-0'">
+      <div class="mx-auto w-full px-2.5 pb-14 sm:px-3 sm:pb-20 lg:px-4 xl:px-[1.125rem]" :class="contentWidthClass">
+        <slot />
+      </div>
     </main>
   </div>
 </template>

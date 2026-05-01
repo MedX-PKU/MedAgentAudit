@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96" role="img" aria-label="MedAgentAudit">
+  <defs>
+    <linearGradient id="g" x1="15" x2="80" y1="10" y2="88" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#0f766e"/>
+      <stop offset="0.52" stop-color="#2563eb"/>
+      <stop offset="1" stop-color="#7c3aed"/>
+    </linearGradient>
+  </defs>
+  <rect width="96" height="96" rx="22" fill="#f8fafc"/>
+  <path fill="url(#g)" d="M48 14c12.4 0 24.8 4.9 33.9 14.7a6 6 0 0 1 .9 6.8L54 82.8a7 7 0 0 1-12 0L13.2 35.5a6 6 0 0 1 .9-6.8C23.2 18.9 35.6 14 48 14Z"/>
+  <path fill="#fff" d="M32 35.5h10.6l5.4 10.1 5.4-10.1H64v25H53.9V50.2l-3.4 6.1h-5l-3.4-6.1v10.3H32v-25Z"/>
+  <path fill="#dbeafe" d="M23 31.5c6.8-6.7 15.2-10.1 25-10.1s18.2 3.4 25 10.1l-4.9 8.1C62 34 55.4 31.2 48 31.2S34 34 27.9 39.6L23 31.5Z" opacity=".95"/>
+</svg>

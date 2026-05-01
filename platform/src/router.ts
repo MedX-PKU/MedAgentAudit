@@ -6,7 +6,7 @@ import HomeView from './views/home/HomeView.vue'
 import OpenCodingView from './views/annotation/open-coding/OpenCodingView.vue'
 
 const router = createRouter({
-  history: createWebHistory(),
+  history: createWebHistory(import.meta.env.BASE_URL),
   routes: [
     { path: '/', name: 'home', component: HomeView },
     {
@@ -22,4 +22,3 @@ const router = createRouter({
 })
 
 export default router
-

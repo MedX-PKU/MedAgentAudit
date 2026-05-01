@@ -1,11 +1,86 @@
-@import "tailwindcss";
-@plugin "@tailwindcss/typography";
+@import 'tailwindcss';
+@plugin '@tailwindcss/typography';
+
+:root {
+  --maa-bg: #eef3f7;
+  --maa-ink: #0f172a;
+  --maa-ink-soft: #475569;
+  --maa-line: rgba(15, 23, 42, 0.12);
+  --maa-card: rgba(255, 255, 255, 0.82);
+  --maa-font: 'Instrument Sans', 'SF Pro Display', 'Helvetica Neue', Arial, sans-serif;
+  --maa-display: 'Instrument Sans', 'SF Pro Display', 'Helvetica Neue', Arial, sans-serif;
+}
+
+html {
+  scroll-behavior: smooth;
+}
 
 html,
-body {
+body,
+#app {
   height: 100%;
 }
 
 body {
   margin: 0;
+  font-family: var(--maa-font);
+  color: var(--maa-ink);
+  background:
+    linear-gradient(180deg, rgba(248, 250, 252, 0.98), rgba(238, 243, 247, 0.95) 55%, rgba(242, 246, 250, 0.98)),
+    linear-gradient(120deg, rgba(14, 116, 144, 0.08), rgba(37, 99, 235, 0.04) 36%, rgba(16, 185, 129, 0.06));
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-feature-settings: 'liga' 1, 'calt' 1, 'ss01' 1;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+::selection {
+  background: rgba(37, 99, 235, 0.14);
+  color: var(--maa-ink);
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+img {
+  display: block;
+  max-width: 100%;
+}
+
+.font-display {
+  font-family: var(--maa-display);
+  letter-spacing: 0;
+}
+
+.prose {
+  font-family: var(--maa-font);
+  color: var(--maa-ink);
+}
+
+.prose :where(h1, h2, h3, h4) {
+  font-family: var(--maa-display);
+  letter-spacing: 0;
+  color: var(--maa-ink);
+}
+
+.prose :where(p, li) {
+  color: var(--maa-ink-soft);
+}
+
+.prose :where(strong) {
+  color: var(--maa-ink);
+  font-weight: 600;
+}
+
+.glass-panel {
+  border: 1px solid rgba(255, 255, 255, 0.78);
+  background: var(--maa-card);
+  backdrop-filter: blur(18px);
 }
