@@ -42,12 +42,15 @@ const OPEN_CODING_INSTRUCTION_TEXT =
 const annotations = ref<Record<string, OpenCodingAnnotation>>({})
 const cases = ref<OpenCodingCase[]>([])
 const casesLoaded = ref(false)
+const caseLoadError = ref<string | null>(null)
 
 const loadCases = async () => {
   try {
+    caseLoadError.value = null
     cases.value = await loadOpenCodingCases()
   } catch (error) {
     console.error(error)
+    caseLoadError.value = error instanceof Error ? error.message : String(error)
     cases.value = []
   } finally {
     casesLoaded.value = true
@@ -391,7 +394,7 @@ onBeforeUnmount(() => {
 <template>
   <div class="space-y-4">
 	    <div
-        class="fixed left-0 top-3 z-40 w-[320px] max-h-[calc(100vh-1.5rem)] flex flex-col rounded-2xl border border-slate-200 bg-white p-4 shadow-xl transition"
+        class="fixed left-0 top-3 z-40 flex max-h-[calc(100vh-1.5rem)] w-[320px] flex-col rounded-lg border border-slate-200 bg-white/95 p-4 shadow-[0_22px_60px_rgba(15,23,42,0.16)] backdrop-blur-xl transition"
         data-drawer
         :class="isDrawerOpen ? 'pointer-events-auto translate-x-0 opacity-100' : 'pointer-events-none -translate-x-full opacity-0'"
         :style="{ visibility: isDrawerOpen ? 'visible' : 'hidden' }"
@@ -424,7 +427,15 @@ onBeforeUnmount(() => {
         </div>
 
         <div class="mt-4 max-h-[60vh] min-h-[200px] overflow-auto pr-1">
-          <div class="space-y-2">
+          <div v-if="caseLoadError" class="rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm leading-6 text-rose-700">
+            {{ caseLoadError }}
+          </div>
+
+          <div v-else-if="cases.length === 0" class="rounded-lg border border-slate-200 bg-white p-3 text-sm leading-6 text-slate-600">
+            No open-coding cases were loaded. Add files under <span class="font-semibold text-slate-900">public/data/open-coding/</span>.
+          </div>
+
+          <div v-else class="space-y-2">
             <button
               v-for="c in cases"
               :key="c.caseId"
@@ -519,8 +530,15 @@ onBeforeUnmount(() => {
         </AppCard>
 
         <AppCard v-else class="p-5">
-          <div v-if="casesLoaded" class="text-sm text-slate-600">
-            No open-coding cases found in `public/data/open-coding/`.
+          <div v-if="casesLoaded && caseLoadError" class="space-y-2">
+            <div class="text-sm font-semibold text-rose-700">Open-coding data could not be loaded</div>
+            <p class="text-sm leading-7 text-rose-700">{{ caseLoadError }}</p>
+            <p class="text-sm leading-7 text-slate-600">
+              Expected index: <span class="font-semibold text-slate-900">public/data/open-coding/index.json</span>
+            </p>
+          </div>
+          <div v-else-if="casesLoaded" class="text-sm text-slate-600">
+            No open-coding cases found in <span class="font-semibold text-slate-900">public/data/open-coding/</span>.
           </div>
           <div v-else class="text-sm text-slate-600">Loading open-coding cases...</div>
         </AppCard>
