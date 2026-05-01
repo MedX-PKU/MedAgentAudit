@@ -2589,7 +2589,7 @@ def plot_failure_mode_comprehensive(code, df_mode, output_dir):
     save_path = output_dir / filename
     plt.savefig(save_path, dpi=600, format='pdf', bbox_inches='tight', transparent=False)
     plt.close()
-    print(f"Saved Nature-quality comprehensive figure: {save_path}")
+    print(f"Saved publication-quality comprehensive figure: {save_path}")
 
 
 def main():

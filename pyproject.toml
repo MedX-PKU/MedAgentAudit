@@ -1,7 +1,7 @@
 [project]
-name = "2025NM_MedagentAudit_code"
+name = "medagentaudit"
 version = "0.1.0"
-description = "Add your description here"
+description = "Toolkit for auditing collaborative failure modes in medical multi-agent systems."
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [

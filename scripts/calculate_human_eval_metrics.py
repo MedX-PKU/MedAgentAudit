@@ -269,7 +269,7 @@ def calculate_audit_metrics():
 
 def main():
     print("="*75)
-    print(" 📊 MedAgentAudit - Nature Medicine Submission Metrics Calculation")
+    print(" 📊 MedAgentAudit - Evaluation Metrics Calculation")
     print("="*75)
     
     # 1. Open-Coding
