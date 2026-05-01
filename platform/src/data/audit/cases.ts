@@ -12,11 +12,26 @@ const fetchText = async (url: string) => {
   return res.text()
 }
 
+const fetchCaseIndex = async () => {
+  const listResponse = await fetch(CASES_URL, { cache: 'no-store' })
+  if (!listResponse.ok) throw new Error(`Failed to load ${CASES_URL}`)
+
+  const contentType = listResponse.headers.get('content-type') ?? ''
+  if (!contentType.includes('application/json')) {
+    throw new Error(`Expected a JSON case index at ${CASES_URL}. Add public/data/audit/index.json.`)
+  }
+
+  const files = (await listResponse.json()) as unknown
+  if (!Array.isArray(files) || files.some((file) => typeof file !== 'string')) {
+    throw new Error(`Invalid audit case index at ${CASES_URL}. Expected an array of JSONL file names.`)
+  }
+
+  return files as string[]
+}
+
 export const loadAuditCases = async (): Promise<AuditCase[]> => {
   if (cached) return cached
-  const listResponse = await fetch(CASES_URL)
-  if (!listResponse.ok) throw new Error(`Failed to load ${CASES_URL}`)
-  const files = (await listResponse.json()) as string[]
+  const files = await fetchCaseIndex()
 
   const cases: AuditCase[] = []
   for (const file of files) {

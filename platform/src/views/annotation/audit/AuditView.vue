@@ -576,6 +576,9 @@ const toggleInstructionPopover = () => {
             Expected index: <span class="font-semibold text-slate-900">public/data/audit/index.json</span>
           </p>
         </div>
+        <div v-else-if="auditCases.length === 0" class="text-sm text-slate-600">
+          No audit cases found in <span class="font-semibold text-slate-900">public/data/audit/</span>.
+        </div>
         <div v-else class="text-sm text-slate-600">No assigned audit items. Select an auditor and item.</div>
       </AppCard>
     </div>

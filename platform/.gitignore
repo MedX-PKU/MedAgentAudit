@@ -1,4 +1,15 @@
-public/data/
+public/data/*
+!public/data/audit/
+public/data/audit/*
+!public/data/audit/index.json
+!public/data/open-coding/
+public/data/open-coding/*
+!public/data/open-coding/index.json
+!public/data/images/
+public/data/images/*
+!public/data/images/demo/
+public/data/images/demo/*
+!public/data/images/demo/.gitkeep
 
 # Logs
 logs
