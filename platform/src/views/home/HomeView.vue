@@ -13,14 +13,12 @@ import {
   sectionNav,
   studyStages,
 } from '../../content/site'
-import { toBasePath } from '../../lib/assets'
 
 const activeStudyId = ref(studyStages[0]?.id ?? '')
 const activePhaseId = ref(phaseDeck[0]?.id ?? '')
 const activeSectionId = ref(sectionNav[0]?.id ?? 'overview')
 const firstStudy = studyStages[0]!
 const firstPhase = phaseDeck[0]!
-const brandIconUrl = toBasePath('branding/medagentaudit-icon.svg')
 let sectionObserver: IntersectionObserver | null = null
 
 const switcherButtonClass = (isActive: boolean) =>
@@ -116,50 +114,38 @@ onBeforeUnmount(() => {
           </nav>
         </div>
 
-        <section id="overview" class="scroll-mt-36 py-7 sm:py-9 xl:py-11">
-          <div class="mx-auto max-w-[1240px] space-y-8 sm:space-y-9">
-            <div class="space-y-6 border-b border-slate-200 pb-7 text-center sm:pb-8">
-              <div class="flex justify-center">
-                <div class="inline-flex items-center gap-3 text-sm font-medium text-slate-600">
-                  <img :src="brandIconUrl" alt="" class="h-9 w-9 rounded-lg bg-white p-1.5 ring-1 ring-slate-200" />
-                  <span>{{ projectMeta.heroKicker }}</span>
-                </div>
-              </div>
-
-              <h1 class="mx-auto max-w-[1120px] text-center text-[2.08rem] font-medium leading-[1.08] text-slate-950 sm:text-[2.85rem] lg:text-[3.15rem] xl:text-[3.42rem]">
-                <span v-for="line in projectMeta.titleLines" :key="line" class="block">
+        <section id="overview" class="scroll-mt-36 py-8 sm:py-10 xl:py-12">
+          <div class="mx-auto max-w-[1180px] space-y-7 sm:space-y-8">
+            <div class="space-y-5 text-center">
+              <h1 class="mx-auto max-w-[1180px] text-center text-[2rem] font-medium leading-[1.12] text-slate-950 sm:text-[2.35rem] lg:text-[2.28rem] xl:text-[2.48rem] 2xl:text-[2.62rem]">
+                <span v-for="line in projectMeta.titleLines" :key="line" class="block xl:whitespace-nowrap">
                   {{ line }}
                 </span>
               </h1>
 
-              <p class="mx-auto max-w-[880px] text-base leading-7 text-slate-600 sm:text-lg sm:leading-8">
-                {{ projectMeta.heroSummary }}
-              </p>
-
               <div class="mx-auto max-w-[1020px] space-y-3 text-slate-900">
-                <div class="flex flex-wrap items-baseline justify-center gap-x-2 gap-y-1 text-[0.98rem] leading-7 sm:text-base">
-                  <template v-for="(author, index) in formattedAuthors" :key="author.name">
-                    <span class="inline-flex items-baseline">
+                <div class="flex flex-nowrap items-baseline justify-center gap-x-0.5 whitespace-nowrap text-[0.38rem] leading-4 text-slate-900 sm:gap-x-2 sm:text-[0.72rem] sm:leading-5 lg:text-[0.76rem] xl:text-[0.78rem]">
+                  <template v-for="author in formattedAuthors" :key="author.name">
+                    <span class="inline-flex items-baseline whitespace-nowrap">
                       <span class="font-medium text-slate-950">{{ author.name }}</span>
-                      <sup v-if="author.formattedMarks.length" class="ml-0.5 text-[0.68rem] font-medium leading-none text-slate-500">
+                      <sup v-if="author.formattedMarks.length" class="ml-0.5 text-[0.25rem] font-medium leading-none text-slate-500 sm:text-[0.48rem]">
                         <template v-for="(mark, markIndex) in author.formattedMarks" :key="`${author.name}-${mark}-${markIndex}`">
                           <span :class="isNumericAuthorMark(mark) ? 'text-slate-500' : 'text-slate-800'">{{ mark }}</span>
                           <span v-if="markIndex < author.formattedMarks.length - 1">,</span>
                         </template>
                       </sup>
                     </span>
-                    <span v-if="index < formattedAuthors.length - 1" class="text-slate-400">/</span>
                   </template>
                 </div>
 
-                <div class="space-y-1.5 border-y border-slate-200 py-3 text-center text-sm leading-6 text-slate-700">
-                  <div v-for="item in projectMeta.affiliations" :key="item.mark" class="grid grid-cols-[1.5rem_minmax(0,1fr)] gap-2">
-                    <sup class="pt-1 text-[0.72rem] font-medium leading-none text-slate-950">{{ item.mark }}</sup>
+                <div class="space-y-1 border-y border-slate-200 py-2 text-center text-[0.72rem] leading-5 text-slate-700 sm:text-[0.78rem]">
+                  <div v-for="item in projectMeta.affiliations" :key="item.mark" class="grid grid-cols-[1.15rem_minmax(0,1fr)] gap-1.5">
+                    <sup class="pt-0.5 text-[0.52rem] font-medium leading-none text-slate-950 sm:text-[0.56rem]">{{ item.mark }}</sup>
                     <span class="text-left">{{ item.text }}</span>
                   </div>
                 </div>
 
-                <div class="flex flex-wrap justify-center gap-x-5 gap-y-1 text-sm leading-6 text-slate-600">
+                <div class="flex flex-wrap justify-center gap-x-4 gap-y-1 text-[0.72rem] leading-5 text-slate-600 sm:text-[0.78rem]">
                   <div v-for="item in projectMeta.notes" :key="item.mark" class="inline-flex gap-2">
                     <span class="font-medium text-slate-950">{{ item.mark }}</span>
                     <span>{{ item.text }}</span>
@@ -215,71 +201,10 @@ onBeforeUnmount(() => {
               </div>
             </div>
 
-            <div class="grid border-y border-slate-200 bg-white/58 md:grid-cols-3">
-              <div
-                v-for="highlight in projectMeta.heroHighlights"
-                :key="highlight.label"
-                class="border-slate-200 px-5 py-4 md:border-l first:md:border-l-0"
-              >
-                <div class="text-sm font-medium text-slate-500">{{ highlight.label }}</div>
-                <div class="mt-2 text-xl font-medium leading-tight text-slate-950">{{ highlight.value }}</div>
-                <p class="mt-2 text-sm leading-6 text-slate-600">{{ highlight.detail }}</p>
-              </div>
-            </div>
-
             <div class="grid border-y border-slate-200 bg-white/54 sm:grid-cols-3">
-              <div v-for="fact in projectFacts" :key="fact.label" class="border-slate-200 px-5 py-4 sm:border-l first:sm:border-l-0">
+              <div v-for="fact in projectFacts" :key="fact.label" class="border-slate-200 px-5 py-4 text-center sm:border-l first:sm:border-l-0">
                 <div class="text-sm text-slate-500">{{ fact.label }}</div>
                 <div class="mt-1 text-[1.65rem] font-medium leading-tight text-slate-950">{{ fact.value }}</div>
-                <p class="mt-2 text-sm leading-6 text-slate-600">{{ fact.note }}</p>
-              </div>
-            </div>
-
-            <div class="grid gap-4 border-b border-slate-200 pb-8 lg:grid-cols-[minmax(0,0.92fr)_minmax(0,1.08fr)]">
-              <div class="flex flex-col justify-between rounded-lg bg-slate-950 p-5 text-white sm:p-6">
-                <div class="space-y-3">
-                  <div class="text-sm font-medium text-sky-200">{{ projectMeta.auditFocus.label }}</div>
-                  <h2 class="font-display text-2xl font-medium leading-tight sm:text-3xl">
-                    {{ projectMeta.auditFocus.title }}
-                  </h2>
-                  <p class="text-sm leading-6 text-slate-300 sm:text-base sm:leading-7">
-                    {{ projectMeta.auditFocus.body }}
-                  </p>
-                </div>
-
-                <div class="mt-6 grid grid-cols-3 gap-3 border-t border-white/10 pt-5">
-                  <div v-for="stat in projectMeta.auditFocus.stats" :key="stat.label">
-                    <div class="text-[1.35rem] font-medium leading-tight">{{ stat.value }}</div>
-                    <div class="mt-1 text-xs leading-5 text-slate-400">{{ stat.label }}</div>
-                  </div>
-                </div>
-              </div>
-
-              <div class="grid gap-3 sm:grid-cols-3">
-                <div
-                  v-for="(phase, index) in phaseDeck"
-                  :key="phase.id"
-                  class="rounded-lg border border-slate-200 bg-white/82 p-4 shadow-sm shadow-slate-950/5"
-                >
-                  <div class="flex items-center justify-between gap-3">
-                    <span class="text-sm font-medium text-slate-500">{{ phase.label }}</span>
-                    <span class="rounded-full bg-slate-950 px-2.5 py-1 text-xs font-medium text-white">0{{ index + 1 }}</span>
-                  </div>
-                  <div class="mt-4 text-base font-medium leading-snug text-slate-950">{{ phase.kicker }}</div>
-                  <div class="mt-4 space-y-2">
-                    <div
-                      v-for="mode in phase.modes.slice(0, 2)"
-                      :key="`${phase.id}-${mode.code}`"
-                      class="border-t border-slate-200 pt-2"
-                    >
-                      <div class="flex items-baseline justify-between gap-3">
-                        <span class="text-xs font-medium text-slate-500">{{ mode.code }}</span>
-                        <span class="text-xs font-medium text-slate-950">{{ mode.rate }}</span>
-                      </div>
-                      <div class="mt-1 text-sm leading-5 text-slate-700">{{ mode.label }}</div>
-                    </div>
-                  </div>
-                </div>
               </div>
             </div>
           </div>

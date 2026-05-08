@@ -2,41 +2,9 @@ export const projectMeta = {
   name: 'MedAgentAudit',
   title: 'MedAgentAudit: Diagnosing and Quantifying Collaborative Failure Modes in Medical Multi-Agent Systems',
   titleLines: [
-    'MedAgentAudit: Diagnosing and Quantifying',
-    'Collaborative Failure Modes',
-    'in Medical Multi-Agent Systems',
+    'MedAgentAudit: Diagnosing and Quantifying Collaborative',
+    'Failure Modes in Medical Multi-Agent Systems',
   ],
-  heroKicker: 'Trace-level audits for medical multi-agent systems',
-  heroSummary:
-    'MedAgentAudit connects final-answer accuracy with the exact points where medical agents misread evidence, repeat prior views, leave conflicts unresolved, or bias the final synthesis.',
-  heroHighlights: [
-    {
-      label: 'Failure localization',
-      value: 'Phase-aligned probes',
-      detail: 'Auditor prompts inspect the same collaboration trace at task comprehension, discussion, and synthesis checkpoints.',
-    },
-    {
-      label: 'Human-grounded taxonomy',
-      value: '10 failure modes',
-      detail: 'Open coding and expert validation separate perception, interaction, and decision-stage errors.',
-    },
-    {
-      label: 'Evaluation surface',
-      value: 'Text + visual QA',
-      detail: 'The benchmark spans six datasets and six medical MAS frameworks under matched underlying LLMs.',
-    },
-  ],
-  auditFocus: {
-    label: 'Audit objective',
-    title: 'Make collaborative failure visible before it reaches the final answer.',
-    body:
-      'The framework turns multi-agent trajectories into phase-level evidence, showing whether collaboration corrects, preserves, or amplifies clinical reasoning errors.',
-    stats: [
-      { label: 'Frameworks', value: '6' },
-      { label: 'Datasets', value: '6' },
-      { label: 'Auditor F1', value: '0.845' },
-    ],
-  },
   authors: [
     { name: 'Yinghao Zhu', marks: ['1', '2', '*'] },
     { name: 'Lei Gu', marks: ['1', '*'] },
@@ -103,17 +71,14 @@ export const projectFacts = [
   {
     label: 'Logs analyzed',
     value: '3,600 logs',
-    note: 'Execution traces sampled for taxonomy development.',
   },
   {
     label: 'Failure modes',
     value: '10 modes',
-    note: 'Grouped by task comprehension, discussion, and synthesis.',
   },
   {
     label: 'Audited cases',
     value: '14,400 cases',
-    note: 'Evaluated across framework, dataset, and LLM combinations.',
   },
 ]
 
