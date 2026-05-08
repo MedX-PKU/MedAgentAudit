@@ -1,9 +1,7 @@
 <script setup lang="ts">
-import type { Ref } from 'vue'
-import { computed, onBeforeUnmount, onMounted, provide, readonly, ref } from 'vue'
+import { computed } from 'vue'
 import { useRoute } from 'vue-router'
 
-import { ANNOTATION_DRAWER_KEY } from './annotationDrawer'
 import { toBasePath } from '../../lib/assets'
 
 const props = withDefaults(
@@ -22,25 +20,6 @@ const props = withDefaults(
 
 const route = useRoute()
 
-const isAnnotationMenuOpen = ref(false)
-
-// Only provide when NOT in annotation routes. Under /annotation/*, AnnotationLayout
-// provides the drawer context; we must not override it or views would get the
-// wrong one (dropdown menu state instead of sidebar drawer).
-const inAnnotationRoute = route.path === '/annotation' || route.path.startsWith('/annotation/')
-if (!inAnnotationRoute) {
-  provide(ANNOTATION_DRAWER_KEY, {
-    isOpen: readonly(isAnnotationMenuOpen) as Ref<boolean>,
-    toggle: () => {
-      isAnnotationMenuOpen.value = !isAnnotationMenuOpen.value
-    },
-    close: () => {
-      isAnnotationMenuOpen.value = false
-    },
-  })
-}
-
-
 const active = (path: string) => route.path === path || route.path.startsWith(path + '/')
 
 const inAnnotation = computed(() => route.path === '/annotation' || route.path.startsWith('/annotation/'))
@@ -52,22 +31,6 @@ const navItemClass = (isActive: boolean) =>
   isActive
     ? 'bg-white text-slate-950 ring-1 ring-slate-200'
     : 'text-slate-500 hover:bg-white hover:text-slate-950'
-
-const onDocumentClick = (event: MouseEvent) => {
-  if (!isAnnotationMenuOpen.value) return
-  const target = event.target as HTMLElement | null
-  if (!target) return
-  if (target.closest('[data-annotation-menu]')) return
-  isAnnotationMenuOpen.value = false
-}
-
-onMounted(() => {
-  document.addEventListener('click', onDocumentClick)
-})
-
-onBeforeUnmount(() => {
-  document.removeEventListener('click', onDocumentClick)
-})
 </script>
 
 <template>
@@ -101,57 +64,14 @@ onBeforeUnmount(() => {
             Home
           </RouterLink>
 
-          <div class="relative flex items-center" data-annotation-menu>
-            <div class="flex items-center rounded-full transition" :class="navItemClass(inAnnotation)">
-              <RouterLink
-                to="/annotation"
-                class="rounded-l-full px-3 py-2 text-sm font-medium transition sm:px-4"
-                :aria-current="route.path === '/annotation' ? 'page' : undefined"
-                @click="isAnnotationMenuOpen = false"
-              >
-                Annotation
-              </RouterLink>
-              <button
-                type="button"
-                class="cursor-pointer rounded-r-full border-l border-slate-200/70 px-2 py-2 text-sm font-medium transition hover:bg-slate-50"
-                :aria-expanded="isAnnotationMenuOpen"
-                aria-haspopup="menu"
-                aria-label="Open annotation menu"
-                @click="isAnnotationMenuOpen = !isAnnotationMenuOpen"
-              >
-                <span aria-hidden="true">⌄</span>
-              </button>
-            </div>
-            <div
-              v-if="isAnnotationMenuOpen"
-              class="absolute right-0 top-full mt-2 w-52 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-[0_20px_50px_rgba(15,23,42,0.14)]"
-            >
-              <RouterLink
-                to="/annotation"
-                class="block px-4 py-3 text-sm font-medium hover:bg-slate-50"
-                :class="route.path === '/annotation' ? 'bg-sky-50 text-sky-900' : 'text-slate-700'"
-                @click="isAnnotationMenuOpen = false"
-              >
-                Overview
-              </RouterLink>
-              <RouterLink
-                to="/annotation/open-coding"
-                class="block border-t border-slate-100 px-4 py-3 text-sm font-medium hover:bg-slate-50"
-                :class="active('/annotation/open-coding') ? 'bg-sky-50 text-sky-900' : 'text-slate-700'"
-                @click="isAnnotationMenuOpen = false"
-              >
-                Open-coding
-              </RouterLink>
-              <RouterLink
-                to="/annotation/audit"
-                class="block border-t border-slate-100 px-4 py-3 text-sm font-medium hover:bg-slate-50"
-                :class="active('/annotation/audit') ? 'bg-sky-50 text-sky-900' : 'text-slate-700'"
-                @click="isAnnotationMenuOpen = false"
-              >
-                Audit
-              </RouterLink>
-            </div>
-          </div>
+          <RouterLink
+            to="/annotation"
+            class="rounded-full px-3 py-2 text-sm font-medium transition sm:px-4"
+            :aria-current="inAnnotation ? 'page' : undefined"
+            :class="navItemClass(inAnnotation)"
+          >
+            Annotation
+          </RouterLink>
         </nav>
       </div>
     </header>

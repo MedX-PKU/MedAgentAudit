@@ -20,13 +20,13 @@ const secondaryRoute = annotationCards[1]?.route ?? '/annotation/audit'
         <div class="flex flex-wrap gap-3">
           <RouterLink
             :to="primaryRoute"
-            class="inline-flex items-center justify-center rounded-full bg-slate-950 px-4 py-2 text-sm font-semibold text-white shadow-[0_16px_30px_rgba(15,23,42,0.14)] transition hover:bg-slate-800 focus:outline-none focus:ring-4 focus:ring-blue-500/20"
+            class="inline-flex items-center justify-center rounded-full border border-slate-400 bg-white px-4 py-2 text-sm font-semibold text-slate-950 transition hover:border-slate-950 hover:bg-slate-50 focus:outline-none focus:ring-4 focus:ring-blue-500/20"
           >
             Start Open-coding
           </RouterLink>
           <RouterLink
             :to="secondaryRoute"
-            class="inline-flex items-center justify-center rounded-full bg-white px-4 py-2 text-sm font-semibold text-slate-900 ring-1 ring-slate-200 transition hover:bg-slate-50 focus:outline-none focus:ring-4 focus:ring-blue-500/20"
+            class="inline-flex items-center justify-center rounded-full border border-slate-200 bg-white/82 px-4 py-2 text-sm font-semibold text-slate-800 transition hover:border-slate-400 hover:bg-white hover:text-slate-950 focus:outline-none focus:ring-4 focus:ring-blue-500/20"
           >
             Start Audit
           </RouterLink>
