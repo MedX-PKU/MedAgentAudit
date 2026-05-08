@@ -13,12 +13,14 @@ import {
   sectionNav,
   studyStages,
 } from '../../content/site'
+import { toBasePath } from '../../lib/assets'
 
 const activeStudyId = ref(studyStages[0]?.id ?? '')
 const activePhaseId = ref(phaseDeck[0]?.id ?? '')
 const activeSectionId = ref(sectionNav[0]?.id ?? 'overview')
 const firstStudy = studyStages[0]!
 const firstPhase = phaseDeck[0]!
+const brandIconUrl = toBasePath('branding/medagentaudit-icon.svg')
 let sectionObserver: IntersectionObserver | null = null
 
 const switcherButtonClass = (isActive: boolean) =>
@@ -46,7 +48,7 @@ const formattedAuthors = computed(() =>
 
 const linkClass = (kind: 'primary' | 'secondary') =>
   kind === 'primary'
-    ? 'border border-slate-400 bg-white text-slate-950 hover:border-slate-950 hover:bg-slate-50'
+    ? 'border border-slate-950 bg-slate-950 text-slate-50 shadow-sm shadow-slate-950/10 hover:bg-slate-800 hover:text-white'
     : 'border border-slate-200 bg-white/82 text-slate-700 hover:border-slate-400 hover:bg-white hover:text-slate-950'
 
 const sectionLinkClass = (isActive: boolean) =>
@@ -114,103 +116,174 @@ onBeforeUnmount(() => {
           </nav>
         </div>
 
-        <section id="overview" class="scroll-mt-36 py-8 sm:py-10 xl:py-12">
-      <div class="mx-auto max-w-[1180px] space-y-7 sm:space-y-8">
-        <div class="space-y-5">
-          <h1 class="mx-auto max-w-[1180px] text-center text-[2rem] font-medium leading-[1.13] text-slate-950 sm:text-[2.35rem] lg:text-[2.2rem] xl:text-[2.42rem] 2xl:text-[2.62rem]">
-            <span v-for="line in projectMeta.titleLines" :key="line" class="block xl:whitespace-nowrap">
-              {{ line }}
-            </span>
-          </h1>
+        <section id="overview" class="scroll-mt-36 py-7 sm:py-9 xl:py-11">
+          <div class="mx-auto max-w-[1240px] space-y-8 sm:space-y-9">
+            <div class="space-y-6 border-b border-slate-200 pb-7 text-center sm:pb-8">
+              <div class="flex justify-center">
+                <div class="inline-flex items-center gap-3 text-sm font-medium text-slate-600">
+                  <img :src="brandIconUrl" alt="" class="h-9 w-9 rounded-lg bg-white p-1.5 ring-1 ring-slate-200" />
+                  <span>{{ projectMeta.heroKicker }}</span>
+                </div>
+              </div>
 
-          <div class="mx-auto max-w-[960px] space-y-3 text-slate-900">
-            <div class="flex flex-wrap items-baseline justify-center gap-x-2 gap-y-1 text-[0.98rem] leading-7 sm:text-base">
-              <template v-for="(author, index) in formattedAuthors" :key="author.name">
-                <span class="inline-flex items-baseline">
-                  <span class="font-medium text-slate-950">{{ author.name }}</span>
-                  <sup v-if="author.formattedMarks.length" class="ml-0.5 text-[0.68rem] font-medium leading-none text-slate-500">
-                    <template v-for="(mark, markIndex) in author.formattedMarks" :key="`${author.name}-${mark}-${markIndex}`">
-                      <span :class="isNumericAuthorMark(mark) ? 'text-slate-500' : 'text-slate-800'">{{ mark }}</span>
-                      <span v-if="markIndex < author.formattedMarks.length - 1">,</span>
-                    </template>
-                  </sup>
+              <h1 class="mx-auto max-w-[1120px] text-center text-[2.08rem] font-medium leading-[1.08] text-slate-950 sm:text-[2.85rem] lg:text-[3.15rem] xl:text-[3.42rem]">
+                <span v-for="line in projectMeta.titleLines" :key="line" class="block">
+                  {{ line }}
                 </span>
-                <span v-if="index < formattedAuthors.length - 1" class="text-slate-400">/</span>
-              </template>
-            </div>
+              </h1>
 
-            <div class="space-y-1.5 border-y border-slate-200 py-3 text-center text-sm leading-6 text-slate-700">
-              <div v-for="item in projectMeta.affiliations" :key="item.mark" class="grid grid-cols-[1.5rem_minmax(0,1fr)] gap-2">
-                <sup class="pt-1 text-[0.72rem] font-medium leading-none text-slate-950">{{ item.mark }}</sup>
-                <span class="text-left">{{ item.text }}</span>
+              <p class="mx-auto max-w-[880px] text-base leading-7 text-slate-600 sm:text-lg sm:leading-8">
+                {{ projectMeta.heroSummary }}
+              </p>
+
+              <div class="mx-auto max-w-[1020px] space-y-3 text-slate-900">
+                <div class="flex flex-wrap items-baseline justify-center gap-x-2 gap-y-1 text-[0.98rem] leading-7 sm:text-base">
+                  <template v-for="(author, index) in formattedAuthors" :key="author.name">
+                    <span class="inline-flex items-baseline">
+                      <span class="font-medium text-slate-950">{{ author.name }}</span>
+                      <sup v-if="author.formattedMarks.length" class="ml-0.5 text-[0.68rem] font-medium leading-none text-slate-500">
+                        <template v-for="(mark, markIndex) in author.formattedMarks" :key="`${author.name}-${mark}-${markIndex}`">
+                          <span :class="isNumericAuthorMark(mark) ? 'text-slate-500' : 'text-slate-800'">{{ mark }}</span>
+                          <span v-if="markIndex < author.formattedMarks.length - 1">,</span>
+                        </template>
+                      </sup>
+                    </span>
+                    <span v-if="index < formattedAuthors.length - 1" class="text-slate-400">/</span>
+                  </template>
+                </div>
+
+                <div class="space-y-1.5 border-y border-slate-200 py-3 text-center text-sm leading-6 text-slate-700">
+                  <div v-for="item in projectMeta.affiliations" :key="item.mark" class="grid grid-cols-[1.5rem_minmax(0,1fr)] gap-2">
+                    <sup class="pt-1 text-[0.72rem] font-medium leading-none text-slate-950">{{ item.mark }}</sup>
+                    <span class="text-left">{{ item.text }}</span>
+                  </div>
+                </div>
+
+                <div class="flex flex-wrap justify-center gap-x-5 gap-y-1 text-sm leading-6 text-slate-600">
+                  <div v-for="item in projectMeta.notes" :key="item.mark" class="inline-flex gap-2">
+                    <span class="font-medium text-slate-950">{{ item.mark }}</span>
+                    <span>{{ item.text }}</span>
+                  </div>
+                </div>
+              </div>
+
+              <div class="flex flex-wrap justify-center gap-3">
+                <template v-for="link in projectMeta.links" :key="link.href">
+                  <RouterLink
+                    v-if="link.href.startsWith('/')"
+                    :to="link.href"
+                    class="inline-flex items-center justify-center gap-2 rounded-full px-4 py-2 text-sm font-medium transition"
+                    :class="linkClass(link.kind)"
+                  >
+                    <svg
+                      v-if="link.icon === 'github'"
+                      aria-hidden="true"
+                      focusable="false"
+                      viewBox="0 0 24 24"
+                      class="h-4 w-4"
+                    >
+                      <path
+                        fill="currentColor"
+                        d="M12 .5A11.5 11.5 0 0 0 8.36 22.9c.58.11.79-.25.79-.56v-2.02c-3.2.7-3.88-1.37-3.88-1.37-.53-1.34-1.29-1.7-1.29-1.7-1.05-.72.08-.71.08-.71 1.17.08 1.78 1.2 1.78 1.2 1.03 1.77 2.7 1.26 3.36.96.1-.75.4-1.26.73-1.55-2.55-.29-5.24-1.28-5.24-5.68 0-1.25.45-2.28 1.19-3.08-.12-.29-.52-1.46.11-3.04 0 0 .98-.31 3.17 1.18A10.93 10.93 0 0 1 12 6.15c.98 0 1.96.13 2.88.38 2.2-1.49 3.17-1.18 3.17-1.18.63 1.58.23 2.75.11 3.04.74.8 1.19 1.83 1.19 3.08 0 4.41-2.69 5.38-5.25 5.66.42.36.79 1.07.79 2.16v3.05c0 .31.21.67.8.56A11.5 11.5 0 0 0 12 .5Z"
+                      />
+                    </svg>
+                    <span>{{ link.label }}</span>
+                  </RouterLink>
+                  <a
+                    v-else
+                    :href="link.href"
+                    target="_blank"
+                    rel="noreferrer"
+                    class="inline-flex items-center justify-center gap-2 rounded-full px-4 py-2 text-sm font-medium transition"
+                    :class="linkClass(link.kind)"
+                  >
+                    <svg
+                      v-if="link.icon === 'github'"
+                      aria-hidden="true"
+                      focusable="false"
+                      viewBox="0 0 24 24"
+                      class="h-4 w-4"
+                    >
+                      <path
+                        fill="currentColor"
+                        d="M12 .5A11.5 11.5 0 0 0 8.36 22.9c.58.11.79-.25.79-.56v-2.02c-3.2.7-3.88-1.37-3.88-1.37-.53-1.34-1.29-1.7-1.29-1.7-1.05-.72.08-.71.08-.71 1.17.08 1.78 1.2 1.78 1.2 1.03 1.77 2.7 1.26 3.36.96.1-.75.4-1.26.73-1.55-2.55-.29-5.24-1.28-5.24-5.68 0-1.25.45-2.28 1.19-3.08-.12-.29-.52-1.46.11-3.04 0 0 .98-.31 3.17 1.18A10.93 10.93 0 0 1 12 6.15c.98 0 1.96.13 2.88.38 2.2-1.49 3.17-1.18 3.17-1.18.63 1.58.23 2.75.11 3.04.74.8 1.19 1.83 1.19 3.08 0 4.41-2.69 5.38-5.25 5.66.42.36.79 1.07.79 2.16v3.05c0 .31.21.67.8.56A11.5 11.5 0 0 0 12 .5Z"
+                      />
+                    </svg>
+                    <span>{{ link.label }}</span>
+                  </a>
+                </template>
               </div>
             </div>
 
-            <div class="flex flex-wrap justify-center gap-x-5 gap-y-1 text-sm leading-6 text-slate-600">
-              <div v-for="item in projectMeta.notes" :key="item.mark" class="inline-flex gap-2">
-                <span class="font-medium text-slate-950">{{ item.mark }}</span>
-                <span>{{ item.text }}</span>
+            <div class="grid border-y border-slate-200 bg-white/58 md:grid-cols-3">
+              <div
+                v-for="highlight in projectMeta.heroHighlights"
+                :key="highlight.label"
+                class="border-slate-200 px-5 py-4 md:border-l first:md:border-l-0"
+              >
+                <div class="text-sm font-medium text-slate-500">{{ highlight.label }}</div>
+                <div class="mt-2 text-xl font-medium leading-tight text-slate-950">{{ highlight.value }}</div>
+                <p class="mt-2 text-sm leading-6 text-slate-600">{{ highlight.detail }}</p>
+              </div>
+            </div>
+
+            <div class="grid border-y border-slate-200 bg-white/54 sm:grid-cols-3">
+              <div v-for="fact in projectFacts" :key="fact.label" class="border-slate-200 px-5 py-4 sm:border-l first:sm:border-l-0">
+                <div class="text-sm text-slate-500">{{ fact.label }}</div>
+                <div class="mt-1 text-[1.65rem] font-medium leading-tight text-slate-950">{{ fact.value }}</div>
+                <p class="mt-2 text-sm leading-6 text-slate-600">{{ fact.note }}</p>
+              </div>
+            </div>
+
+            <div class="grid gap-4 border-b border-slate-200 pb-8 lg:grid-cols-[minmax(0,0.92fr)_minmax(0,1.08fr)]">
+              <div class="flex flex-col justify-between rounded-lg bg-slate-950 p-5 text-white sm:p-6">
+                <div class="space-y-3">
+                  <div class="text-sm font-medium text-sky-200">{{ projectMeta.auditFocus.label }}</div>
+                  <h2 class="font-display text-2xl font-medium leading-tight sm:text-3xl">
+                    {{ projectMeta.auditFocus.title }}
+                  </h2>
+                  <p class="text-sm leading-6 text-slate-300 sm:text-base sm:leading-7">
+                    {{ projectMeta.auditFocus.body }}
+                  </p>
+                </div>
+
+                <div class="mt-6 grid grid-cols-3 gap-3 border-t border-white/10 pt-5">
+                  <div v-for="stat in projectMeta.auditFocus.stats" :key="stat.label">
+                    <div class="text-[1.35rem] font-medium leading-tight">{{ stat.value }}</div>
+                    <div class="mt-1 text-xs leading-5 text-slate-400">{{ stat.label }}</div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="grid gap-3 sm:grid-cols-3">
+                <div
+                  v-for="(phase, index) in phaseDeck"
+                  :key="phase.id"
+                  class="rounded-lg border border-slate-200 bg-white/82 p-4 shadow-sm shadow-slate-950/5"
+                >
+                  <div class="flex items-center justify-between gap-3">
+                    <span class="text-sm font-medium text-slate-500">{{ phase.label }}</span>
+                    <span class="rounded-full bg-slate-950 px-2.5 py-1 text-xs font-medium text-white">0{{ index + 1 }}</span>
+                  </div>
+                  <div class="mt-4 text-base font-medium leading-snug text-slate-950">{{ phase.kicker }}</div>
+                  <div class="mt-4 space-y-2">
+                    <div
+                      v-for="mode in phase.modes.slice(0, 2)"
+                      :key="`${phase.id}-${mode.code}`"
+                      class="border-t border-slate-200 pt-2"
+                    >
+                      <div class="flex items-baseline justify-between gap-3">
+                        <span class="text-xs font-medium text-slate-500">{{ mode.code }}</span>
+                        <span class="text-xs font-medium text-slate-950">{{ mode.rate }}</span>
+                      </div>
+                      <div class="mt-1 text-sm leading-5 text-slate-700">{{ mode.label }}</div>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
-
-          <div class="flex flex-wrap justify-center gap-3">
-            <template v-for="link in projectMeta.links" :key="link.href">
-              <RouterLink
-                v-if="link.href.startsWith('/')"
-                :to="link.href"
-                class="inline-flex items-center justify-center gap-2 rounded-full px-4 py-2 text-sm font-medium transition"
-                :class="linkClass(link.kind)"
-              >
-                <svg
-                  v-if="link.icon === 'github'"
-                  aria-hidden="true"
-                  focusable="false"
-                  viewBox="0 0 24 24"
-                  class="h-4 w-4"
-                >
-                  <path
-                    fill="currentColor"
-                    d="M12 .5A11.5 11.5 0 0 0 8.36 22.9c.58.11.79-.25.79-.56v-2.02c-3.2.7-3.88-1.37-3.88-1.37-.53-1.34-1.29-1.7-1.29-1.7-1.05-.72.08-.71.08-.71 1.17.08 1.78 1.2 1.78 1.2 1.03 1.77 2.7 1.26 3.36.96.1-.75.4-1.26.73-1.55-2.55-.29-5.24-1.28-5.24-5.68 0-1.25.45-2.28 1.19-3.08-.12-.29-.52-1.46.11-3.04 0 0 .98-.31 3.17 1.18A10.93 10.93 0 0 1 12 6.15c.98 0 1.96.13 2.88.38 2.2-1.49 3.17-1.18 3.17-1.18.63 1.58.23 2.75.11 3.04.74.8 1.19 1.83 1.19 3.08 0 4.41-2.69 5.38-5.25 5.66.42.36.79 1.07.79 2.16v3.05c0 .31.21.67.8.56A11.5 11.5 0 0 0 12 .5Z"
-                  />
-                </svg>
-                <span>{{ link.label }}</span>
-              </RouterLink>
-              <a
-                v-else
-                :href="link.href"
-                target="_blank"
-                rel="noreferrer"
-                class="inline-flex items-center justify-center gap-2 rounded-full px-4 py-2 text-sm font-medium transition"
-                :class="linkClass(link.kind)"
-              >
-                <svg
-                  v-if="link.icon === 'github'"
-                  aria-hidden="true"
-                  focusable="false"
-                  viewBox="0 0 24 24"
-                  class="h-4 w-4"
-                >
-                  <path
-                    fill="currentColor"
-                    d="M12 .5A11.5 11.5 0 0 0 8.36 22.9c.58.11.79-.25.79-.56v-2.02c-3.2.7-3.88-1.37-3.88-1.37-.53-1.34-1.29-1.7-1.29-1.7-1.05-.72.08-.71.08-.71 1.17.08 1.78 1.2 1.78 1.2 1.03 1.77 2.7 1.26 3.36.96.1-.75.4-1.26.73-1.55-2.55-.29-5.24-1.28-5.24-5.68 0-1.25.45-2.28 1.19-3.08-.12-.29-.52-1.46.11-3.04 0 0 .98-.31 3.17 1.18A10.93 10.93 0 0 1 12 6.15c.98 0 1.96.13 2.88.38 2.2-1.49 3.17-1.18 3.17-1.18.63 1.58.23 2.75.11 3.04.74.8 1.19 1.83 1.19 3.08 0 4.41-2.69 5.38-5.25 5.66.42.36.79 1.07.79 2.16v3.05c0 .31.21.67.8.56A11.5 11.5 0 0 0 12 .5Z"
-                  />
-                </svg>
-                <span>{{ link.label }}</span>
-              </a>
-            </template>
-          </div>
-        </div>
-
-        <div class="grid border-y border-slate-200 bg-white/54 sm:grid-cols-3">
-          <div v-for="fact in projectFacts" :key="fact.label" class="border-slate-200 px-5 py-4 sm:border-l first:sm:border-l-0">
-            <div class="text-sm text-slate-500">{{ fact.label }}</div>
-            <div class="mt-1 text-[1.65rem] font-medium leading-tight text-slate-950">{{ fact.value }}</div>
-            <p class="mt-2 text-sm leading-6 text-slate-600">{{ fact.note }}</p>
-          </div>
-        </div>
-      </div>
-    </section>
+        </section>
 
     <section id="design" class="scroll-mt-36 py-8 sm:py-10">
       <div class="mx-auto max-w-[1180px] space-y-5">
