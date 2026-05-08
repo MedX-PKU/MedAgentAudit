@@ -48,11 +48,13 @@ export const projectMeta = {
       label: 'Annotation',
       href: '/annotation',
       kind: 'secondary' as const,
+      icon: null,
     },
     {
       label: 'Repository',
       href: 'https://github.com/MedX-PKU/MedAgentAudit',
       kind: 'secondary' as const,
+      icon: 'github' as const,
     },
   ],
 }
