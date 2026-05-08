@@ -5,6 +5,7 @@ Browser-only annotation platform for the MedAgentAudit project.
 ## Routes
 
 - `/` project landing page
+- `/annotation` annotation overview and workflow selector
 - `/annotation/open-coding` open-coding UI (full log + taxonomy multi-select)
 - `/annotation/audit` audit UI (mode-level yes/no + deterministic assignment)
 
