@@ -2,7 +2,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/release/python-3120/)
-[![Dataset](https://img.shields.io/badge/Dataset-MedQA%7CPubMedQA%7CMedXpertQA%7CPathVQA%7CVQA--RAD%7CSlake-green)](./datasets)
+[![Datasets & Logs](https://img.shields.io/badge/Datasets%20%26%20Logs-GitHub%20Release-green)](https://github.com/MedX-PKU/MedAgentAudit/releases/tag/datasets_and_logs)
 
 ## 📖 Abstract
 
@@ -58,6 +58,8 @@ We propose a **Unified Taxonomy of Dynamic Processes in Multi-Agent Collaboratio
 
 We evaluate our method on the test sets of 6 distinct medical datasets, covering both Text QA and Visual QA (VQA).
 
+Processed datasets and generated logs are available from the [Datasets and Logs release](https://github.com/MedX-PKU/MedAgentAudit/releases/tag/datasets_and_logs). See the README inside the attached ZIP package for the detailed file layout.
+
 | Dataset        | Modality   | Task Type     | Open-Coding Samples | Audit Samples | Source                                                       |
 | :------------- | :--------- | :------------ | :------------------ | :------------ | :----------------------------------------------------------- |
 | **MedQA** (US) | Text       | Single Choice | 600                 | 2400          | [GitHub](https://github.com/jind11/MedQA)                      |
@@ -87,8 +89,8 @@ The repository includes implementations of the following Multi-Agent Systems (MA
 
 ```text
 ├── config.toml                  # Configuration for LLM API keys and endpoints
-├── datasets                     # Processed and Raw datasets
-├── logs                         # Output logs for audit, open-coding, and metrics
+├── datasets                     # Processed and raw datasets from the release package
+├── logs                         # Audit, open-coding, and metrics logs from the release package
 ├── medagentaudit
 │   ├── auditor                  # The "Auditor" agent logic (performs the taxonomy checks)
 │   ├── common                   # Shared Enums (AgentType, MedicalSpecialty)
