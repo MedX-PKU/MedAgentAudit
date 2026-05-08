@@ -349,7 +349,7 @@ onBeforeUnmount(() => {
             <h2 class="font-display text-2xl font-medium leading-tight text-slate-950 sm:text-3xl">Evaluation tools</h2>
           </div>
           <p class="max-w-[34rem] text-sm leading-6 text-slate-600">
-            Interfaces for taxonomy coding and audit validation.
+            Start from the annotation overview or jump directly into a review workflow.
           </p>
         </div>
 

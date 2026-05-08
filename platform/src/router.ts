@@ -1,6 +1,7 @@
 import { createRouter, createWebHistory } from 'vue-router'
 
 import AnnotationLayout from './views/annotation/AnnotationLayout.vue'
+import AnnotationOverviewView from './views/annotation/AnnotationOverviewView.vue'
 import AuditView from './views/annotation/audit/AuditView.vue'
 import HomeView from './views/home/HomeView.vue'
 import OpenCodingView from './views/annotation/open-coding/OpenCodingView.vue'
@@ -13,7 +14,7 @@ const router = createRouter({
       path: '/annotation',
       component: AnnotationLayout,
       children: [
-        { path: '', redirect: { name: 'open-coding' } },
+        { path: '', name: 'annotation-overview', component: AnnotationOverviewView },
         { path: 'open-coding', name: 'open-coding', component: OpenCodingView },
         { path: 'audit', name: 'audit', component: AuditView },
       ],

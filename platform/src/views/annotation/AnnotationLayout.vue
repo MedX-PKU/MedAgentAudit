@@ -1,10 +1,13 @@
 <script setup lang="ts">
-import { provide, readonly, ref } from 'vue'
+import { computed, provide, readonly, ref, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import AppShell from '../../components/layout/AppShell.vue'
 
 import { ANNOTATION_DRAWER_KEY, type AnnotationDrawerContext } from '../../components/layout/annotationDrawer'
 
 const isDrawerOpen = ref(false)
+const route = useRoute()
+const showSidebarToggle = computed(() => route.name === 'open-coding' || route.name === 'audit')
 
 const annotationDrawer: AnnotationDrawerContext = {
   isOpen: readonly(isDrawerOpen),
@@ -21,12 +24,16 @@ provide(ANNOTATION_DRAWER_KEY, annotationDrawer)
 const onToggleSidebar = () => {
   annotationDrawer.toggle()
 }
+
+watch(showSidebarToggle, (visible) => {
+  if (!visible) isDrawerOpen.value = false
+})
 </script>
 
 <template>
   <AppShell title="MedAgentAudit / Annotation" content-width="wide" :drawer-open="isDrawerOpen">
     <template #title-left>
-      <div data-drawer>
+      <div v-if="showSidebarToggle" data-drawer>
         <button
           type="button"
           class="mr-1 inline-flex h-9 w-9 items-center justify-center rounded-full border text-sm font-semibold transition-colors"

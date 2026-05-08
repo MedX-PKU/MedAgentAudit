@@ -46,7 +46,7 @@ export const projectMeta = {
   links: [
     {
       label: 'Annotation',
-      href: '/annotation/open-coding',
+      href: '/annotation',
       kind: 'secondary' as const,
     },
     {
@@ -202,13 +202,53 @@ export const annotationCards = [
   {
     title: 'Open-coding',
     route: '/annotation/open-coding',
-    body: 'Code complete collaboration traces using the 10-mode taxonomy.',
+    body: 'Code complete collaboration traces using the 10-mode taxonomy and capture novel failure patterns when the codebook is insufficient.',
     meta: 'Open coding',
+    cta: 'Start Open-coding',
+    highlights: ['Full collaboration trace', '10-mode taxonomy', 'Novel failure note'],
   },
   {
     title: 'Audit',
     route: '/annotation/audit',
-    body: 'Validate a single failure-mode judgment with phase-matched context.',
+    body: 'Validate targeted failure-mode judgments with phase-matched context, deterministic assignments, and local JSON export.',
     meta: 'Audit validation',
+    cta: 'Start Audit',
+    highlights: ['Mode-level verdict', 'Phase-matched context', 'Auditor assignment'],
+  },
+]
+
+export const annotationOverviewStats = [
+  {
+    label: 'Open-coding',
+    value: '10 modes',
+    note: 'Complete trace review with optional novel failure capture.',
+  },
+  {
+    label: 'Audit validation',
+    value: 'Yes / No',
+    note: 'Focused failure-mode verification against supporting context.',
+  },
+  {
+    label: 'Export',
+    value: 'JSON',
+    note: 'Browser-local annotation state with explicit export files.',
+  },
+]
+
+export const annotationWorkflowSteps = [
+  {
+    label: 'Choose',
+    title: 'Select the review task',
+    body: 'Open-coding builds taxonomy evidence; audit validation checks individual failure-mode claims.',
+  },
+  {
+    label: 'Annotate',
+    title: 'Work through assigned cases',
+    body: 'Each tool keeps case context, collaboration logs, progress, and decision controls in one workspace.',
+  },
+  {
+    label: 'Export',
+    title: 'Download structured labels',
+    body: 'Completed annotations export as schema-tagged JSON for downstream analysis.',
   },
 ]

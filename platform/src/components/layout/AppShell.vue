@@ -101,23 +101,42 @@ onBeforeUnmount(() => {
             Home
           </RouterLink>
 
-          <div class="relative" data-annotation-menu>
-            <button
-              type="button"
-              class="cursor-pointer rounded-full px-3 py-2 text-sm font-medium transition sm:px-4"
-              :class="navItemClass(inAnnotation)"
-              :aria-expanded="isAnnotationMenuOpen"
-              @click="isAnnotationMenuOpen = !isAnnotationMenuOpen"
-            >
-              Annotation
-            </button>
+          <div class="relative flex items-center" data-annotation-menu>
+            <div class="flex items-center rounded-full transition" :class="navItemClass(inAnnotation)">
+              <RouterLink
+                to="/annotation"
+                class="rounded-l-full px-3 py-2 text-sm font-medium transition sm:px-4"
+                :aria-current="route.path === '/annotation' ? 'page' : undefined"
+                @click="isAnnotationMenuOpen = false"
+              >
+                Annotation
+              </RouterLink>
+              <button
+                type="button"
+                class="cursor-pointer rounded-r-full border-l border-slate-200/70 px-2 py-2 text-sm font-medium transition hover:bg-slate-50"
+                :aria-expanded="isAnnotationMenuOpen"
+                aria-haspopup="menu"
+                aria-label="Open annotation menu"
+                @click="isAnnotationMenuOpen = !isAnnotationMenuOpen"
+              >
+                <span aria-hidden="true">⌄</span>
+              </button>
+            </div>
             <div
               v-if="isAnnotationMenuOpen"
-              class="absolute right-0 mt-2 w-52 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-[0_20px_50px_rgba(15,23,42,0.14)]"
+              class="absolute right-0 top-full mt-2 w-52 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-[0_20px_50px_rgba(15,23,42,0.14)]"
             >
               <RouterLink
-                to="/annotation/open-coding"
+                to="/annotation"
                 class="block px-4 py-3 text-sm font-medium hover:bg-slate-50"
+                :class="route.path === '/annotation' ? 'bg-sky-50 text-sky-900' : 'text-slate-700'"
+                @click="isAnnotationMenuOpen = false"
+              >
+                Overview
+              </RouterLink>
+              <RouterLink
+                to="/annotation/open-coding"
+                class="block border-t border-slate-100 px-4 py-3 text-sm font-medium hover:bg-slate-50"
                 :class="active('/annotation/open-coding') ? 'bg-sky-50 text-sky-900' : 'text-slate-700'"
                 @click="isAnnotationMenuOpen = false"
               >
