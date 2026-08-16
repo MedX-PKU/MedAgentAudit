@@ -47,7 +47,7 @@ FAILURE_MODES: tuple[FailureModeDefinition, ...] = (
         "2_2_1_repetition_of_initial_views",
         "interaction_redundancy",
         applicable_mas=frozenset(
-            {"colacare", "healthcareagent", "mac", "medagent", "reconcile"}
+            {"colacare", "mac", "medagent", "reconcile"}
         ),
     ),
     FailureModeDefinition(
