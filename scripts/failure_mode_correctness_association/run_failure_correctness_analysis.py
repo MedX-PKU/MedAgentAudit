@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run the protocol-v4 failure-mode and final-correctness analysis."""
+"""Run the case-level failure-mode and final-correctness analysis."""
 
 from __future__ import annotations
 
@@ -42,31 +42,6 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--quadrature-nodes", type=int, default=9)
     parser.add_argument("--sensitivity-quadrature-nodes", type=int, default=15)
     return parser.parse_args()
-
-
-def merge_revised_repetition(manifest: pd.DataFrame, labels: pd.DataFrame) -> pd.DataFrame:
-    columns = KEY_COLUMNS + [
-        "revised_f_2_2_1_state",
-        "revised_f_2_2_1_label",
-        "revised_f_2_2_1_reason",
-        "repetition_event_count",
-        "positive_event_count",
-        "negative_event_count",
-        "unknown_event_count",
-        "correct_repetition_event_count",
-        "incorrect_repetition_event_count",
-        "mixed_repetition",
-    ]
-    if labels.duplicated(KEY_COLUMNS).any():
-        raise ValueError("Duplicate case keys in revised F-2.2.1 labels")
-    merged = manifest.merge(
-        labels[columns], on=KEY_COLUMNS, how="left", validate="one_to_one"
-    )
-    if merged["revised_f_2_2_1_state"].isna().any():
-        raise ValueError("Revised F-2.2.1 labels did not match every manifest row")
-    merged["f_2_2_1_state"] = merged["revised_f_2_2_1_state"]
-    merged["f_2_2_1_label"] = merged["revised_f_2_2_1_label"].astype("Int64")
-    return merged
 
 
 def prepare_mode_data(manifest: pd.DataFrame, code: str) -> pd.DataFrame:
@@ -564,25 +539,6 @@ def flow_rows(manifest: pd.DataFrame) -> list[dict[str, object]]:
     return rows
 
 
-def special_descriptive_outputs(manifest: pd.DataFrame, output_dir: Path) -> None:
-    revised = manifest.loc[manifest["f_2_2_1_state"].isin(["positive", "negative"])].copy()
-    rows = [
-        {
-            "quantity": "incorrect-view repetition followed by correct final answer",
-            "count": int(((revised["incorrect_repetition_event_count"] > 0) & (revised["correctness"] == 1)).sum()),
-        },
-        {
-            "quantity": "correct-view repetition without incorrect repetition followed by incorrect final answer",
-            "count": int(((revised["correct_repetition_event_count"] > 0) & (revised["incorrect_repetition_event_count"] == 0) & (revised["correctness"] == 0)).sum()),
-        },
-        {
-            "quantity": "cases with both correct-view and incorrect-view repetition",
-            "count": int(revised["mixed_repetition"].fillna(False).sum()),
-        },
-    ]
-    pd.DataFrame(rows).to_csv(output_dir / "repetition_recovery_summary.csv", index=False)
-
-
 def apply_fdr(frame: pd.DataFrame) -> pd.DataFrame:
     frame = frame.copy()
     frame["fdr_bh_p_value"] = np.nan
@@ -644,10 +600,10 @@ def write_report(
         "",
         "- Odds ratios below 1 and negative probability differences indicate lower benchmark-answer correctness in failure-positive cases after adjustment.",
         "- These estimates are observational associations and do not establish that a failure mode caused an incorrect answer.",
-        "- Revised F-2.2.1 uses intermediate-answer agreement with the ground truth in its label; its association with final correctness is definition-dependent and is not an independent taxonomy-validation result.",
-        "- F-3.1.1 contains correctness information in its definition; its association is definition-dependent and is not an independent taxonomy-validation result.",
+        "- F-2.2.1 uses only the original case-level auditor label. Intermediate answers and ground truth do not enter the exposure definition; final correctness is the outcome.",
+        "- F-2.2.1 is near constant and is retained as a descriptive interaction pattern. Its adjusted estimate is a sensitivity result, not primary support for clinical risk.",
+        "- F-3.1.1 does not use benchmark ground truth in its label, but its definition requires the auditor to judge minority correctness and current-decision incorrectness. Its association is therefore definition-aligned rather than a fully external validation.",
         "- F-3.2.1 applies only to 545 auditable multi-round cases; framework-specific estimates with very few positives are not interpreted.",
-        "- Revised F-2.2.1 is a post hoc deterministic reclassification. Its original human-validation metrics do not validate the revised label.",
         "- GEE estimates, stratified raw results, QA/VQA and MAS interactions, and quadrature diagnostics are provided as separate files.",
         "",
         "## Interaction checks",
@@ -669,13 +625,9 @@ def main() -> None:
     args = parse_args()
     args.output_dir.mkdir(parents=True, exist_ok=True)
     manifest_path = args.output_dir / "failure_correctness_case_manifest.csv.gz"
-    repetition_path = args.output_dir / "revised_f_2_2_1_case_labels.csv.gz"
-    if not manifest_path.exists() or not repetition_path.exists():
-        raise FileNotFoundError("Build the case manifest and revised F-2.2.1 labels first")
-    manifest = merge_revised_repetition(
-        pd.read_csv(manifest_path, low_memory=False),
-        pd.read_csv(repetition_path, low_memory=False),
-    )
+    if not manifest_path.exists():
+        raise FileNotFoundError("Build the case manifest first")
+    manifest = pd.read_csv(manifest_path, low_memory=False)
     if len(manifest) != 14370 or manifest.duplicated(KEY_COLUMNS).any():
         raise ValueError("Final manifest does not contain 14,370 unique cases")
     manifest.to_csv(
@@ -686,7 +638,6 @@ def main() -> None:
     pd.DataFrame(flow_rows(manifest)).to_csv(
         args.output_dir / "failure_mode_flow_table.csv", index=False
     )
-    special_descriptive_outputs(manifest, args.output_dir)
 
     rng = np.random.default_rng(args.seed)
     descriptive_rows: list[dict[str, object]] = []
@@ -784,7 +735,7 @@ def main() -> None:
     write_report(args.output_dir, descriptive, glmm, gee, interactions)
     metadata = {
         "analysis_status": "complete",
-        "protocol": "protocol_v4.md",
+        "analysis_definition": "original case-level auditor labels",
         "source": "frozen existing MAS and automated-auditor logs",
         "new_model_or_auditor_runs": False,
         "random_seed": args.seed,
@@ -794,7 +745,6 @@ def main() -> None:
         "sensitivity_quadrature_nodes": args.sensitivity_quadrature_nodes,
         "sensitivity_model": "question-clustered GEE with robust standard errors",
         "manifest": str(manifest_path),
-        "revised_repetition_labels": str(repetition_path),
     }
     (args.output_dir / "failure_correctness_run_metadata.json").write_text(
         json.dumps(metadata, indent=2), encoding="utf-8"

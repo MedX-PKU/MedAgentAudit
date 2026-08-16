@@ -6,8 +6,7 @@ This directory contains the reproducible analysis of case-level failure-mode lab
 
 - `failure_mode_schema.py`: defines the ten failure modes, log fields, display names, and framework applicability.
 - `build_failure_correctness_case_manifest.py`: builds and validates one row per dataset–question–MAS–LLM case, final correctness, and the original case-level failure labels.
-- `build_revised_repetition_labels.py`: deterministically rebuilds repetition of initial views (F-2.2.1) from auditor repetition status and framework-specific intermediate answers.
-- `run_failure_correctness_analysis.py`: merges the revised F-2.2.1 labels and runs descriptive estimates, question-cluster bootstrap intervals, maximum-likelihood random-intercept logistic models, question-clustered GEE sensitivity models, stratified summaries, and prespecified interaction checks.
+- `run_failure_correctness_analysis.py`: analyzes the original case-level auditor labels using descriptive estimates, question-cluster bootstrap intervals, maximum-likelihood random-intercept logistic models, question-clustered GEE sensitivity models, stratified summaries, and prespecified interaction checks.
 - `run_all_failure_correctness_analysis.sh`: runs the complete workflow with 2,000 bootstrap replicates and 9-/15-node adaptive Gauss–Hermite quadrature.
 
 ## Statistical Model
@@ -21,6 +20,8 @@ The primary mixed-effects logistic regression is estimated by maximum likelihood
 The model for modality neglect (F-1.2.1) additionally checks a failure-by-modality interaction and QA/VQA strata. The model for role-task mismatch (F-2.1.1) checks a failure-by-MAS interaction and MDAgents/MedAgents strata.
 
 All estimates are observational associations. They do not establish that a failure label caused the final answer.
+
+For repetition of initial views (F-2.2.1), exposure is defined only by the original auditor's `interaction_redundancy` status: a case is positive when at least one valid audit status is 1 and negative when all valid statuses are 0. Intermediate answers and ground truth are not used to construct this exposure. Final benchmark-answer correctness is analyzed only as the outcome. Because this label is positive in nearly all eligible cases, adjusted estimates are treated as sensitivity results rather than primary support for clinical risk.
 
 ## Run
 
