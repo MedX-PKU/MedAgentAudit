@@ -30,7 +30,7 @@ AUDIT_CONFIG = {
     "1.2.1": {
         "log_key": "1_2_1_neglect_or_misinterpretation_of_modality_info", 
         "status_key": "modality_neglect_status",
-        "name": "Neglect or Misinterpretation of Modality Information during Input Interpretation"
+        "name": "Misinterpretation"
     },
     "2.1.1": {
         "log_key": "2_1_1_role_assignment", 

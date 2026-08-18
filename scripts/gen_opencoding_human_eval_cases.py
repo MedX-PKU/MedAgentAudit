@@ -145,7 +145,7 @@ def main():
             "human_eval_instruction": "Compare the domain agent's observation against the Ground Truth and source input. \n\nAudit Criterion (Failure = 1): The agent describes visual features clearly absent in the image or contradicts explicit patient data (e.g., saying 'male' when input says 'female'). \nPass (0): The agent's observations are grounded in the actual input data."
         },
         "1.2.1": {
-            "name": "Neglect or Misinterpretation of Modality Information during Input Interpretation",
+            "name": "Misinterpretation",
             "definition": "The agent ignores the input modality (e.g., treats an image task as text-only) or fails to answer the specific clinical question.",
             "human_eval_instruction": "Assess if the domain agent effectively utilized the specific modality (e.g., the image) required to answer the question. \n\nAudit Criterion (Failure = 1): Mark as 1 if the agent gives a generic definition instead of looking at the image, or ignores the specific question (e.g., describes the X-ray technique instead of checking for Pneumothorax). \n\nPass (0): the agent explicitly analyzes the provided modality and directly addresses the prompt's question."
         },

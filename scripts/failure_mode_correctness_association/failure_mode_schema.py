@@ -24,7 +24,7 @@ FAILURE_MODES: tuple[FailureModeDefinition, ...] = (
     ),
     FailureModeDefinition(
         "1.2.1",
-        "modality neglect",
+        "misinterpretation",
         "1_2_1_neglect_or_misinterpretation_of_modality_info",
         "modality_neglect_status",
     ),

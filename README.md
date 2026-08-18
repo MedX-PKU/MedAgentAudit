@@ -22,7 +22,7 @@ We propose a **Unified Taxonomy of Dynamic Processes in Multi-Agent Collaboratio
 *   **1.1 Perceptual and Knowledge Deficits (Input Processing Failures)**
     *   **1.1.1 Factual Hallucinations during Input Interpretation**: Agents report non-existent lesions, miss obvious abnormalities, or confuse anatomical structures (e.g., swapping left/right) at the perception level.
 *   **1.2 Misalignment with Clinical Intent (Instruction-Level Failures)**
-    *   **1.2.1 Neglect or Misinterpretation of Modality Information**: Agents ignore image inputs in VQA tasks (treating them as text-only) or fail to answer the specific clinical question (e.g., describing image metadata instead of pathology).
+    *   **1.2.1 Misinterpretation**: Agents ignore image inputs in VQA tasks (treating them as text-only) or fail to answer the clinical question (e.g., describing image metadata instead of pathology).
 
 </details>
 

@@ -58,7 +58,7 @@ sys.path.append(str(project_root))
 # - the rounds in which the metric is defined
 AUDIT_CONFIG = {
     "1.1.1": {"status_key": "factual_hallucination_status", "name": "Factual Hallucination", "valid_rounds": [1, 2, 3]},
-    "1.2.1": {"status_key": "modality_neglect_status", "name": "Modality Neglect", "valid_rounds": [1, 2, 3]},
+    "1.2.1": {"status_key": "modality_neglect_status", "name": "Misinterpretation", "valid_rounds": [1, 2, 3]},
     "2.1.1": {"status_key": "role_task_alignment", "name": "Role Assignment Mismatch", "valid_rounds": [1]},
     "2.1.2": {"status_key": "knowledge_activation_status", "name": "Knowledge Activation Fail", "valid_rounds": [1, 2, 3]},
     "2.2.1": {"status_key": "interaction_redundancy", "name": "Interaction Redundancy", "valid_rounds": [1, 2, 3]},

@@ -1,10 +1,5 @@
 #!/usr/bin/env python3
-"""Run all-mode stratified sensitivity models without touching frozen scripts.
-
-This script only imports the frozen analysis module and reads the frozen case
-manifest. It does not modify any existing code, log, or result file. All
-outputs go to a new Dropbox folder passed via --output-dir.
-"""
+"""Fit stratified GLMM and GEE models for all failure modes."""
 
 from __future__ import annotations
 
@@ -16,33 +11,41 @@ from pathlib import Path
 import pandas as pd
 
 
-FROZEN_SCRIPT_DIR = Path(
-    "/home/leigu/Documents/[Preprint 2026] Auditing medical multi-agent AI "
-    "reveals risks of false consensus/code_repo/"
-    "scripts/failure_mode_correctness_association"
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+PRIMARY_SCRIPT_DIR = PROJECT_ROOT / "scripts/failure_mode_correctness_association"
+DEFAULT_ANALYSIS_DIR = Path(
+    "/mnt/c/Users/LeiGu/Dropbox/[Preprint 2026] "
+    "Auditing medical multi-agent AI reveals risks of false consensus/"
+    "Preprint/analysis/failure_mode_correctness_association"
 )
-sys.path.insert(0, str(FROZEN_SCRIPT_DIR))
+sys.path.insert(0, str(PRIMARY_SCRIPT_DIR))
 
 import run_failure_correctness_analysis as rfa
 from failure_mode_schema import FAILURE_MODES
 
 
-STRATA_VARIABLES = ("modality", "mas", "dataset")
+STRATA_VARIABLES = ("modality", "mas", "dataset", "underlying_llm")
 MIN_GROUP = 10
-
-# When stratifying by a factor, that factor becomes constant inside every
-# stratum, so its fixed effect must be dropped to keep the design full rank.
 FORMULA_BY_VARIABLE = {
     "modality": rfa.FIXED_FORMULA,
     "mas": "correctness ~ failure_positive + C(dataset) + C(underlying_llm)",
     "dataset": "correctness ~ failure_positive + C(mas) + C(underlying_llm)",
+    "underlying_llm": "correctness ~ failure_positive + C(dataset) + C(mas)",
 }
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--manifest", type=Path, required=True)
-    parser.add_argument("--output-dir", type=Path, required=True)
+    parser.add_argument(
+        "--manifest",
+        type=Path,
+        default=DEFAULT_ANALYSIS_DIR / "failure_correctness_case_manifest.csv.gz",
+    )
+    parser.add_argument(
+        "--output-dir",
+        type=Path,
+        default=DEFAULT_ANALYSIS_DIR / "stratified_analysis",
+    )
     parser.add_argument("--quadrature-nodes", type=int, default=9)
     parser.add_argument("--sensitivity-quadrature-nodes", type=int, default=15)
     return parser.parse_args()
@@ -70,29 +73,18 @@ def main() -> None:
                 if not stratum_ok(subset):
                     skipped.append({"mode": key, "reason": "group_size"})
                     continue
-                try:
-                    glmm = rfa.fit_frequentist_glmm(
-                        mode,
-                        subset,
-                        formula,
-                        args.quadrature_nodes,
-                        args.sensitivity_quadrature_nodes,
-                    )
-                except Exception as exc:
-                    skipped.append(
-                        {"mode": key, "reason": f"glmm:{type(exc).__name__}"}
-                    )
-                    continue
+                glmm = rfa.fit_frequentist_glmm(
+                    mode,
+                    subset,
+                    formula,
+                    args.quadrature_nodes,
+                    args.sensitivity_quadrature_nodes,
+                )
                 glmm["stratification_variable"] = variable
                 glmm["stratum"] = level
                 glmm_rows.append(glmm)
-                try:
-                    gee = rfa.fit_gee(mode, subset, formula)
-                except Exception as exc:
-                    skipped.append(
-                        {"mode": key, "reason": f"gee:{type(exc).__name__}"}
-                    )
-                    continue
+
+                gee = rfa.fit_gee(mode, subset, formula)
                 gee["stratification_variable"] = variable
                 gee["stratum"] = level
                 gee_rows.append(gee)
@@ -104,24 +96,18 @@ def main() -> None:
     pd.DataFrame(gee_rows).to_csv(
         args.output_dir / "all_strata_gee_results.csv", index=False
     )
-    pd.DataFrame(skipped).to_csv(
-        args.output_dir / "skipped_strata.csv", index=False
-    )
+    pd.DataFrame(skipped).to_csv(args.output_dir / "skipped_strata.csv", index=False)
     metadata = {
-        "analysis_definition": "all-mode stratified sensitivity checks",
+        "analysis_definition": "failure mode–correctness stratified analyses",
         "source": "frozen failure-correctness case manifest",
-        "new_model_or_auditor_runs": False,
+        "new_mas_llm_or_auditor_runs": False,
         "stratification_variables": list(STRATA_VARIABLES),
         "min_group_size": MIN_GROUP,
         "quadrature_nodes": args.quadrature_nodes,
         "sensitivity_quadrature_nodes": args.sensitivity_quadrature_nodes,
-        "primary_model": (
-            "maximum-likelihood logistic GLMM with dataset:question_ID "
-            "random intercept; per-stratum fixed-effect terms dropped as needed"
-        ),
         "manifest": str(args.manifest),
     }
-    (args.output_dir / "run_metadata.json").write_text(
+    (args.output_dir / "model_run_metadata.json").write_text(
         json.dumps(metadata, indent=2), encoding="utf-8"
     )
 

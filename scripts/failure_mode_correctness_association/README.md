@@ -17,7 +17,7 @@ Each failure mode is fitted separately:
 
 The primary mixed-effects logistic regression is estimated by maximum likelihood with adaptive Gauss–Hermite quadrature around each question-specific random-intercept posterior mode. The script reports optimization status, score norm, observed-information diagnostics, random-intercept standard deviation, and the change in the target coefficient when the quadrature node count is increased from 9 to 15. A question-clustered GEE with robust standard errors is the sensitivity model.
 
-The model for modality neglect (F-1.2.1) additionally checks a failure-by-modality interaction and QA/VQA strata. The model for role-task mismatch (F-2.1.1) checks a failure-by-MAS interaction and MDAgents/MedAgents strata.
+The model for misinterpretation (F-1.2.1) additionally checks a failure-by-modality interaction and QA/VQA strata. The model for role-task mismatch (F-2.1.1) checks a failure-by-MAS interaction and MDAgents/MedAgents strata.
 
 All estimates are observational associations. They do not establish that a failure label caused the final answer.
 
