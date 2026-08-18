@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build stratified-analysis tables separately from sensitivity analyses."""
+"""Build failure mode–correctness stratified-analysis tables."""
 
 from __future__ import annotations
 
@@ -159,6 +159,39 @@ def build_direction_table(
     return result
 
 
+def build_interaction_table(glmm: pd.DataFrame, gee: pd.DataFrame) -> pd.DataFrame:
+    keys = ["failure_mode", "failure_mode_name", "comparison"]
+    columns = keys + [
+        "status",
+        "beta",
+        "adjusted_correctness_or",
+        "ci_low",
+        "ci_high",
+        "p_value",
+        "fdr_bh_p_value",
+    ]
+    result = glmm[columns].merge(
+        gee[columns],
+        on=keys,
+        suffixes=("_glmm", "_gee"),
+        validate="one_to_one",
+    )
+    result["glmm_fdr_below_0_05"] = result["fdr_bh_p_value_glmm"].lt(ALPHA)
+    result["gee_fdr_below_0_05"] = result["fdr_bh_p_value_gee"].lt(ALPHA)
+    result["direction_consistent"] = [
+        sign(glmm_beta) == sign(gee_beta)
+        for glmm_beta, gee_beta in zip(result["beta_glmm"], result["beta_gee"])
+    ]
+    result["fdr_significance_consistent"] = (
+        result["glmm_fdr_below_0_05"] == result["gee_fdr_below_0_05"]
+    )
+    result["model_specification_sensitive"] = (
+        ~result["direction_consistent"]
+        | ~result["fdr_significance_consistent"]
+    )
+    return result
+
+
 def fmt(value: object) -> str:
     if pd.isna(value):
         return "NA"
@@ -173,7 +206,10 @@ def display(value: object) -> str:
 
 
 def write_report(
-    path: Path, modality: pd.DataFrame, directions: pd.DataFrame
+    path: Path,
+    modality: pd.DataFrame,
+    interactions: pd.DataFrame,
+    directions: pd.DataFrame,
 ) -> None:
     focus = modality.loc[
         modality["stratum"].eq("VQA")
@@ -187,7 +223,7 @@ def write_report(
     ]
     other_fallbacks = directions.loc[directions["selected_model"].eq("GEE fallback")]
     lines = [
-        "# Stratified analyses and heterogeneity checks",
+        "# Stratified analyses and cross-stratum comparisons",
         "",
         "## QA/VQA stratification",
         "",
@@ -198,6 +234,29 @@ def write_report(
             f"P={fmt(row.p_value_glmm)}; GEE OR={fmt(row.adjusted_correctness_or_gee)}, "
             f"P={fmt(row.p_value_gee)}."
         )
+    lines.extend([
+        "",
+        "## QA/VQA interaction tests",
+        "",
+        "The interaction OR is the VQA failure-positive OR divided by the QA failure-positive OR. "
+        "GLMM and GEE P values are BH-FDR corrected across the ten modes separately.",
+        "",
+    ])
+    for row in interactions.itertuples():
+        lines.append(
+            f"- {row.failure_mode}: GLMM interaction OR={fmt(row.adjusted_correctness_or_glmm)}, "
+            f"P={fmt(row.p_value_glmm)}, FDR P={fmt(row.fdr_bh_p_value_glmm)}; "
+            f"GEE interaction OR={fmt(row.adjusted_correctness_or_gee)}, "
+            f"P={fmt(row.p_value_gee)}, FDR P={fmt(row.fdr_bh_p_value_gee)}."
+        )
+    sensitive_modes = interactions.loc[
+        interactions["model_specification_sensitive"], "failure_mode"
+    ]
+    lines.append("")
+    lines.append(
+        "Modes with GLMM–GEE direction or FDR-significance disagreement: "
+        f"{', '.join(sensitive_modes) or 'none'}."
+    )
     lines.extend([
         "",
         "## Dataset, MAS, and underlying LLM direction checks",
@@ -218,8 +277,8 @@ def write_report(
         )
     lines.extend([
         "",
-        "Separate stratum P values are descriptive and are not tests of heterogeneity. "
-        "Claims of differences across strata require an interaction test.",
+        "Separate stratum P values do not test whether two strata have different association estimates. "
+        "A claim that association estimates differ across strata requires an interaction test.",
     ])
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
@@ -232,30 +291,47 @@ def main() -> None:
     pooled_glmm = read_csv(args.analysis_dir / "failure_correctness_glmm_results.csv")
     glmm = read_csv(stratified_dir / "all_strata_glmm_results.csv")
     gee = read_csv(stratified_dir / "all_strata_gee_results.csv")
+    interaction_glmm = read_csv(
+        stratified_dir / "qa_vqa_interaction_glmm_results.csv"
+    )
+    interaction_gee = read_csv(
+        stratified_dir / "qa_vqa_interaction_gee_results.csv"
+    )
     merged = merge_models(raw, glmm, gee)
     modality = build_modality_table(merged, pooled_glmm)
+    interactions = build_interaction_table(interaction_glmm, interaction_gee)
     directions = build_direction_table(merged, pooled_glmm)
     modality.to_csv(stratified_dir / "qa_vqa_models.csv", index=False)
+    interactions.to_csv(
+        stratified_dir / "qa_vqa_interaction_tests.csv", index=False
+    )
     directions.to_csv(stratified_dir / "stratified_direction_checks.csv", index=False)
     write_report(
-        stratified_dir / "stratified_analysis_summary.md", modality, directions
+        stratified_dir / "stratified_analysis_summary.md",
+        modality,
+        interactions,
+        directions,
     )
     metadata = {
-        "analysis_section": "stratified analyses and heterogeneity checks",
+        "analysis_section": "stratified analyses and cross-stratum comparisons",
         "source_analysis_directory": str(args.analysis_dir),
         "minimum_positive_and_negative_per_stratum": MIN_GROUP_SIZE,
         "direction_reversal_reference": "pooled GLMM failure-positive coefficient",
         "gee_fallback_rule": (
             "use and label stratum GEE when the corresponding GLMM status is not completed"
         ),
-        "heterogeneity_boundary": (
-            "separate stratum P values are descriptive; cross-stratum claims require interaction tests"
+        "cross_stratum_comparison_rule": (
+            "separate stratum P values do not compare association estimates; "
+            "cross-stratum claims require interaction tests"
         ),
         "outputs": [
             "all_strata_glmm_results.csv",
             "all_strata_gee_results.csv",
             "skipped_strata.csv",
             "qa_vqa_models.csv",
+            "qa_vqa_interaction_glmm_results.csv",
+            "qa_vqa_interaction_gee_results.csv",
+            "qa_vqa_interaction_tests.csv",
             "stratified_direction_checks.csv",
             "stratified_analysis_summary.md",
         ],

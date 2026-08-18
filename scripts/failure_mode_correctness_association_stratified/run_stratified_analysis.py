@@ -62,10 +62,34 @@ def main() -> None:
     manifest = pd.read_csv(args.manifest, low_memory=False)
     glmm_rows: list[dict[str, object]] = []
     gee_rows: list[dict[str, object]] = []
+    interaction_glmm_rows: list[dict[str, object]] = []
+    interaction_gee_rows: list[dict[str, object]] = []
     skipped: list[dict[str, str]] = []
 
     for mode in FAILURE_MODES:
         data = rfa.prepare_mode_data(manifest, mode.code)
+        interaction_data = data.copy()
+        interaction_data["failure_x_vqa"] = (
+            interaction_data["failure_positive"]
+            * interaction_data["modality"].eq("VQA").astype(int)
+        )
+        interaction_formula = rfa.FIXED_FORMULA + " + failure_x_vqa"
+        interaction_glmm = rfa.fit_frequentist_glmm(
+            mode,
+            interaction_data,
+            interaction_formula,
+            args.quadrature_nodes,
+            args.sensitivity_quadrature_nodes,
+            "failure_x_vqa",
+        )
+        interaction_glmm["comparison"] = "VQA versus QA failure association"
+        interaction_glmm_rows.append(interaction_glmm)
+        interaction_gee = rfa.fit_gee(
+            mode, interaction_data, interaction_formula, "failure_x_vqa"
+        )
+        interaction_gee["comparison"] = "VQA versus QA failure association"
+        interaction_gee_rows.append(interaction_gee)
+
         for variable in STRATA_VARIABLES:
             formula = FORMULA_BY_VARIABLE[variable]
             for level, subset in data.groupby(variable, observed=True):
@@ -96,12 +120,22 @@ def main() -> None:
     pd.DataFrame(gee_rows).to_csv(
         args.output_dir / "all_strata_gee_results.csv", index=False
     )
+    rfa.apply_fdr(pd.DataFrame(interaction_glmm_rows)).to_csv(
+        args.output_dir / "qa_vqa_interaction_glmm_results.csv", index=False
+    )
+    rfa.apply_fdr(pd.DataFrame(interaction_gee_rows)).to_csv(
+        args.output_dir / "qa_vqa_interaction_gee_results.csv", index=False
+    )
     pd.DataFrame(skipped).to_csv(args.output_dir / "skipped_strata.csv", index=False)
     metadata = {
         "analysis_definition": "failure mode–correctness stratified analyses",
         "source": "frozen failure-correctness case manifest",
         "new_mas_llm_or_auditor_runs": False,
         "stratification_variables": list(STRATA_VARIABLES),
+        "qa_vqa_interaction_tests": "all ten failure modes; QA reference",
+        "interaction_fdr_families": (
+            "Benjamini-Hochberg correction across ten modes separately for GLMM and GEE"
+        ),
         "min_group_size": MIN_GROUP,
         "quadrature_nodes": args.quadrature_nodes,
         "sensitivity_quadrature_nodes": args.sensitivity_quadrature_nodes,
