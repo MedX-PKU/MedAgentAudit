@@ -456,6 +456,57 @@ def fit_frequentist_glmm(
     return base
 
 
+def set_failure_exposure(data: pd.DataFrame, exposure: int) -> pd.DataFrame:
+    counterfactual = data.copy()
+    counterfactual["failure_positive"] = exposure
+    if "failure_x_vqa" in counterfactual:
+        counterfactual["failure_x_vqa"] = (
+            exposure * counterfactual["modality"].eq("VQA").astype(int)
+        )
+    if "failure_x_medagent" in counterfactual:
+        counterfactual["failure_x_medagent"] = (
+            exposure * counterfactual["mas"].eq("medagent").astype(int)
+        )
+    return counterfactual
+
+
+def gee_probability_difference(
+    fitted, data: pd.DataFrame
+) -> tuple[float, float, float, float]:
+    """Return the standardized probability difference and robust delta-method CI."""
+    positive = set_failure_exposure(data, 1)
+    negative = set_failure_exposure(data, 0)
+    design_info = fitted.model.data.design_info
+    positive_design = np.asarray(
+        patsy.build_design_matrices([design_info], positive)[0], float
+    )
+    negative_design = np.asarray(
+        patsy.build_design_matrices([design_info], negative)[0], float
+    )
+    parameters = np.asarray(fitted.params, float)
+    positive_probability = expit(positive_design @ parameters)
+    negative_probability = expit(negative_design @ parameters)
+    difference = float(np.mean(positive_probability - negative_probability))
+    gradient = np.mean(
+        positive_probability[:, None]
+        * (1 - positive_probability)[:, None]
+        * positive_design
+        - negative_probability[:, None]
+        * (1 - negative_probability)[:, None]
+        * negative_design,
+        axis=0,
+    )
+    covariance = np.asarray(fitted.cov_params(), float)
+    variance = float(gradient @ covariance @ gradient)
+    standard_error = math.sqrt(max(variance, 0.0))
+    return (
+        difference,
+        standard_error,
+        difference - 1.96 * standard_error,
+        difference + 1.96 * standard_error,
+    )
+
+
 def fit_gee(mode, data: pd.DataFrame, formula: str = FIXED_FORMULA, target_term: str = "failure_positive") -> dict[str, object]:
     base = {
         "failure_mode": f"F-{mode.code}",
@@ -476,16 +527,12 @@ def fit_gee(mode, data: pd.DataFrame, formula: str = FIXED_FORMULA, target_term:
         ).fit(maxiter=300)
         beta = float(fitted.params[target_term])
         standard_error = float(fitted.bse[target_term])
-        positive = data.copy()
-        negative = data.copy()
-        positive["failure_positive"] = 1
-        negative["failure_positive"] = 0
-        for frame, exposure in ((positive, 1), (negative, 0)):
-            if "failure_x_vqa" in frame:
-                frame["failure_x_vqa"] = exposure * frame["modality"].eq("VQA").astype(int)
-            if "failure_x_medagent" in frame:
-                frame["failure_x_medagent"] = exposure * frame["mas"].eq("medagent").astype(int)
-        probability_difference = float(fitted.predict(positive).mean() - fitted.predict(negative).mean())
+        (
+            probability_difference,
+            probability_difference_se,
+            probability_difference_ci_low,
+            probability_difference_ci_high,
+        ) = gee_probability_difference(fitted, data)
         base.update(
             status="completed" if fitted.converged else "not_converged",
             beta=beta,
@@ -495,8 +542,12 @@ def fit_gee(mode, data: pd.DataFrame, formula: str = FIXED_FORMULA, target_term:
             adjusted_correctness_or=math.exp(beta),
             ci_low=math.exp(beta - 1.96 * standard_error),
             ci_high=math.exp(beta + 1.96 * standard_error),
-            standardized_probability_difference=probability_difference,
+            adjusted_probability_difference=probability_difference,
+            adjusted_probability_difference_se=probability_difference_se,
+            adjusted_probability_difference_ci_low=probability_difference_ci_low,
+            adjusted_probability_difference_ci_high=probability_difference_ci_high,
             converged=bool(fitted.converged),
+            covariance_type=str(fitted.cov_type),
         )
     except Exception as exc:
         base.update(status="failed", error=f"{type(exc).__name__}: {exc}")
@@ -565,7 +616,11 @@ def write_report(
             "question_random_intercept_sd", "gradient_infinity_norm", "quadrature_beta_difference",
         ]].rename(columns={"status": "glmm_status"}), on="failure_mode", how="left"
     ).merge(
-        gee[["failure_mode", "status", "adjusted_correctness_or", "ci_low", "ci_high", "standardized_probability_difference", "p_value"]]
+        gee[[
+            "failure_mode", "status", "adjusted_correctness_or", "ci_low", "ci_high",
+            "adjusted_probability_difference", "adjusted_probability_difference_ci_low",
+            "adjusted_probability_difference_ci_high", "p_value", "fdr_bh_p_value",
+        ]]
         .rename(columns={"status": "gee_status"}), on="failure_mode", how="left", suffixes=("_glmm", "_gee")
     )
     combined.to_csv(output_dir / "failure_correctness_combined_results.csv", index=False)
@@ -583,16 +638,18 @@ def write_report(
         "",
         "This analysis uses frozen MAS and automated-auditor logs. No MAS, underlying LLM, or auditor was rerun.",
         "",
-        "## Primary results",
+        "## Adjusted association results",
         "",
-        "| Mode | N | Positive accuracy | Negative accuracy | Raw risk difference | Adjusted OR (95% CI) | Adjusted probability difference (95% CI) | FDR P |",
-        "|---|---:|---:|---:|---:|---:|---:|---:|",
+        "| Mode | N | Positive accuracy | Negative accuracy | Raw risk difference | GLMM adjusted OR (95% CI) | GLMM adjusted probability difference (95% CI) | GLMM FDR P | GEE adjusted OR (95% CI) | GEE adjusted probability difference (95% CI) | GEE FDR P |",
+        "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
     ]
     for row in combined.itertuples():
-        adjusted_or = f"{fmt(row.adjusted_correctness_or_glmm)} ({fmt(row.ci_low_glmm)} to {fmt(row.ci_high_glmm)})"
-        adjusted_pd = f"{fmt(row.adjusted_probability_difference)} ({fmt(row.adjusted_probability_difference_ci_low)} to {fmt(row.adjusted_probability_difference_ci_high)})"
+        glmm_or = f"{fmt(row.adjusted_correctness_or_glmm)} ({fmt(row.ci_low_glmm)} to {fmt(row.ci_high_glmm)})"
+        glmm_pd = f"{fmt(row.adjusted_probability_difference_glmm)} ({fmt(row.adjusted_probability_difference_ci_low_glmm)} to {fmt(row.adjusted_probability_difference_ci_high_glmm)})"
+        gee_or = f"{fmt(row.adjusted_correctness_or_gee)} ({fmt(row.ci_low_gee)} to {fmt(row.ci_high_gee)})"
+        gee_pd = f"{fmt(row.adjusted_probability_difference_gee)} ({fmt(row.adjusted_probability_difference_ci_low_gee)} to {fmt(row.adjusted_probability_difference_ci_high_gee)})"
         lines.append(
-            f"| {row.failure_mode} | {int(row.eligible_valid_n)} | {fmt(row.positive_accuracy)} | {fmt(row.negative_accuracy)} | {fmt(row.risk_difference)} | {adjusted_or} | {adjusted_pd} | {fmt(row.fdr_bh_p_value)} |"
+            f"| {row.failure_mode} | {int(row.eligible_valid_n)} | {fmt(row.positive_accuracy)} | {fmt(row.negative_accuracy)} | {fmt(row.risk_difference)} | {glmm_or} | {glmm_pd} | {fmt(row.fdr_bh_p_value_glmm)} | {gee_or} | {gee_pd} | {fmt(row.fdr_bh_p_value_gee)} |"
         )
     lines.extend([
         "",
@@ -601,10 +658,10 @@ def write_report(
         "- Odds ratios below 1 and negative probability differences indicate lower benchmark-answer correctness in failure-positive cases after adjustment.",
         "- These estimates are observational associations and do not establish that a failure mode caused an incorrect answer.",
         "- F-2.2.1 uses only the original case-level auditor label. Intermediate answers and ground truth do not enter the exposure definition; final correctness is the outcome.",
-        "- F-2.2.1 is near constant and is retained as a descriptive interaction pattern. Its adjusted estimate is a sensitivity result, not primary support for clinical risk.",
+        "- F-2.2.1 is near constant and is retained as a descriptive interaction pattern; its adjusted association is interpreted cautiously.",
         "- F-3.1.1 does not use benchmark ground truth in its label, but its definition requires the auditor to judge minority correctness and current-decision incorrectness. Its association is therefore definition-aligned rather than a fully external validation.",
         "- F-3.2.1 applies only to 545 auditable multi-round cases; framework-specific estimates with very few positives are not interpreted.",
-        "- GEE estimates, stratified raw results, QA/VQA and MAS interactions, and quadrature diagnostics are provided as separate files.",
+        "- GLMM and GEE estimates, stratified raw results, QA/VQA and MAS interactions, and quadrature diagnostics are provided as separate files.",
         "",
         "## Interaction checks",
         "",
@@ -740,10 +797,12 @@ def main() -> None:
         "new_model_or_auditor_runs": False,
         "random_seed": args.seed,
         "cluster_bootstrap_replicates": args.bootstrap_replicates,
-        "primary_model": "maximum-likelihood logistic GLMM with dataset:question_ID random intercept",
+        "adjusted_association_models": [
+            "maximum-likelihood logistic GLMM with dataset:question_ID random intercept",
+            "question-clustered GEE with robust standard errors",
+        ],
         "quadrature_nodes": args.quadrature_nodes,
         "sensitivity_quadrature_nodes": args.sensitivity_quadrature_nodes,
-        "sensitivity_model": "question-clustered GEE with robust standard errors",
         "manifest": str(manifest_path),
     }
     (args.output_dir / "failure_correctness_run_metadata.json").write_text(

@@ -8,3 +8,4 @@ uv run python "${SCRIPT_DIR}/run_failure_correctness_analysis.py" \
   --bootstrap-replicates 2000 \
   --quadrature-nodes 9 \
   --sensitivity-quadrature-nodes 15
+uv run python "${SCRIPT_DIR}/build_failure_correctness_analysis_checks.py"

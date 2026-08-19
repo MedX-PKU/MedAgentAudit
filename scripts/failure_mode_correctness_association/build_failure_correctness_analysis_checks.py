@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build failure mode–correctness sensitivity-analysis tables."""
+"""Build validation tables for the failure mode–correctness analysis."""
 
 from __future__ import annotations
 
@@ -22,7 +22,6 @@ ALPHA = 0.05
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--analysis-dir", type=Path, default=DEFAULT_ANALYSIS_DIR)
-    parser.add_argument("--output-dir", type=Path)
     return parser.parse_args()
 
 
@@ -39,7 +38,7 @@ def sign(value: object) -> int:
     return int(numeric > 0) - int(numeric < 0)
 
 
-def build_bootstrap_table(descriptive: pd.DataFrame) -> pd.DataFrame:
+def build_bootstrap_checks(descriptive: pd.DataFrame) -> pd.DataFrame:
     result = descriptive.copy()
     rd = result["positive_accuracy"] - result["negative_accuracy"]
     rr = result["positive_accuracy"] / result["negative_accuracy"]
@@ -99,6 +98,9 @@ def build_model_comparison(glmm: pd.DataFrame, gee: pd.DataFrame) -> pd.DataFram
         "adjusted_correctness_or",
         "ci_low",
         "ci_high",
+        "adjusted_probability_difference",
+        "adjusted_probability_difference_ci_low",
+        "adjusted_probability_difference_ci_high",
         "p_value",
         "fdr_bh_p_value",
     ]
@@ -120,10 +122,15 @@ def build_model_comparison(glmm: pd.DataFrame, gee: pd.DataFrame) -> pd.DataFram
         result["fdr_bh_p_value_glmm"].lt(ALPHA)
         == result["fdr_bh_p_value_gee"].lt(ALPHA)
     )
-    result["model_specification_sensitive"] = (
-        ~result["direction_consistent"]
-        | ~result["fdr_significance_consistent"]
-    )
+    result["finite_ordered_probability_difference_95_ci"] = True
+    for model in ("glmm", "gee"):
+        low = f"adjusted_probability_difference_ci_low_{model}"
+        high = f"adjusted_probability_difference_ci_high_{model}"
+        result["finite_ordered_probability_difference_95_ci"] &= (
+            np.isfinite(result[low])
+            & np.isfinite(result[high])
+            & result[low].le(result[high])
+        )
     return result
 
 
@@ -132,52 +139,52 @@ def write_report(
     bootstrap: pd.DataFrame,
     comparison: pd.DataFrame,
 ) -> None:
-    sensitive = comparison.loc[comparison["model_specification_sensitive"]]
+    disagreement = comparison.loc[~comparison["fdr_significance_consistent"]]
     lines = [
-        "# Sensitivity analyses",
+        "# Failure Mode–Correctness Analysis Checks",
         "",
-        "## Question-cluster bootstrap",
+        "## Question-Cluster Bootstrap",
         "",
         f"All {len(bootstrap)} modes have verified RD, RR, and OR point estimates and finite ordered 95% bootstrap intervals: "
         f"{bool(bootstrap['point_estimates_verified'].all() and bootstrap['finite_ordered_95_ci'].all())}.",
         "",
-        "## Question-clustered GEE",
+        "## Adjusted Association Models",
         "",
-        f"GLMM and GEE directions agree for {int(comparison['direction_consistent'].sum())}/{len(comparison)} modes.",
-        f"Modes flagged by direction or FDR-significance disagreement: {', '.join(sensitive['failure_mode']) or 'none'}.",
+        f"GLMM and GEE coefficient directions agree for {int(comparison['direction_consistent'].sum())}/{len(comparison)} modes.",
+        f"Modes with different FDR classifications: {', '.join(disagreement['failure_mode']) or 'none'}.",
+        "All GLMM and GEE adjusted probability differences have finite ordered 95% confidence intervals: "
+        f"{bool(comparison['finite_ordered_probability_difference_95_ci'].all())}.",
     ]
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
 def main() -> None:
     args = parse_args()
-    output_dir = args.output_dir or args.analysis_dir / "sensitivity_analysis"
-    output_dir.mkdir(parents=True, exist_ok=True)
+    args.analysis_dir.mkdir(parents=True, exist_ok=True)
     descriptive = read_csv(
         args.analysis_dir / "failure_correctness_descriptive_results.csv"
     )
     glmm = read_csv(args.analysis_dir / "failure_correctness_glmm_results.csv")
     gee = read_csv(args.analysis_dir / "failure_correctness_gee_results.csv")
 
-    bootstrap = build_bootstrap_table(descriptive)
+    bootstrap = build_bootstrap_checks(descriptive)
     comparison = build_model_comparison(glmm, gee)
-    bootstrap.to_csv(output_dir / "question_cluster_bootstrap.csv", index=False)
-    comparison.to_csv(output_dir / "glmm_gee_comparison.csv", index=False)
-    write_report(output_dir / "sensitivity_analysis_summary.md", bootstrap, comparison)
+    output_names = {
+        "bootstrap": "failure_correctness_question_cluster_bootstrap_checks.csv",
+        "comparison": "failure_correctness_glmm_gee_comparison.csv",
+        "report": "failure_correctness_analysis_checks.md",
+        "metadata": "failure_correctness_analysis_checks_metadata.json",
+    }
+    bootstrap.to_csv(args.analysis_dir / output_names["bootstrap"], index=False)
+    comparison.to_csv(args.analysis_dir / output_names["comparison"], index=False)
+    write_report(args.analysis_dir / output_names["report"], bootstrap, comparison)
     metadata = {
-        "analysis_section": "sensitivity analyses",
+        "analysis_section": "failure mode–correctness associations",
         "source_analysis_directory": str(args.analysis_dir),
         "significance_threshold": ALPHA,
-        "model_sensitivity_definition": (
-            "GLMM-GEE direction disagreement or FDR-adjusted significance disagreement"
-        ),
-        "outputs": [
-            "question_cluster_bootstrap.csv",
-            "glmm_gee_comparison.csv",
-            "sensitivity_analysis_summary.md",
-        ],
+        "outputs": list(output_names.values())[:-1],
     }
-    (output_dir / "sensitivity_analysis_metadata.json").write_text(
+    (args.analysis_dir / output_names["metadata"]).write_text(
         json.dumps(metadata, indent=2), encoding="utf-8"
     )
 
