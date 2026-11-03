@@ -171,6 +171,12 @@ cd scripts
 bash run_single_llm.sh
 ```
 
+### Visible explanation fields
+
+Agent prompts and saved structured outputs use `explanation` for both diagnostic explanations and the rationale for agreeing or disagreeing during review. The auditor and collaboration exporters read this same field. Use the migrated `Preprint/results` logs when reusing previous experiment results.
+
+Native API `reasoning_content` remains a separate field. Historical prompt strings in migrated logs retain their original contents; the updated prompts apply to new experiments.
+
 ## 🔍 The Auditor Agent
 
 A core component of this project is the `AuditorAgent` (located in `medagentaudit/auditor/auditor_agent.py`). It is a specialized meta-agent designed to strictly enforce the taxonomy definitions.

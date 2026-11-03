@@ -96,7 +96,6 @@ def gen_collaboration_text(case_history):
                 )
                 for review in r["reviews"]:
                     past_domain_agent_review = review["log"]["parsed_output"].get("agree", None)
-                    past_domain_agent_review_reason = review["log"]["parsed_output"].get("reason", None)
                     past_domain_agent_review_explanation = review["log"]["parsed_output"].get("explanation", None)
                     past_domain_agent_review_answer = review["log"]["parsed_output"].get("answer", None)
                     agent_id = review.get("agent_id", None)
@@ -110,8 +109,6 @@ def gen_collaboration_text(case_history):
                         collaboration_text += (f"**(role: {role})**\n\n")
                     if past_domain_agent_review is not None:
                         collaboration_text += (f"**Review result:** {past_domain_agent_review}\n\n")
-                    if past_domain_agent_review_reason is not None:
-                        collaboration_text += (f"**Review reason:** {past_domain_agent_review_reason}\n\n")
                     if past_domain_agent_review_explanation is not None:
                         collaboration_text += (f"**Review explanation:** {past_domain_agent_review_explanation}\n\n")
                     if past_domain_agent_review_answer is not None:

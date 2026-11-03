@@ -526,13 +526,13 @@ class AuditorAgent(BaseAgent):
                 if r.get("reviews"):
                     for review in r["reviews"]:
                         past_domain_agent_review = review["log"]["parsed_output"].get("agree", "N/A")
-                        past_domain_agent_review_reason = review["log"]["parsed_output"].get("reason", "N/A")
+                        past_domain_agent_review_explanation = review["log"]["parsed_output"].get("explanation", "N/A")
                         # fix healthcare MAS review output format issue
                         past_domain_agent_review_answer = review["log"]["parsed_output"].get("answer", "N/A")
                         domain_agent_past_history_reviews_text += (
                             f"agent ID: {review.get('agent_id', 'N/A')}\n"
                             f"review_result: {past_domain_agent_review}\n"
-                            f"review_reason: {past_domain_agent_review_reason}\n"
+                            f"review_explanation: {past_domain_agent_review_explanation}\n"
                             f"review_answer: {past_domain_agent_review_answer}\n\n"
                         )
         if image_path:
@@ -552,11 +552,11 @@ class AuditorAgent(BaseAgent):
                 f"--- current agent input to audit ---\n" 
                 f"agent: {current_agent_id}:\n"
                 f"agent answer: {current_answer}\n"
-                f"agent explanation/review_reason: {current_explanation}\n\n"
+                f"agent explanation: {current_explanation}\n\n"
                 f"---------------------------------------------\n\n"
                 f"--- INTERACTION HISTORY (Previous Rounds) ---\n"
                 f"past history of domain agents' answers and explanations: {domain_agent_past_history_opinions_text}\n"
-                f"past history of domain agents' reviews and reasons: {domain_agent_past_history_reviews_text}\n\n"
+                f"past history of domain agents' reviews and explanations: {domain_agent_past_history_reviews_text}\n\n"
             )
         else:
             text_content = (
@@ -564,11 +564,11 @@ class AuditorAgent(BaseAgent):
                 f"--- current agent input to audit ---\n" 
                 f"agent: {current_agent_id}:\n"
                 f"agent answer: {current_answer}\n"
-                f"agent explanation/review_reason: {current_explanation}\n\n"
+                f"agent explanation: {current_explanation}\n\n"
                 f"---------------------------------------------\n\n"
                 f"--- INTERACTION HISTORY (Previous Rounds) ---\n"
                 f"past history of domain agents' answers and explanations: {domain_agent_past_history_opinions_text}\n"
-                f"past history of domain agents' reviews and reasons: {domain_agent_past_history_reviews_text}\n\n"
+                f"past history of domain agents' reviews and explanations: {domain_agent_past_history_reviews_text}\n\n"
             )
 
         user_content.append({
@@ -625,12 +625,12 @@ class AuditorAgent(BaseAgent):
                     domain_agent_past_history_reviews_text += f"\n--- [Round {round_num}] ---\n"
                     for review in r["reviews"]:
                         past_domain_agent_review = review["log"]["parsed_output"].get("agree", "N/A")
-                        past_domain_agent_review_reason = review["log"]["parsed_output"].get("reason", "N/A")
+                        past_domain_agent_review_explanation = review["log"]["parsed_output"].get("explanation", "N/A")
                         past_domain_agent_review_answer = review["log"]["parsed_output"].get("answer", "N/A")
                         domain_agent_past_history_reviews_text += (
                             f"agent ID: {review.get('agent_id', 'N/A')}\n"
                             f"review_result: {past_domain_agent_review}\n"
-                            f"review_reason: {past_domain_agent_review_reason}\n"
+                            f"review_explanation: {past_domain_agent_review_explanation}\n"
                             f"review_answer: {past_domain_agent_review_answer}\n\n"
                         )
                 if r.get("synthesis"): # not any MAS has the synthesis stage
@@ -670,11 +670,11 @@ class AuditorAgent(BaseAgent):
                 f"--- CURRENT AGENT INPUT TO AUDIT ---\n"
                 f"agent: {current_agent_id}:\n"
                 f"agent answer: {current_answer}\n"
-                f"agent explanation/review_reason: {current_explanation}\n\n"
+                f"agent explanation: {current_explanation}\n\n"
                 f"---------------------------------------------\n\n"
                 f"--- INTERACTION HISTORY (Previous Rounds) ---\n"
                 f"past history of domain agents' answers and explanations: {domain_agent_past_history_opinions_text}\n"
-                f"past history of domain agents' reviews and reasons: {domain_agent_past_history_reviews_text}\n\n"
+                f"past history of domain agents' reviews and explanations: {domain_agent_past_history_reviews_text}\n\n"
                 f"past synthesizer's answers and explanations: {synthesizer_opinions_text}\n\n"
                 f"past decision-maker's answers and explanations: {decision_maker_opinions_text}\n\n"
             )
@@ -684,11 +684,11 @@ class AuditorAgent(BaseAgent):
                 f"--- CURRENT AGENT INPUT TO AUDIT ---\n"
                 f"agent: {current_agent_id}:\n"
                 f"agent answer: {current_answer}\n"
-                f"agent explanation/review_reason: {current_explanation}\n\n"
+                f"agent explanation: {current_explanation}\n\n"
                 f"---------------------------------------------\n\n"
                 f"--- INTERACTION HISTORY (Previous Rounds) ---\n"
                 f"past history of domain agents' answers and explanations: {domain_agent_past_history_opinions_text}\n"
-                f"past history of domain agents' reviews and reasons: {domain_agent_past_history_reviews_text}\n\n"
+                f"past history of domain agents' reviews and explanations: {domain_agent_past_history_reviews_text}\n\n"
                 f"past synthesizer's answers and explanations: {synthesizer_opinions_text}\n\n"
                 f"past decision-maker's answers and explanations: {decision_maker_opinions_text}\n\n"
             )
@@ -753,12 +753,12 @@ class AuditorAgent(BaseAgent):
                     domain_agent_past_history_reviews_text += f"\n--- [Round {round_num}] ---\n"
                     for review in r["reviews"]:
                         past_domain_agent_review = review["log"]["parsed_output"].get("agree", "N/A")
-                        past_domain_agent_review_reason = review["log"]["parsed_output"].get("reason", "N/A")
+                        past_domain_agent_review_explanation = review["log"]["parsed_output"].get("explanation", "N/A")
                         past_domain_agent_review_answer = review["log"]["parsed_output"].get("answer", "N/A")
                         domain_agent_past_history_reviews_text += (
                             f"agent id: {review.get('agent_id', 'N/A')}\n"
                             f"review_result: {past_domain_agent_review}\n"
-                            f"review_reason: {past_domain_agent_review_reason}\n"
+                            f"review_explanation: {past_domain_agent_review_explanation}\n"
                             f"review_answer: {past_domain_agent_review_answer}\n\n"
                         )
                 if r.get("synthesis"): # not any MAS has the synthesis stage
@@ -803,11 +803,11 @@ class AuditorAgent(BaseAgent):
                 f"--- CURRENT AGENT INPUT TO AUDIT ---\n"
                 f"agent: {current_agent_id}:\n"
                 f"agent answer: {answer}\n"
-                f"agent explanation/review_reason: {explanation}\n\n"
+                f"agent explanation: {explanation}\n\n"
                 f"---------------------------------------------\n\n"
                 f"--- INTERACTION HISTORY (Previous Rounds) ---\n"
                 f"past history of domain agents' answers and explanations: {domain_agent_past_history_opinions_text}\n"
-                f"past history of domain agents' reviews and reasons: {domain_agent_past_history_reviews_text}\n\n"
+                f"past history of domain agents' reviews and explanations: {domain_agent_past_history_reviews_text}\n\n"
                 f"past synthesizer's answers and explanations: {synthesizer_opinions_text}\n\n"
                 f"past decision-maker's answers and explanations: {decision_opinions_text}\n\n"
             )
@@ -817,11 +817,11 @@ class AuditorAgent(BaseAgent):
                 f"--- CURRENT AGENT INPUT TO AUDIT ---\n"
                 f"agent: {current_agent_id}:\n"
                 f"agent answer: {answer}\n"
-                f"agent explanation/review_reason: {explanation}\n\n"
+                f"agent explanation: {explanation}\n\n"
                 f"---------------------------------------------\n\n"
                 f"--- INTERACTION HISTORY (Previous Rounds) ---\n"
                 f"past history of domain agents' answers and explanations: {domain_agent_past_history_opinions_text}\n"
-                f"past history of domain agents' reviews and reasons: {domain_agent_past_history_reviews_text}\n\n"
+                f"past history of domain agents' reviews and explanations: {domain_agent_past_history_reviews_text}\n\n"
                 f"past synthesizer's answers and explanations: {synthesizer_opinions_text}\n\n"
                 f"past decision-maker's answers and explanations: {decision_opinions_text}\n\n"
             )
@@ -887,12 +887,12 @@ class AuditorAgent(BaseAgent):
                     domain_agent_past_history_reviews_text += f"\n--- [Round {round_num}] ---\n"
                     for review in r["reviews"]:
                         past_domain_agent_review = review["log"]["parsed_output"].get("agree", "N/A")
-                        past_domain_agent_review_reason = review["log"]["parsed_output"].get("reason", "N/A")
+                        past_domain_agent_review_explanation = review["log"]["parsed_output"].get("explanation", "N/A")
                         past_domain_agent_review_answer = review["log"]["parsed_output"].get("answer", "N/A")
                         domain_agent_past_history_reviews_text += (
                             f"agent ID: {review.get('agent_id', 'N/A')} (Role: {review.get('specialty', 'N/A')})\n"
                             f"review_result: {past_domain_agent_review}\n"
-                            f"review_reason: {past_domain_agent_review_reason}\n"
+                            f"review_explanation: {past_domain_agent_review_explanation}\n"
                             f"review_answer: {past_domain_agent_review_answer}\n\n"
                         )
                 if r.get("synthesis"): # not any MAS has the synthesis stage
@@ -936,11 +936,11 @@ class AuditorAgent(BaseAgent):
                 f"--- CURRENT AGENT INPUT TO AUDIT ---\n"
                 f"agent: {current_agent_id}:\n"
                 f"agent answer: {answer}\n"
-                f"agent explanation/review_reason: {explanation}\n\n"
+                f"agent explanation: {explanation}\n\n"
                 f"---------------------------------------------\n\n"
                 f"--- INTERACTION HISTORY (Previous Rounds) ---\n"
                 f"past history of domain agents' answers and explanations: {domain_agent_past_history_opinions_text}\n"
-                f"past history of domain agents' reviews and reasons: {domain_agent_past_history_reviews_text}\n\n"
+                f"past history of domain agents' reviews and explanations: {domain_agent_past_history_reviews_text}\n\n"
                 f"past synthesizer's answers and explanations: {synthesizer_opinions_text}\n\n"
                 f"past decision-maker's answers and explanations: {decision_opinions_text}\n\n"
             )
@@ -950,11 +950,11 @@ class AuditorAgent(BaseAgent):
                 f"--- CURRENT AGENT INPUT TO AUDIT ---\n"
                 f"agent: {current_agent_id}:\n"
                 f"agent answer: {answer}\n"
-                f"agent explanation/review_reason: {explanation}\n\n"
+                f"agent explanation: {explanation}\n\n"
                 f"---------------------------------------------\n\n"
                 f"--- INTERACTION HISTORY (Previous Rounds) ---\n"
                 f"past history of domain agents' answers and explanations: {domain_agent_past_history_opinions_text}\n"
-                f"past history of domain agents' reviews and reasons: {domain_agent_past_history_reviews_text}\n\n"
+                f"past history of domain agents' reviews and explanations: {domain_agent_past_history_reviews_text}\n\n"
                 f"past synthesizer's answers and explanations: {synthesizer_opinions_text}\n\n"
                 f"past decision-maker's answers and explanations: {decision_opinions_text}\n\n"
             )
@@ -1012,12 +1012,12 @@ class AuditorAgent(BaseAgent):
                     domain_agent_past_history_reviews_text += f"\n--- [Round {round_num}] ---\n"
                     for review in r["reviews"]:
                         past_domain_agent_review = review["log"]["parsed_output"].get("agree", "N/A")
-                        past_domain_agent_review_reason = review["log"]["parsed_output"].get("reason", "N/A")
+                        past_domain_agent_review_explanation = review["log"]["parsed_output"].get("explanation", "N/A")
                         past_domain_agent_review_answer = review["log"]["parsed_output"].get("answer", "N/A")
                         domain_agent_past_history_reviews_text += (
                             f"agent ID: {review.get('agent_id', 'N/A')} (role: {review.get('specialty', 'N/A')})\n"
                             f"review_result: {past_domain_agent_review}\n"
-                            f"review_reason: {past_domain_agent_review_reason}\n"
+                            f"review_explanation: {past_domain_agent_review_explanation}\n"
                             f"review_answer: {past_domain_agent_review_answer}\n\n"
                         )
 
@@ -1032,22 +1032,22 @@ class AuditorAgent(BaseAgent):
             f"additional inquiry questions: {inquiry_questions}\n\n"
             f"--- CURRENT AGENT INPUT TO AUDIT ---\n"
             f"agent: {current_agent_id}:\n"
-            f"agent explanation/review_reason: {explanation}\n\n"
+            f"agent explanation: {explanation}\n\n"
             f"---------------------------------------------\n\n"
             f"--- INTERACTION HISTORY (Previous Rounds) ---\n"
             f"past history of domain agents' answers and explanations: {domain_agent_past_history_opinions_text}\n"
-            f"past history of domain agents' reviews and reasons: {domain_agent_past_history_reviews_text}\n\n"
+            f"past history of domain agents' reviews and explanations: {domain_agent_past_history_reviews_text}\n\n"
         )
         else:
             text_content = (
                 f"medical question with options: {question}\n{options_text}\n"
                 f"--- CURRENT AGENT INPUT TO AUDIT ---\n"
                 f"agent: {current_agent_id}:\n"
-                f"agent explanation/review_reason: {explanation}\n\n"
+                f"agent explanation: {explanation}\n\n"
                 f"---------------------------------------------\n\n"
                 f"--- INTERACTION HISTORY (Previous Rounds) ---\n"
                 f"past history of domain agents' answers and explanations: {domain_agent_past_history_opinions_text}\n"
-                f"past history of domain agents' reviews and reasons: {domain_agent_past_history_reviews_text}\n\n"
+                f"past history of domain agents' reviews and explanations: {domain_agent_past_history_reviews_text}\n\n"
             )
         user_content.append({
             "type":"text",
@@ -1126,7 +1126,7 @@ class AuditorAgent(BaseAgent):
             f"--- current agent input to audit ---\n"
             f"agent: {current_agent_id}:\n"
             f"agent answer: {answer}\n"
-            f"agent explanation/review_reason: {explanation}\n\n"
+            f"agent explanation: {explanation}\n\n"
             f"---------------------------------------------\n\n"
             f"--- INTERACTION HISTORY (Previous Rounds) ---\n"
             f"past synthesizer's answers and explanations: {synthesizer_opinions_text}\n\n"

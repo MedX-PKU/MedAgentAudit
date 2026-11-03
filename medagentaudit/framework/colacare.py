@@ -156,7 +156,7 @@ that best matches your conclusion. Be specific about which option you are select
             "content": f"You are a doctor specializing in {self.specialty.value}, participating in round {current_round} of a multidisciplinary team consultation. "
                       f"Review the synthesis of multiple doctors' opinions and determine if you agree with the conclusion. "
                       f"Consider your previous analysis and the MetaAgent's synthesized opinion to decide whether to agree or provide a different perspective. "
-                      f"Your output should be in JSON format, including 'agree' (boolean or 'yes'/'no'), 'reason' (rationale for your decision), "
+                      f"Your output should be in JSON format, including 'agree' (boolean or 'yes'/'no'), 'explanation' (rationale for your decision), "
                       f"and 'answer' (your suggested answer if you disagree; if you agree, you can repeat the synthesized answer) fields."
         }
 
@@ -193,7 +193,7 @@ that best matches your conclusion. Be specific about which option you are select
                   f"{synthesis_text}\n\n"
                   f"Do you agree with this synthesized result? Please provide your response in JSON format, including:\n"
                   f"1. 'agree': 'yes'/'no'\n"
-                  f"2. 'reason': Your rationale for agreeing or disagreeing\n"
+                  f"2. 'explanation': Your rationale for agreeing or disagreeing\n"
                   f"3. 'answer': Your supported answer (can be the synthesized answer if you agree, or your own suggested answer if you disagree)"
         })
 
@@ -215,16 +215,21 @@ that best matches your conclusion. Be specific about which option you are select
             lines = response_text.strip().split('\n')
             result = {}
             for line in lines:
-                if "agree" in line.lower():
-                    result["agree"] = "true" in line.lower() or "yes" in line.lower()
-                elif "reason" in line.lower():
-                    result["reason"] = line.split(":", 1)[1].strip() if ":" in line else line
-                elif "answer" in line.lower():
-                    result["answer"] = line.split(":", 1)[1].strip() if ":" in line else line
+                key, separator, value = line.partition(":")
+                key = key.strip().strip("\"'").lower()
+                if not separator:
+                    continue
+                value = value.strip().rstrip(",").strip().strip("\"'")
+                if key == "agree":
+                    result["agree"] = value.lower() in ["true", "yes"]
+                elif key == "explanation":
+                    result[key] = value
+                elif key == "answer":
+                    result["answer"] = value
             if "agree" not in result:
                 result["agree"] = False
-            if "reason" not in result:
-                result["reason"] = "No reason provided"
+            if "explanation" not in result:
+                result["explanation"] = "No explanation provided"
             if "answer" not in result:
                 if own_analysis and "answer" in own_analysis:
                     result["answer"] = own_analysis["answer"]
@@ -394,7 +399,7 @@ class MetaAgent(BaseAgent):
         for i, (review, specialty) in enumerate(zip(doctor_reviews, doctor_specialties)):
             formatted_review = f"Doctor {i+1} ({specialty.value}):\n"
             formatted_review += f"Agree: {'Yes' if review.get('agree', False) else 'No'}\n"
-            formatted_review += f"Reason: {review.get('reason', '')}\n"
+            formatted_review += f"Explanation: {review.get('explanation', '')}\n"
             formatted_review += f"Answer: {review.get('current_viewpoint', '')}\n"
             formatted_reviews.append(formatted_review)
 
@@ -713,17 +718,17 @@ class MDTConsultation:
                 print(f"Doctor {i+1} ({doctor.specialty.value}) reviewing synthesis")
                 review_log = doctor.review_synthesis(question, synthesis_parsed_output, options=options, image_path=image_path)
                 review_parsed_output = review_log["parsed_output"]
-                review_reason = review_parsed_output.get("reason", "")
+                review_explanation = review_parsed_output.get("explanation", "")
                 review_outcome = "agrees" if review_parsed_output.get("agree", False) else "disagrees"
                 if task == "audit":
                     # audit 2.1.2 Failure to Activate Specialist Knowledge During Role Execution during Collaborative discussion
-                    audit_results_of_domain_specific_knowledge_activation = self.auditor_agent.audit_domain_specific_knowledge_activation(question = question, image_path=image_path, agent_id=doctor.agent_id, specialty=doctor.specialty, answer=review_outcome, explanation=review_reason)
+                    audit_results_of_domain_specific_knowledge_activation = self.auditor_agent.audit_domain_specific_knowledge_activation(question = question, image_path=image_path, agent_id=doctor.agent_id, specialty=doctor.specialty, answer=review_outcome, explanation=review_explanation)
 
                     # audit 2.2.1 Repetition of Initial Views during Collaborative discussion 
-                    audit_results_repetition_of_initial_views = self.auditor_agent.audit_repetition_of_initial_views(question=question, image_path = image_path, current_agent_id=doctor.agent_id, current_answer = review_outcome, current_explanation=review_reason, case_history=case_history)
+                    audit_results_repetition_of_initial_views = self.auditor_agent.audit_repetition_of_initial_views(question=question, image_path = image_path, current_agent_id=doctor.agent_id, current_answer = review_outcome, current_explanation=review_explanation, case_history=case_history)
                     
                     # audit 2.2.2 Unresolved Conflicts during Collaborative discussion
-                    audit_results_of_unresolved_conflicts_during_review = self.auditor_agent.audit_unresolved_conflicts_during_Collaboration(question=question, current_agent_id=doctor.agent_id, current_answer = review_outcome, current_explanation=review_reason, case_history=case_history) 
+                    audit_results_of_unresolved_conflicts_during_review = self.auditor_agent.audit_unresolved_conflicts_during_Collaboration(question=question, current_agent_id=doctor.agent_id, current_answer = review_outcome, current_explanation=review_explanation, case_history=case_history)
 
                     audit_round_data["2_1_2_domain_specific_knowledge_activation"].append({
                         "agent_id": doctor.agent_id,
